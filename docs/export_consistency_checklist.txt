@@ -1,0 +1,7 @@
+Export Consistency Checklist
+
+- PNG plot matches current viewport (axes limits, overlays, legend).
+- CSV contains only plotted subset in current units.
+- Manifest includes: data sources, transformations, unit decisions, export UTC, app version.
+- All file encodings UTF-8, no curly quotes.
+- Checksums updated.
