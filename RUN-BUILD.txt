@@ -1,0 +1,3 @@
+cd C:\Code\spectra-app
+REM Placeholder build steps for packaging. Add PyInstaller or similar if needed.
+echo Build step placeholder > build.log

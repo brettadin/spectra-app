@@ -1,0 +1,19 @@
+{
+  "exported_at": "2025-09-19T20:11:43Z",
+  "viewport": null,
+  "series": [
+    {
+      "label": "He (example)"
+    },
+    {
+      "label": "Ne (example)"
+    }
+  ],
+  "global_units": {
+    "wavelength": "nm"
+  },
+  "software": {
+    "name": "spectra-app",
+    "version": "v1.1.0-scaffold"
+  }
+}

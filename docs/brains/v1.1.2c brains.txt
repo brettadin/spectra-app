@@ -1,0 +1,26 @@
+Spectra App — v1.1.2c brains.txt
+Generated: 2025-09-19T20:49:35Z
+
+## What I did
+- Finalized pre-handoff: enforced dual-location patch notes, validated runners, ensured version appears in UI and export manifests, added this brains file and updated AI handoff.
+
+## How I did it
+- Minimal, targeted patch files to avoid repo churn. Used append files for root logs, longform notes in docs/patches.
+- Kept commands deterministic via RUN_CMDS scripts; added Verify-Project checks for brains + ai_handoff folders.
+
+## What worked
+- version.json + UI badge + export watermark removed ambiguity in screenshots and test artifacts.
+- Dual-location patch notes keep both humans and AIs happy: quick history + detailed narrative.
+- Runners made launches consistent across sessions and machines.
+
+## What didn’t work (watch for this)
+- If PATCHLOG.txt at root is missing, CI and new devs get confused. Always append the short entry.
+- People forget to regenerate CHECKSUMS.txt. Wire it into your release step if possible.
+
+## Lessons for next AI
+- Treat provenance as a first-class citizen. No dataset without provenance.json; log conversions and transformations.
+- Enforce dedupe on uploads; checksum everything.
+- Keep legends clean. An empty legend label means something else is broken upstream.
+- Collect acceptance criteria artifacts (PNG/CSV/manifest) for every feature you touch.
+
+-- End v1.1.2c brains.txt --

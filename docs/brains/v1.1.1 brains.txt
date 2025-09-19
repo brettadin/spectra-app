@@ -1,0 +1,35 @@
+Spectra App — v1.1.1 brains.txt
+Generated: 2025-09-19 20:44:10Z
+
+## What I did
+- Fixed import path/package structure by adding __init__.py files in app/, app/server/, app/ui/, scripts/.
+- Updated RUN-LOCAL instructions to set PYTHONPATH and run scripts via module form (python -m scripts.fetch_samples).
+- Verified provenance stub writes to data/vega_stub/provenance.json.
+
+## How I did it
+- Inspected repo layout from zip manifests.
+- Applied clean patch that only touched necessary files.
+- Kept changes additive and reversible (patch-only discipline).
+
+## What worked
+- Adding __init__.py made imports stable across PowerShell sessions.
+- PYTHONPATH ensured app/ is always visible, making scripts reproducible.
+- Module form (python -m scripts.fetch_samples) is safer than direct script execution.
+
+## What didn’t work
+- At first, running scripts directly caused ModuleNotFoundError: app. Root cause: Python’s default sys.path starts at scripts/ instead of project root.
+- Without __init__.py, Python didn’t treat app/ and scripts/ as packages.
+
+## Lessons
+- Always enforce proper package structure; Python scripts should run in module mode, not raw file mode.
+- Environment variables like PYTHONPATH should be documented and scripted so users don’t rely on memory.
+- Provenance is non-negotiable: every fetch writes provenance.json, even stubs.
+
+## Guidance for future AI devs
+- Never overwrite the whole repo. Always patch in place, with clear patch logs.
+- Maintain both root PATCHLOG.txt (summary) and docs/patches/PATCH_NOTES_<version>.md (longform).
+- Update app/version.json for every patch; show version in UI and exports.
+- Use RUN_CMDS scripts to guarantee consistent installs and launches.
+- Store brains notes like this for continuity between AIs; write candidly what was fixed, what failed, and why.
+
+-- End of v1.1.1 brains.txt --

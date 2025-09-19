@@ -1,0 +1,45 @@
+# AI Handoff Prompt — Spectra App v1.1.2a
+
+## You are inheriting this project
+You will be given:
+1) **Brains zipped**: long-form context from past chats (goals, workflows, design rules, math, sources).
+2) **Repo at C:\Code\spectra-app**: a runnable scaffold with patch logs and docs seeds.
+
+## Non‑negotiables
+- Ship **patches only**. Never dump a whole new tree.
+- **Append** to PATCHLOG.txt for every change (version, UTC date, summary, known issues, next steps).
+- Update **CHECKSUMS.txt** for all files.
+- Keep **RUN-LOCAL.txt** and **RUN-BUILD.txt** accurate.
+- Preserve **provenance** for every dataset (DOI if available, instrument, facility, program id, source URL, units, transformations, counts, ranges).
+
+## Immediate patch scope (v1.1.2 → v1.1.3)
+1) **Archive fetchers (astroquery)**: MAST, ESO, SDSS, Simbad/VO, IACOB, plus one exoplanet/atmospheres archive. Each fetch writes `data/<dataset>/provenance.json` containing full metadata and transformations.
+2) **Docs expansion**: Replace placeholders in /docs with the full texts from Brains zipped. Normalize to UTF-8; remove curly quotes.
+3) **Duplicate upload guard**: Maintain `data/uploads/index.json` keyed by SHA-256; refuse duplicate adds.
+4) **Dual-panel or offset-baseline overlays**: Show emission + absorption simultaneously without unit fakery. Implement jump-to-bands and keep legends clean.
+5) **Unit toggles**: nm | Å | µm and optional cm⁻¹. Log every conversion in export manifest.
+6) **Differential workspace**: Backlight + observed (+ optional instrument response). Align, resample, normalize; compute subtract/ratio; display stepwise diagnostics; log each step in manifest.
+
+## Acceptance criteria
+- App launches from RUN-LOCAL.txt.
+- Fetchers retrieve at least 3 real datasets across different facilities/bands with proper provenance.json.
+- Docs panel renders full content.
+- Duplicate uploads prevented.
+- Dual-panel/offset-baseline mode works; legends have no empty labels.
+- Unit toggle works; manifest contains conversion history.
+- Differential tool produces residuals with explicit step logs.
+- Export produces PNG + CSV + manifest reflecting only visible data and including provenance refs.
+
+## Deliverables for this patch
+- Updated code under `C:\Code\spectra-app\`.
+- Updated PATCHLOG.txt (append-only) and regenerated CHECKSUMS.txt.
+- Any updated RUN-*.txt files.
+- Sample exports demonstrating new features.
+- If ownership changes, update this handoff: create `docs/ai_handoff/AI_HANDOFF_PROMPT_<newversion>.txt` and note it in PATCHLOG.
+
+## Where to look / put things
+- Longform patch narratives: `docs/patches/`
+- Handoff prompts like this one: `docs/ai_handoff/`
+- Dev rules: `README_DEVS.md`
+
+Proceed like a professional: robust code, real provenance, zero mystery.

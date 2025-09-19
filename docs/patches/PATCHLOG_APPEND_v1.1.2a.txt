@@ -1,0 +1,5 @@
+
+v1.1.2a — AI Handoff Folder Added (2025-09-19 20:20:20Z)
+- Added `docs/ai_handoff/AI_HANDOFF_PROMPT_v1.1.2.txt` containing the canonical handoff instructions.
+- Established `docs/ai_handoff/` as the required location for all future AI handoff prompts.
+- Recommendation: keep longform patch narratives and artifacts in `docs/patches/`.

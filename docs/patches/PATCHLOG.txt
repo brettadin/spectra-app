@@ -1,0 +1,16 @@
+v1.1.0 — Scaffold
+Date: 2025-09-19 19:57:10Z
+
+Summary:
+- Initialize folder hierarchy, run scripts, docs seed, examples, and UI skeleton.
+- Enforce provenance-first architecture, unit rigor, overlay toggles, and differential workspace stubs.
+
+Known issues:
+- Archive fetchers are stubbed.
+- Differential math is placeholder.
+- Export manifest currently includes basic structure only.
+
+Next:
+- Implement MAST/ESO/SDSS fetch with provenance.json per dataset.
+- Wire unit resolver and duplicate-upload guard (checksum index).
+- Finish differential alignment, resampling, and logging.

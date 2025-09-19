@@ -1,0 +1,7 @@
+streamlit>=1.36
+plotly>=5.22
+numpy>=1.26
+pandas>=2.2
+astropy>=6.0
+astroquery>=0.4.7
+requests>=2.32

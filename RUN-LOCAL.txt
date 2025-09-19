@@ -1,0 +1,31 @@
+Spectra App — Reliable Boot & Clean Install (2025-09-19 20:38:42Z)
+
+Where to run from:
+  C:\Code\spectra-app
+
+One-time or whenever things look cursed:
+  1) Clean install (wipes .venv and reinstalls deps)
+     PowerShell:  .\RUN_CMDS\Clean-Install.ps1
+
+Daily run (starts UI at http://localhost:8501):
+     PowerShell:  .\RUN_CMDS\Start-Spectra.ps1
+     or CMD:      .\RUN_CMDS\start_spectra.cmd
+
+Verify structure & version (CI-friendly):
+     PowerShell:  .\RUN_CMDS\Verify-Project.ps1
+
+Manual equivalents (PowerShell):
+  cd C:\Code\spectra-app
+  $env:PYTHONPATH="C:\Code\spectra-app"
+  if (!(Test-Path .\.venv)) { python -m venv .venv }
+  .\.venv\Scripts\python -m pip install --upgrade pip
+  .\.venv\Scripts\pip install -r requirements.txt
+  .\.venv\Scripts\pip install -U kaleido
+  .\.venv\Scripts\python -m scripts.print_version
+  .\.venv\Scripts\streamlit run app\ui\main.py
+
+Expected files (fast check):
+  - app\version.json
+  - PATCHLOG.txt (root)
+  - docs\patches\PATCH_NOTES_<version>.md
+  - docs\ai_handoff\AI_HANDOFF_PROMPT_<version>.txt

@@ -1,0 +1,3 @@
+v1.1.1 — Packaging/imports fix (2025-09-19 20:07:39Z)
+- Added __init__.py to app/, app/server/, app/ui/, scripts/ so they resolve as packages.
+- Updated RUN-LOCAL.txt to set PYTHONPATH and show module-run form for scripts.

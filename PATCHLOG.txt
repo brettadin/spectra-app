@@ -1,0 +1,16 @@
+﻿Spectra App — Patch Log
+=======================
+
+v1.1.2b — Versioning & Patch Visibility (see docs/patches/PATCH_NOTES_v1.1.2b.md)
+- Centralized version in app/version.json and surfaced in UI/exports.
+- Added scripts/print_version.py.
+- Dual-location patch notes rule: root summary + docs/patches longform.
+
+v1.1.2a — AI Handoff (see docs/ai_handoff/AI_HANDOFF_PROMPT_v1.1.2.txt)
+- Added docs/ai_handoff with canonical baton-pass prompt.
+
+v1.1.1 — Packaging/Imports Fix
+- Added package markers; updated RUN-LOCAL to support module form.
+
+v1.1.0 — Scaffold
+- Initial runnable UI scaffold, examples, docs seeds, export triplet.

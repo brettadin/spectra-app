@@ -1,0 +1,40 @@
+# AI Handoff Prompt — Spectra App v1.1.2c
+
+## What you inherit
+- A runnable Streamlit+Plotly app with versioning surfaced in UI and exports.
+- Dual-location patch notes: root `PATCHLOG.txt` (short) + `docs/patches/PATCH_NOTES_<version>.md` (longform).
+- Launchers under `RUN_CMDS/` for clean install, start, and verify.
+- Brains continuity notes under `docs/brains/` (this version includes v1.1.1 and v1.1.2c).
+
+## Your rules (no excuses)
+- Ship **patches only**; append to root PATCHLOG and create `docs/patches/PATCH_NOTES_<version>.md` every time.
+- Update `app/version.json` (version, date_utc, summary).
+- Regenerate `CHECKSUMS.txt` when files change.
+- Keep RUN-*.txt and RUN_CMDS scripts accurate.
+
+## Immediate roadmap (v1.1.2c → v1.1.3)
+1) **Archive fetchers (astroquery)**: MAST, ESO, SDSS, Simbad/VO, IACOB, and one exoplanet/atmosphere archive. Save `data/<dataset>/provenance.json` with DOI, instrument, facility, program_id, unit conversions, transformations, point counts, wavelength ranges.
+2) **Docs expansion**: Replace placeholder markdowns with full curated text from Brains zipped; normalize to UTF‑8, remove curly quotes.
+3) **Duplicate upload guard**: `data/uploads/index.json` keyed by SHA‑256; refuse duplicate re-ingest.
+4) **Dual-panel or offset-baseline overlays**: True simultaneous emission + absorption without lying about conventions; jump-to-bands stays clean.
+5) **Unit toggles**: nm | Å | µm (+ optional cm⁻¹). Log conversions in export manifest.
+6) **Differential workspace**: Align, resample, normalize; subtract/ratio; diagnostics; log every step to manifest.
+7) **Modeling hooks**: At least blackbody and one line-list overlay with provenance.
+
+## Acceptance criteria (don’t cut corners)
+- App launches from `RUN-LOCAL.txt` commands.
+- At least 3 real datasets fetched with provenance.json populated.
+- Docs panel shows full content.
+- Duplicate upload prevention works.
+- Dual-panel/offset-baseline rendering correct; legend has no empty labels.
+- Unit toggles functional; manifest shows conversion log.
+- Differential tool produces residuals with step logs.
+- Export PNG+CSV+manifest match the visible subset.
+
+## Quick checks
+```powershell
+cd C:\Code\spectra-app
+.\RUN_CMDS\Verify-Project.ps1
+.\.venv\Scripts\python -m scripts.print_version   # expect v1.1.2c
+.\RUN_CMDS\Start-Spectra.ps1
+```

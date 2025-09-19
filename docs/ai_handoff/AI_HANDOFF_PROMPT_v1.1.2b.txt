@@ -1,0 +1,29 @@
+# AI Handoff Prompt — Spectra App v1.1.2b
+
+## New in this handoff
+- Versioning is centralized in `app/version.json` and loaded via `app/_version.py`.
+- The UI displays a version badge and short summary; exports and screenshots carry a version watermark.
+- Patch notes must be written in **two places**:
+  - Root `PATCHLOG.txt` (short, append-only)
+  - `docs/patches/PATCH_NOTES_<version>.md` (longform narrative)
+
+## Standing rules (unchanged)
+- Ship **patches only**; never replace the entire tree.
+- Append to PATCHLOG.txt every change (version, UTC date, summary, known issues, next steps).
+- Regenerate CHECKSUMS.txt every patch.
+- Keep RUN-LOCAL.txt and RUN-BUILD.txt accurate.
+
+## Immediate next scope (v1.1.2b → v1.1.3)
+- Implement real astroquery fetchers (MAST, ESO, SDSS, Simbad/VO, IACOB, one exoplanet archive), each writing `data/<dataset>/provenance.json` with DOI, instrument, program_id, units, transformations, counts, and ranges.
+- Expand docs with full text from Brains zipped (UTF-8, no curly quotes).
+- Add duplicate upload guard via `data/uploads/index.json` keyed by SHA-256.
+- Implement dual-panel or offset-baseline for emission+absorption.
+- Add unit toggles (nm/Å/µm/cm⁻¹) with conversion logging in export manifests.
+- Build differential workspace with alignment/resampling/normalization and explicit step logging.
+
+## Quick verification
+```powershell
+cd C:\Code\spectra-app
+.\.venv\Scripts\python -m scripts.print_version
+# Expected: v1.1.2b | 2025-09-19T20:30:37Z | Introduced version.json + UI/version badge + export stamping...
+```

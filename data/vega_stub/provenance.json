@@ -1,0 +1,23 @@
+{
+  "converted_units": {
+    "flux": "arb",
+    "wavelength": "nm"
+  },
+  "doi": null,
+  "facility": "MAST",
+  "fetched_at": "2025-09-19T20:09:59Z",
+  "instrument": "SampleStub",
+  "original_units": {
+    "flux": "arb",
+    "wavelength": "nm"
+  },
+  "point_count": 2,
+  "program_id": "stub",
+  "source_url": "https://archive.stsci.edu/",
+  "target_name": "Vega",
+  "transformations": [],
+  "wavelength_range": [
+    400,
+    700
+  ]
+}
