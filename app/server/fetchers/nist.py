@@ -411,9 +411,18 @@ def fetch(
 
     if table is not None:
         for row in table:
-            observed_nm = _extract_float(row.get("Observed"))
-            ritz_nm = _extract_float(row.get("Ritz"))
-            chosen_nm = ritz_nm if use_ritz and ritz_nm is not None else observed_nm or ritz_nm
+            observed_value = _extract_float(row.get("Observed"))
+            ritz_value = _extract_float(row.get("Ritz"))
+
+            observed_nm = observed_value / 10.0 if observed_value is not None else None
+            ritz_nm = ritz_value / 10.0 if ritz_value is not None else None
+
+            if use_ritz and ritz_nm is not None:
+                chosen_nm = ritz_nm
+            elif observed_nm is not None:
+                chosen_nm = observed_nm
+            else:
+                chosen_nm = ritz_nm
             if chosen_nm is None:
                 continue
 
