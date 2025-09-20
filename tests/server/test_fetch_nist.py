@@ -13,8 +13,8 @@ def sample_table() -> Table:
     return Table(
         rows=[
             (
-                '500.0',
-                '500.2',
+                '5000.0',
+                '5002.0',
                 '20',
                 '1.0e+6',
                 '5.0e-1',
@@ -28,7 +28,7 @@ def sample_table() -> Table:
             ),
             (
                 '',
-                '600.0',
+                '6000.0',
                 '',
                 '',
                 '',
@@ -84,6 +84,12 @@ def test_fetch_basic(monkeypatch: pytest.MonkeyPatch, sample_table: Table) -> No
     assert result['intensity_normalized'][1] is None
     first_line = result['lines'][0]
     assert math.isclose(first_line['wavelength_nm'], 500.2)
+    assert math.isclose(first_line['observed_wavelength_nm'] or 0.0, 500.0)
+    assert math.isclose(first_line['ritz_wavelength_nm'] or 0.0, 500.2)
+    second_line = result['lines'][1]
+    assert math.isclose(second_line['wavelength_nm'], 600.0)
+    assert second_line['observed_wavelength_nm'] is None
+    assert math.isclose(second_line['ritz_wavelength_nm'] or 0.0, 600.0)
     assert first_line['transition_probability_s'] == pytest.approx(1.0e6)
     assert first_line['oscillator_strength'] == pytest.approx(5.0e-1)
     assert first_line['lower_level_energy_ev'] == pytest.approx(10.0)
