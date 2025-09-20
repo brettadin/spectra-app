@@ -1,0 +1,20 @@
+Spectra App — Patch Notes (v1.1.5a)
+Date (UTC): 2025-09-21T00:00:00Z
+
+Summary:
+- Formalize the mandated brains/AI handoff/patch note template.
+- Move patch notes to `docs/PATCH_NOTES/<version>.txt` with reciprocal links.
+- Publish provider cache directories under `data/providers/`.
+- Inject a continuity block into export manifests and add verification/tests for it.
+
+Cross-links:
+- Brains: docs/brains/brains_v1.1.5a.md
+- AI Handoff Bridge: docs/brains/ai_handoff.md
+- Index: docs/brains/brains_INDEX.md
+
+Verification:
+- RUN_CMDS/Verify-Project.ps1 (now checks continuity docs and provider directories)
+- pytest (covers manifest continuity + link validation)
+
+Known follow-up:
+- Author AI_HANDOFF_PROMPT_v1.1.5a with updated guidance.

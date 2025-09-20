@@ -10,6 +10,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from app._version import get_version_info
+from app.export_manifest import build_manifest
 from app.server.fetch_archives import FetchError, fetch_spectrum
 
 st.set_page_config(page_title='Spectra App', layout='wide')
@@ -397,17 +398,13 @@ with tabs[0]:
             except Exception as e:
                 st.warning(f"PNG export requires kaleido. Error: {e}")
             # Manifest with version stamping
-            manifest = {
-                'exported_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
-                'viewport': None,
-                'series': [],
-                'global_units': {'wavelength': display_units, 'intensity_mode': display_mode},
-                'software': {'name':'spectra-app', 'version': VI['version'], 'built_utc': VI['date_utc']},
-                'notes': VI['summary']
-            }
-            for label in sorted({row['series'] for row in rows}):
-                count = sum(1 for row in rows if row['series'] == label)
-                manifest['series'].append({'label': label, 'points': count})
+            manifest = build_manifest(
+                rows,
+                display_units=display_units,
+                display_mode=display_mode,
+                exported_at=time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+                viewport=None,
+            )
             man_path.write_text(json.dumps(manifest, indent=2))
             st.success(f'Exported: {png_path} / {csv_path} / {man_path}')
 
