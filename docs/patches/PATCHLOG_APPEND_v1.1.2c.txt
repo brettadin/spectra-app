@@ -1,0 +1,5 @@
+v1.1.2c — Final Pre-Handoff Prep (2025-09-19T20:49:35Z)
+- Bumped app/version.json to v1.1.2c with one-line summary.
+- Ensured dual-location patch notes discipline: root PATCHLOG.txt (summary) + docs/patches longform.
+- Confirmed UI/exports display version. Runners (Start-Spectra, Clean-Install, Verify-Project) validated.
+- Added updated AI handoff prompt and brains notes for continuity.

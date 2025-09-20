@@ -1,0 +1,6 @@
+v1.1.2b — Versioning & Patch Visibility (2025-09-19T20:30:37Z)
+- Added app/version.json and app/_version.py as the single source of truth for version, date_utc, and one-line summary.
+- UI now shows a version badge and a short "What’s new" blurb; figures include a version watermark.
+- Export manifest stamps software.version and built_utc.
+- Added scripts/print_version.py to print version info for CI and quick checks.
+- Enforced dual-location patch notes: root PATCHLOG.txt (summary) + docs/patches/PATCH_NOTES_v1.1.2b.md (longform).
