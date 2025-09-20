@@ -1,10 +1,4 @@
 Spectra App — Patch Log (append-only)
 ===============================
 
-v1.1.2c — Final Ship Prep (2025-09-19T21:02:14Z)
-- Version.json bumped to v1.1.2c with summary.
-- Normalized docs to UTF-8 plain dashes (no garbled characters).
-- Clarified patch discipline: root log short form, docs/patches longform.
-- Updated AI handoff + brains continuity notes.
-- Verified runners and version stamping.
 

@@ -1,0 +1,121 @@
+# Apply-v1.1.4c9b-SmartEntry.ps1
+# Robust SmartEntry + logging, compatible with older PowerShell (no -AsUTC)
+
+$ErrorActionPreference = 'Stop'
+
+$root = Split-Path -Parent $PSCommandPath
+$proj = Resolve-Path (Join-Path $root '..') | Select-Object -ExpandProperty Path
+$log  = Join-Path $proj 'logs\ui_debug.log'
+$py   = Join-Path $proj 'app\app_patched.py'
+$bak  = "$py.bak.v1.1.4c9b"
+
+# Timestamp helper (UTC ISO 8601)
+function NowUtc() { (Get-Date).ToUniversalTime().ToString("s") + "Z" }
+
+New-Item (Split-Path $log) -ItemType Directory -Force | Out-Null
+"$(NowUtc) Applying v1.1.4c9b SmartEntry" | Add-Content $log
+
+Copy-Item $py $bak -Force
+
+# SmartEntry body (Python)
+$smart = @'
+# --- v1.1.4c9b SmartEntry (patched) ---
+import importlib, inspect, os, runpy, sys, traceback, types, datetime, pathlib
+
+LOG = pathlib.Path(__file__).resolve().parents[1] / "logs" / "ui_debug.log"
+LOG.parent.mkdir(parents=True, exist_ok=True)
+
+def _ts():
+    return datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+
+def _log(line: str):
+    try:
+        with LOG.open("a", encoding="utf-8") as f:
+            f.write(f"{_ts()} {line}\n")
+    except Exception:
+        pass
+
+def _list_callables(mod: types.ModuleType):
+    try:
+        out = []
+        for name, obj in vars(mod).items():
+            if name.startswith("_"): 
+                continue
+            if callable(obj):
+                out.append(name)
+        return sorted(out)
+    except Exception as e:
+        _log(f"LIST_CALLABLES_ERR: {e!r}")
+        return []
+
+def _try_call(mod, fn_name):
+    fn = getattr(mod, fn_name, None)
+    if not callable(fn):
+        return False
+    try:
+        _log(f"TRY_ENTRY {fn_name}()")
+        fn()                       # Call the candidate entrypoint
+        _log(f"TRY_ENTRY_OK {fn_name}()")
+        return True
+    except SystemExit as se:
+        _log(f"TRY_ENTRY_SYS_EXIT {fn_name} code={getattr(se, 'code', None)}")
+        return True
+    except Exception:
+        _log(f"TRY_ENTRY_ERR {fn_name} traceback:\n{traceback.format_exc()}")
+        return False
+
+def _run_streamlit_script(modname: str):
+    # As a last resort: execute the module as a script (__main__)
+    _log(f"RUN_MODULE_AS_MAIN {modname}")
+    # (This mirrors: python -m app.app_merged)
+    runpy.run_module(modname, run_name="__main__")
+
+def _main():
+    _log("SmartEntry boot")
+    modname = "app.app_merged"
+    _log(f"IMPORT {modname}")
+    m = importlib.import_module(modname)
+
+    # If env is set, honor it first
+    env_entry = os.environ.get("SPECTRA_APP_ENTRY")
+    if env_entry:
+        _log(f"ENV SPECTRA_APP_ENTRY={env_entry}")
+        if _try_call(m, env_entry):
+            return
+
+    # Try known good candidates in priority order
+    candidates = [
+        "render", "main", "app", "run", "ui", "entry",
+        "render_app", "start", "spectra_app"
+    ]
+    listed = _list_callables(m)
+    _log(f"EXPORTS {listed}")
+
+    tried_any = False
+    for name in candidates:
+        if name in listed:
+            tried_any = True
+            if _try_call(m, name):
+                return
+
+    # If we didn't find any obvious entrypoint, just run the module
+    if not tried_any:
+        _log("NO_EXPLICIT_ENTRY -> fallback to run_module")
+
+    _run_streamlit_script(modname)
+
+if __name__ == "__main__":
+    _main()
+# --- end SmartEntry ---
+'@
+
+# Replace app_patched.py wholesale with SmartEntry
+Set-Content -LiteralPath $py -Value $smart -Encoding UTF8
+
+"$(NowUtc) SmartEntry v1.1.4c9b installed -> $py (backup: $bak)" | Add-Content $log
+
+# Clean pyc caches to avoid stale bytecode
+Get-ChildItem -Path $proj -Recurse -Directory -Filter '__pycache__' | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+
+"$(NowUtc) Purged __pycache__" | Add-Content $log
+Write-Host "Installed v1.1.4c9b SmartEntry (backup at $bak)."

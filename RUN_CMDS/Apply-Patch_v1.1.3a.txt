@@ -1,0 +1,11 @@
+BEGIN APPLY
+1) Extract this zip.
+2) Copy into C:\Code\spectra-app\ keeping folders.
+3) Run verification:
+   PowerShell:
+     cd C:\Code\spectra-app
+     .\RUN_CMDS\Verify-Patched.ps1
+4) Start the patched app:
+     .\RUN_CMDS\Start-Spectra-Patched.ps1
+5) Use this patched entry while we wire the same fixes into the legacy entrypoint.
+END APPLY

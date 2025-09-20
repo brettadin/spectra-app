@@ -28,26 +28,3 @@ def write_provenance(manifest: Dict[str, Any], trace_id: str, prov: Dict[str, An
     entry = traces.setdefault(trace_id, {})
     entry.setdefault("fetch_provenance", {}).update(prov or {})
     return manifest
-
-# ===== v1.1.4b SHIM: append_provenance (auto-appended) =====
-# Some UI modules import `append_provenance` from app.utils.provenance.
-# In v1.1.4x the canonical merger lives in app.server.provenance:merge_trace_provenance.
-try:
-    from app.server.provenance import merge_trace_provenance as _merge
-except Exception:
-    _merge = None
-
-def append_provenance(manifest: dict, trace_id: str, prov: dict) -> dict:
-    """Compatibility shim. Merges `prov` into manifest['traces'][trace_id]['fetch_provenance'].
-    If server merger exists, delegate to it; otherwise perform a minimal local merge.
-    Return the updated manifest (for chaining)."""
-    if manifest is None:
-        manifest = {}
-    if _merge is not None:
-        return _merge(manifest, trace_id, prov or {})
-    # local merge
-    traces = manifest.setdefault("traces", {})
-    entry = traces.setdefault(str(trace_id), {})
-    entry.setdefault("fetch_provenance", {}).update(prov or {})
-    return manifest
-# ===== end shim =====

@@ -1,0 +1,133 @@
+# -*- coding: utf-8 -*-
+# v1.1.4c8 EntryHunter dispatcher
+# - Dynamically call the correct entrypoint from app.app_merged
+# - Env override SPECTRA_APP_ENTRY
+# - Writes breadcrumbs to logs/ui_debug.log
+# - Avoids runpy.run_module to prevent 'found in sys.modules' warnings
+
+from __future__ import annotations
+import importlib, inspect, os, sys, traceback
+from pathlib import Path
+
+_ROOT = Path(__file__).resolve().parents[1]
+_LOGS = _ROOT / "logs"
+_LOGS.mkdir(parents=True, exist_ok=True)
+_LOG = _LOGS / "ui_debug.log"
+
+def _ts():
+    import datetime as _dt
+    return _dt.datetime.utcnow().isoformat(timespec="seconds") + "Z"
+
+def _log(msg: str):
+    try:
+        with _LOG.open("a", encoding="utf-8") as fp:
+            fp.write(msg + "\n")
+    except Exception:
+        pass
+
+_log(f"=== BOOT: {_ts()} ===")
+
+# Import merged app once
+try:
+    m = importlib.import_module("app.app_merged")
+    _log(f"=== IMPORTED: {_ts()} === {m!r}")
+except Exception as e:
+    _log(f"IMPORT_ERR: {type(e).__name__}: {e}")
+    try:
+        import streamlit as st
+        st.error("Import error in app.app_merged")
+        st.exception(e)
+        st.caption("v1.1.4c8 dispatcher active")
+    except Exception:
+        pass
+    raise
+
+def _try_entry(fn_name: str) -> bool:
+    if not hasattr(m, fn_name):
+        return False
+    fn = getattr(m, fn_name)
+    if not callable(fn):
+        return False
+    try:
+        _log(f"TRY_ENTRY: {fn_name}")
+        fn()
+        _log(f"ENTRY_OK: {fn_name}")
+        return True
+    except TypeError:
+        # maybe class-style app: Class().render()
+        try:
+            inst = fn()
+            if hasattr(inst, "render") and callable(inst.render):
+                _log(f"TRY_ENTRY: {fn_name}().render")
+                inst.render()
+                _log(f"ENTRY_OK: {fn_name}().render")
+                return True
+        except Exception as _e:
+            _log(f"ENTRY_ERR: {fn_name} -> {type(_e).__name__}: {_e}")
+            _log(traceback.format_exc())
+        return False
+    except Exception as e:
+        _log(f"ENTRY_ERR: {fn_name} -> {type(e).__name__}: {e}")
+        _log(traceback.format_exc())
+        return False
+
+# 1) explicit env
+env_entry = os.environ.get("SPECTRA_APP_ENTRY", "").strip()
+if env_entry:
+    if _try_entry(env_entry):
+        try:
+            import streamlit as st
+            st.caption("v1.1.4c8 dispatcher • env-entry: " + env_entry)
+        except Exception:
+            pass
+        sys.exit(0)
+
+# 2) curated guesses
+for name in ["main","render","run","app","ui","entry"]:
+    if _try_entry(name):
+        try:
+            import streamlit as st
+            st.caption("v1.1.4c8 dispatcher • entry: " + name)
+        except Exception:
+            pass
+        sys.exit(0)
+
+# 3) scan heuristics
+try:
+    cands = []
+    for nm, obj in inspect.getmembers(m):
+        if nm.startswith("_") or not callable(obj):
+            continue
+        try:
+            sig = inspect.signature(obj)
+            if any(p.default is inspect._empty for p in sig.parameters.values()):
+                continue
+        except (TypeError, ValueError):
+            continue
+        try:
+            src = inspect.getsource(obj)
+        except Exception:
+            src = ""
+        if "streamlit" in src or "st." in src:
+            cands.append(nm)
+    for c in cands:
+        _log("CANDIDATE: " + c)
+    for c in cands:
+        if _try_entry(c):
+            try:
+                import streamlit as st
+                st.caption("v1.1.4c8 dispatcher • auto: " + c)
+            except Exception:
+                pass
+            sys.exit(0)
+except Exception as e:
+    _log(f"SCAN_ERR: {type(e).__name__}: {e}")
+    _log(traceback.format_exc())
+
+# 4) fallback UI to avoid blank page
+try:
+    import streamlit as st
+    st.info("No UI entrypoint detected. Set env SPECTRA_APP_ENTRY to your function (e.g. 'main' or 'render').")
+    st.caption("v1.1.4c8 dispatcher active")
+except Exception:
+    pass

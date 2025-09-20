@@ -1,0 +1,5 @@
+# Basic verification for v1.1.3a
+param()
+Set-Location C:\Code\spectra-app
+Write-Host "Version file:"
+Get-Content app\version.json

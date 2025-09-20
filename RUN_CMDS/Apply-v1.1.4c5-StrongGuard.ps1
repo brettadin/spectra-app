@@ -1,0 +1,90 @@
+
+# Apply-v1.1.4c5-StrongGuard.ps1
+Param()
+
+$ErrorActionPreference = "Stop"
+$root    = "C:\Code\spectra-app"
+$target  = Join-Path $root "app\app_patched.py"
+$backup  = "$target.bak.v1.1.4c5"
+
+if (!(Test-Path $target)) { throw "Target not found: $target" }
+if (!(Test-Path $backup)) { Copy-Item -LiteralPath $target -Destination $backup -Force }
+
+$body = @'
+# app/app_patched.py — v1.1.4c5 (v1.1.4 line)
+# Hardened entry that always logs failures to logs/ui_debug.log and surfaces them in UI.
+
+import importlib, os, sys, traceback, datetime, io
+import streamlit as st
+
+LOG_DIR = os.path.join(os.getcwd(), "logs")
+os.makedirs(LOG_DIR, exist_ok=True)
+LOG_PATH = os.path.join(LOG_DIR, "ui_debug.log")
+
+def _log_header(tag="BOOT"):
+    with open(LOG_PATH, "a", encoding="utf-8") as f:
+        f.write(f"=== {tag}: {datetime.datetime.utcnow().isoformat()}Z ===\n")
+
+def _log_exc(tag="EXC"):
+    with open(LOG_PATH, "a", encoding="utf-8") as f:
+        f.write(f"=== {tag}: {datetime.datetime.utcnow().isoformat()}Z ===\n")
+        traceback.print_exc(file=f)
+        f.write("\n")
+
+# Global excepthook so anything unhandled still lands in the log
+def _excepthook(exc_type, exc, tb):
+    with open(LOG_PATH, "a", encoding="utf-8") as f:
+        f.write(f"=== UNHANDLED: {datetime.datetime.utcnow().isoformat()}Z ===\n")
+        traceback.print_exception(exc_type, exc, tb, file=f)
+        f.write("\n")
+sys.excepthook = _excepthook
+
+# Neutralize sys.exit so we can capture it in the log before Streamlit stops
+_orig_exit = sys.exit
+def _exit_hook(code=0):
+    _log_header(f"SYS.EXIT({code})")
+    raise SystemExit(code)
+sys.exit = _exit_hook
+
+def _show_error_panel(prefix="Error"):
+    st.error(f"{prefix}. See log: {LOG_PATH}")
+    buf = io.StringIO()
+    traceback.print_exc(file=buf)
+    with st.expander("Show traceback"):
+        st.code(buf.getvalue())
+
+def _run():
+    _log_header("BOOT")
+    try:
+        m = importlib.import_module("app.app_merged")
+        importlib.reload(m)
+    except BaseException:  # catch everything, including SystemExit and SyntaxError
+        _log_exc("IMPORT FAILURE")
+        _show_error_panel("Import failure while loading UI module")
+        raise
+
+    # If module defines main(), call it here inside a guard so render-time failures also log
+    try:
+        main_fn = getattr(m, "main", None)
+        if callable(main_fn):
+            try:
+                main_fn()
+            except BaseException:
+                _log_exc("MAIN FAILURE")
+                _show_error_panel("Runtime failure while rendering UI")
+                raise
+    except BaseException:
+        _log_exc("DISPATCH FAILURE")
+        _show_error_panel("Dispatch failure")
+        raise
+
+_run()
+
+'@
+
+Set-Content -LiteralPath $target -Value $body -Encoding UTF8 -NoNewline
+Write-Host "Replaced app_patched.py with v1.1.4c5 strong guard (backup at $backup)"
+
+# Purge caches
+Get-ChildItem -Path $root -Recurse -Directory -Filter '__pycache__' | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+Write-Host "Purged __pycache__"

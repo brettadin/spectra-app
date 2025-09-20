@@ -1,0 +1,37 @@
+﻿
+import io, json, os, hashlib, uuid
+from datetime import datetime
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+import plotly.graph_objects as go
+import streamlit as st
+
+
+
+
+
+
+
+
+
+
+from app._version import get_version_info as _vinfo
+
+# --- version badge (fixed position, non-interactive) ---
+try:
+    _vi = _vinfo()
+    _v_ver = _vi.get("version", "v?")
+    _v_dt  = _vi.get("date_utc", "")
+    import streamlit as st  # safe if already imported above
+    st.markdown(
+        f"<div style='position:fixed;top:12px;right:28px;opacity:.85;padding:2px 8px;border:1px solid #444;border-radius:12px;font-size:12px;'>"
+        f"{_v_ver} â€¢ {_v_dt}"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+except Exception:
+    pass
+# --- end version badge ---
+
