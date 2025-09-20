@@ -1,107 +1,97 @@
-﻿
-import io, json, os, hashlib, uuid
+"""Streamlit entry point with crash logging and UI delegation."""
+from __future__ import annotations
+
+import importlib
+import os
+import traceback
 from datetime import datetime
-from pathlib import Path
 
-import numpy as np
-import pandas as pd
-import plotly.graph_objects as go
-import streamlit as st
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-from app._version import get_version_info as _vinfo
-
-# --- version badge (fixed position, non-interactive) ---
-try:
-    _vi = _vinfo()
-    _v_ver = _vi.get("version", "v?")
-    _v_dt  = _vi.get("date_utc", "")
-    import streamlit as st  # safe if already imported above
-    st.markdown(
-        f"<div style='position:fixed;top:12px;right:28px;opacity:.85;padding:2px 8px;border:1px solid #444;border-radius:12px;font-size:12px;'>"
-        f"{_v_ver} â€¢ {_v_dt}"
-        "</div>",
-        unsafe_allow_html=True,
-    )
-except Exception:
-    pass
-# --- end version badge ---
-
-
-
-# ===== v1.1.4c2 UI DEBUG WRAPPER (auto-insert) =====
-# Catches exceptions during the main render and writes a full traceback
-# to logs/ui_debug.log, then shows a friendly error in the Streamlit UI.
-import os, traceback, datetime
 try:
     import streamlit as st
-except Exception:
+except Exception:  # pragma: no cover - streamlit unavailable during type checks
     st = None
 
-_log_dir = os.path.join(os.getcwd(), "logs")
-os.makedirs(_log_dir, exist_ok=True)
-_log_path = os.path.join(_log_dir, "ui_debug.log")
+from app._version import get_version_info as _get_version_info
 
-def _write_log(exc):
-    with open(_log_path, "a", encoding="utf8") as _f:
-        _f.write("=== UI DEBUG TRACE: " + datetime.datetime.utcnow().isoformat() + " ===\n")
-        traceback.print_exc(file=_f)
-        _f.write("\n\n")
+_LOG_DIR = os.path.join(os.getcwd(), "logs")
+os.makedirs(_LOG_DIR, exist_ok=True)
+_LOG_PATH = os.path.join(_LOG_DIR, "ui_debug.log")
+
+
+def _render_badge() -> None:
+    """Render the fixed-position version badge if Streamlit is available."""
+    if st is None:
+        return
+    try:
+        info = _get_version_info()
+    except Exception:
+        return
+
+    version = info.get("version", "v?")
+    built = info.get("date_utc", "")
+    try:
+        st.markdown(
+            (
+                "<div style='position:fixed;top:12px;right:28px;opacity:.85;"
+                "padding:2px 8px;border:1px solid #444;border-radius:12px;"
+                "font-size:12px;'>"
+                f"{version} • {built}</div>"
+            ),
+            unsafe_allow_html=True,
+        )
+    except Exception:
+        # Streamlit might not be initialised during import/testing
+        return
+
+
+def _write_log(exc: BaseException) -> None:
+    timestamp = datetime.utcnow().isoformat()
+    with open(_LOG_PATH, "a", encoding="utf8") as handle:
+        handle.write(f"=== UI DEBUG TRACE: {timestamp} ===\n")
+        traceback.print_exc(file=handle)
+        handle.write("\n\n")
+
 
 def _safe_run(fn):
     try:
-        fn()
-    except Exception as e:
-        _write_log(e)
-        try:
-            if st is not None:
-                st.error("UI crashed during render. A diagnostic traceback was written to: " + _log_path)
+        return fn()
+    except Exception as exc:  # pragma: no cover - defensive logging branch
+        _write_log(exc)
+        if st is not None:
+            try:
+                st.error(
+                    "UI crashed during render. "
+                    f"A diagnostic traceback was written to: {_LOG_PATH}"
+                )
                 with st.expander("Show last traceback (truncated):"):
-                    with open(_log_path, "r", encoding="utf8") as _f:
-                        data = _f.read()
-                        st.code(data[-10000:])
-        except Exception:
-            pass
+                    with open(_LOG_PATH, "r", encoding="utf8") as handle:
+                        data = handle.read()
+                    st.code(data[-10000:])
+            except Exception:
+                pass
+        return None
 
-try:
-    if "main" in globals() and callable(globals().get("main")):
-        _orig_main = globals().get("main")
-        globals()["main"] = lambda : _safe_run(_orig_main)
-except Exception:
-    pass
-# ===== end debug wrapper =====
 
-# === v1.1.4c9d UI entry shim (auto-appended) ===
-def render():
-    """Unify UI entry. Delegates to app.ui.entry.render()."""
+def _render_ui() -> None:
+    _render_badge()
     try:
-        from app.ui.entry import render as _ui_render
+        from app.ui.entry import render as entry_render
     except Exception:
-        # Attempt to import app.ui.main so its top-level code renders
-        import importlib
-        try:
-            import app.ui.main  # noqa: F401
-        except Exception:
-            return
-        else:
-            return
+        # Fall back to importing the main UI module, which renders on import.
+        importlib.import_module("app.ui.main")
     else:
-        return _ui_render()
-# === end shim ===
+        entry_render()
 
 
+def render() -> None:
+    """Primary entry point used by historical launchers."""
+    _safe_run(_render_ui)
+
+
+def main() -> None:
+    """Streamlit expects a callable named main; keep it for compatibility."""
+    render()
+
+
+if __name__ == "__main__":
+    main()

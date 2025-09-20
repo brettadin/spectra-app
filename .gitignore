@@ -1,10 +1,5 @@
-.venv
-/.cache
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-=======
-/.venv
->>>>>>> Stashed changes
-=======
-/.venv
->>>>>>> Stashed changes
+.venv/
+/.cache/
+logs/
+__pycache__/
+data/samples/
