@@ -15,7 +15,7 @@ Generated: 2025-09-19T21:02:14Z
 
 ## Lessons (do/don't)
 - **Do** always update version.json + patch notes.  
-- **Do** write candid brains notes.  
+- **Do** write candid brains notes each time you push a change.  
 - **Do** regenerate CHECKSUMS.txt.  
 - **Don’t** overwrite repo wholesale.  
 - **Don’t** let legends or provenance go missing.  
