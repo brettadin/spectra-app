@@ -1,5 +1,5 @@
 {
-  "version": "v1.1.4c8",
-  "date_utc": "2025-09-20T01:53:18Z",
-  "summary": "EntryHunter dispatcher + debug logging and brains/patch notes in-sync."
+  "version": "v1.1.5a",
+  "date_utc": "2025-09-21T00:00:00Z",
+  "summary": "Continuity index rollout, manifest links, and provider directory checks."
 }
