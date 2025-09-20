@@ -1,15 +1,67 @@
 from astropy.io import fits
 import numpy as np
+
 from .units import to_nm
 
+
+def _ensure_1d(array: np.ndarray) -> np.ndarray:
+    """Return a 1-D view of the provided array or raise if ambiguous."""
+
+    if array.ndim == 0:
+        return array.reshape(1)
+
+    squeezed = np.squeeze(array)
+    if squeezed.ndim == 1:
+        return squeezed
+
+    raise ValueError(
+        f"FITS data is not 1-dimensional; found shape {array.shape}. "
+        "Provide a FITS HDU with 1-D data for spectral ingestion."
+    )
+
+
 def parse_fits(path: str):
-    hdul = fits.open(path)
-    h = hdul[0].header
-    data = hdul[0].data
-    crval1 = h.get('CRVAL1'); cdelt1 = h.get('CDELT1'); crpix1 = h.get('CRPIX1',1.0)
-    unit = h.get('CUNIT1','nm')
-    n = data.shape[-1] if data is not None else int(h.get('NAXIS1',0))
-    pix = np.arange(n)
-    wl = crval1 + (pix - (crpix1-1))*cdelt1
-    wl_nm = to_nm(wl.tolist(), unit)
-    return {'wavelength': wl_nm, 'flux': data.tolist(), 'unit_wavelength':'nm', 'unit_flux':'arb', 'meta': {'original_unit_wavelength': unit}}
+    with fits.open(path) as hdul:
+        data_hdu = next((hdu for hdu in hdul if getattr(hdu, "data", None) is not None), None)
+        if data_hdu is None:
+            raise ValueError("No array data found in FITS file.")
+
+        header = data_hdu.header
+        raw_data = np.ma.getdata(data_hdu.data)
+        flux = _ensure_1d(np.array(raw_data, copy=True))
+
+        if flux.size == 0:
+            raise ValueError("FITS data array is empty.")
+
+        crval1 = header.get("CRVAL1")
+        cdelt1 = header.get("CDELT1")
+        missing = [
+            key
+            for key, value in (("CRVAL1", crval1), ("CDELT1", cdelt1))
+            if value is None
+        ]
+        if missing:
+            raise ValueError(
+                "Missing WCS keyword(s) " + ", ".join(missing) + " in FITS header for spectral axis."
+            )
+
+        try:
+            crval1 = float(crval1)
+            cdelt1 = float(cdelt1)
+            crpix1 = float(header.get("CRPIX1", 1.0))
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Invalid WCS keyword value in FITS header.") from exc
+
+        unit = header.get("CUNIT1", "nm")
+
+        pix = np.arange(flux.size, dtype=float)
+        wl = crval1 + (pix - (crpix1 - 1.0)) * cdelt1
+        wl_nm = to_nm(wl.tolist(), unit)
+
+        return {
+            "wavelength": wl_nm,
+            "flux": flux.tolist(),
+            "unit_wavelength": "nm",
+            "unit_flux": "arb",
+            "meta": {"original_unit_wavelength": unit},
+        }
