@@ -93,5 +93,5 @@ def _render_matrices(frames: Sequence[tuple[str, pd.DataFrame]]) -> None:
     for tab, (metric, frame) in zip(tabs, frames):
         with tab:
             styled = frame.style.format(lambda v, m=metric: _format_value(v, m))
-            st.dataframe(styled, use_container_width=True)
+            st.dataframe(styled, width="stretch")
             st.caption("Diagonal entries show self-similarity. NaN indicates insufficient overlap in the viewport.")
