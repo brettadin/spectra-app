@@ -45,6 +45,7 @@ def render_similarity_panel(
     reference = _resolve_reference(traces, options.reference_id)
     _render_ribbon(reference, traces, viewport, options, cache)
     ordered = _order_frames(frames, options.primary_metric)
+    _render_duplicate_note(ordered)
     _render_matrices(ordered)
     return frames
 
@@ -93,5 +94,34 @@ def _render_matrices(frames: Sequence[tuple[str, pd.DataFrame]]) -> None:
     for tab, (metric, frame) in zip(tabs, frames):
         with tab:
             styled = frame.style.format(lambda v, m=metric: _format_value(v, m))
-            st.dataframe(styled, use_container_width=True)
+            st.dataframe(styled, width="stretch")
             st.caption("Diagonal entries show self-similarity. NaN indicates insufficient overlap in the viewport.")
+
+
+def _render_duplicate_note(frames: Sequence[tuple[str, pd.DataFrame]]) -> None:
+    if not frames:
+        return
+    sample = frames[0][1]
+    alias_map = sample.attrs.get("label_aliases")
+    counts = sample.attrs.get("label_counts")
+    if not alias_map or not counts:
+        return
+    duplicates = {label: total for label, total in counts.items() if total > 1}
+    if not duplicates:
+        return
+    alias_lookup: Dict[str, List[str]] = {}
+    for alias, original in alias_map.items():
+        alias_lookup.setdefault(original, []).append(alias)
+    notes: List[str] = []
+    for label, _ in sorted(duplicates.items()):
+        aliases = alias_lookup.get(label, [])
+        if not aliases:
+            continue
+        formatted = ", ".join(aliases)
+        notes.append(f"“{label}” shown as {formatted}")
+    if notes:
+        st.caption(
+            "Duplicate trace labels detected. Matrices use enumerated aliases for clarity: "
+            + "; ".join(notes)
+            + "."
+        )

@@ -1,5 +1,9 @@
 # Spectra App — Brains Index
+ codex/improve-unit-conversions-and-file-uploads-udgaxh
+_Last updated: 2025-09-21T23:00:00Z_
+=======
 _Last updated: 2025-09-21T02:00:00Z_
+ main
 
 This index is the mandated entry point before touching the codebase.
 It tracks the latest continuity documents and the required cross-links between them.
@@ -13,6 +17,10 @@ It tracks the latest continuity documents and the required cross-links between t
 ## Continuity Table
 | Version | Brains Log | Patch Notes | AI Handoff |
 | --- | --- | --- | --- |
+ codex/improve-unit-conversions-and-file-uploads-udgaxh
+| v1.1.5c | [docs/brains/brains_v1.1.5c.md](brains_v1.1.5c.md) | [docs/PATCH_NOTES/v1.1.5c.txt](../PATCH_NOTES/v1.1.5c.txt) | [docs/brains/ai_handoff.md](ai_handoff.md) |
+=======
+ main
 | v1.1.5b | [docs/brains/brains_v1.1.5b.md](brains_v1.1.5b.md) | [docs/PATCH_NOTES/v1.1.5b.txt](../PATCH_NOTES/v1.1.5b.txt) | [docs/brains/ai_handoff.md](ai_handoff.md) |
 | v1.1.5a | [docs/brains/brains_v1.1.5a.md](brains_v1.1.5a.md) | [docs/PATCH_NOTES/v1.1.5a.txt](../PATCH_NOTES/v1.1.5a.txt) | [docs/brains/ai_handoff.md](ai_handoff.md) |
 

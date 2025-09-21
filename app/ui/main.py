@@ -53,7 +53,6 @@ class OverlayTrace:
     trace_id: str
     label: str
     wavelength_m: Tuple[float, ...]
-    flux: Tuple[float, ...]
     flux_unit: str
     flux_kind: str
     kind: str = "spectrum"
@@ -694,6 +693,18 @@ def _build_overlay_figure(
                 }
             )
 
+ codex/improve-unit-conversions-and-file-uploads-udgaxh
+        if "wavelength_m" not in df.columns:
+            if "wavelength_nm" in df.columns:
+                converted_m = wavelength_to_m(df["wavelength_nm"].to_numpy(dtype=float), "nm")
+                df = df.assign(wavelength_m=converted_m)
+            else:
+                st.warning(f"{trace.label}: missing wavelength data; trace skipped.")
+                continue
+
+=======
+
+>>>> main
         converted, axis_title = _convert_wavelength(df["wavelength_m"], display_units)
         df = df.assign(wavelength=converted, flux=df["flux"].astype(float))
         if "hover" in df:
@@ -801,7 +812,7 @@ def _render_overlay_table(overlays: Sequence[OverlayTrace]) -> None:
     edited = st.data_editor(
         table,
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
         column_config={
             "Label": st.column_config.TextColumn("Label", disabled=True),
             "Provider": st.column_config.TextColumn("Provider", disabled=True),
@@ -873,7 +884,11 @@ def _render_metadata_summary(overlays: Sequence[OverlayTrace]) -> None:
         )
     if rows:
         st.markdown("#### Metadata summary")
+ codex/improve-unit-conversions-and-file-uploads-udgaxh
+        st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
+=======
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+ main
     with st.expander("Metadata & provenance details", expanded=False):
         for trace in overlays:
             st.markdown(f"**{trace.label}**")
@@ -1055,7 +1070,7 @@ def _render_line_tables(overlays: Sequence[OverlayTrace]) -> None:
             if table.empty:
                 st.info("No line metadata available.")
             else:
-                st.dataframe(table, use_container_width=True, hide_index=True)
+                st.dataframe(table, width="stretch", hide_index=True)
 
 
 # ---------------------------------------------------------------------------
@@ -1201,7 +1216,7 @@ def _render_overlay_tab(version_info: Dict[str, str]) -> None:
         differential_mode,
         version_info.get("version", "v?"),
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
     control_col, action_col = st.columns([3, 1])
     with control_col:
