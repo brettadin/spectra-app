@@ -94,6 +94,7 @@ def _safe_float(value: object) -> float | None:
     return None
 
 
+
 def _coerce_range(value: object) -> Tuple[float, float] | None:
     if isinstance(value, (list, tuple)) and len(value) == 2:
         low = _safe_float(value[0])
@@ -114,6 +115,12 @@ def _build_summary(meta: Dict[str, object], target: _TargetInfo) -> str:
     if isinstance(distance, (int, float)) and distance > 0:
         parts.append(f"{float(distance):.2f} pc")
 
+
+    w_min = _safe_float(meta.get("wavelength_min_nm"))
+    w_max = _safe_float(meta.get("wavelength_max_nm"))
+    if w_min is not None and w_max is not None:
+        parts.append(f"{w_min:.0f}–{w_max:.0f} nm")
+
     effective_range = _coerce_range(meta.get("wavelength_effective_range_nm"))
     if effective_range is not None:
         parts.append(f"{effective_range[0]:.0f}–{effective_range[1]:.0f} nm")
@@ -122,6 +129,7 @@ def _build_summary(meta: Dict[str, object], target: _TargetInfo) -> str:
         w_max = _safe_float(meta.get("wavelength_max_nm"))
         if w_min is not None and w_max is not None:
             parts.append(f"{w_min:.0f}–{w_max:.0f} nm")
+
 
     return " • ".join(parts)
 
@@ -148,6 +156,11 @@ def _build_metadata(meta: Dict[str, object], target: _TargetInfo, instrument_lab
     if doi:
         metadata["doi"] = doi
 
+    w_min = _safe_float(meta.get("wavelength_min_nm"))
+    w_max = _safe_float(meta.get("wavelength_max_nm"))
+    if w_min is not None and w_max is not None:
+        metadata["wavelength_range_nm"] = [w_min, w_max]
+
     w_range = _coerce_range(meta.get("wavelength_range_nm"))
     if w_range is None:
         w_min = _safe_float(meta.get("wavelength_min_nm"))
@@ -163,6 +176,7 @@ def _build_metadata(meta: Dict[str, object], target: _TargetInfo, instrument_lab
             float(effective_range[0]),
             float(effective_range[1]),
         ]
+
 
     return metadata
 

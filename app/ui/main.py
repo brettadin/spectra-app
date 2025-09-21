@@ -27,6 +27,12 @@ from app.similarity import (
 )
 from app.similarity_panel import render_similarity_panel
 from app.utils.duplicate_ledger import DuplicateLedger
+from app.utils.local_ingest import (
+    SUPPORTED_ASCII_EXTENSIONS,
+    SUPPORTED_FITS_EXTENSIONS,
+    LocalIngestError,
+    ingest_local_file,
+)
 
 st.set_page_config(page_title="Spectra App", layout="wide")
 
@@ -98,6 +104,7 @@ def _ensure_session_state() -> None:
     st.session_state.setdefault("similarity_line_peaks", 8)
     st.session_state.setdefault("similarity_normalization", st.session_state.get("normalization_mode", "unit"))
     st.session_state.setdefault("duplicate_policy", "allow")
+    st.session_state.setdefault("local_upload_registry", {})
     if "duplicate_ledger" not in st.session_state:
         st.session_state["duplicate_ledger"] = DuplicateLedger()
     if "similarity_cache" not in st.session_state:
@@ -733,11 +740,71 @@ def _render_metadata_summary(overlays: Sequence[OverlayTrace]) -> None:
                 st.caption("No conversion provenance available.")
 
 
+def _get_upload_registry() -> Dict[str, Dict[str, object]]:
+    return st.session_state.setdefault("local_upload_registry", {})
+
+
+def _render_local_upload() -> None:
+    st.markdown("### Upload recorded spectra")
+    supported = sorted(SUPPORTED_ASCII_EXTENSIONS | SUPPORTED_FITS_EXTENSIONS)
+    accepted_types = sorted({ext.lstrip(".") for ext in supported if ext.startswith(".")})
+    uploader = st.file_uploader(
+        "Select spectral files",
+        type=accepted_types,
+        accept_multiple_files=True,
+        key="local_upload_widget",
+        help="Supports ASCII tables (CSV/TXT/TSV/ASCII), FITS spectral products, and gzip-compressed variants.",
+    )
+    st.caption(
+        "Supported extensions: "
+        + ", ".join(sorted(supported))
+    )
+    if st.button("Reset uploaded file tracker", key="reset_upload_registry"):
+        st.session_state["local_upload_registry"] = {}
+        st.success("Cleared upload tracker.")
+
+    if not uploader:
+        return
+
+    registry = _get_upload_registry()
+
+    for uploaded in uploader:
+        try:
+            payload_bytes = uploaded.getvalue()
+        except Exception as exc:  # pragma: no cover - Streamlit defensive branch
+            st.warning(f"Unable to read {uploaded.name}: {exc}")
+            continue
+
+        if not payload_bytes:
+            st.warning(f"{uploaded.name} is empty; skipping upload.")
+            continue
+
+        checksum = hashlib.sha256(payload_bytes).hexdigest()
+        if checksum in registry:
+            continue
+
+        try:
+            payload = ingest_local_file(uploaded.name, payload_bytes)
+        except LocalIngestError as exc:
+            st.warning(str(exc))
+            registry[checksum] = {"name": uploaded.name, "added": False, "message": str(exc)}
+            continue
+        except Exception as exc:  # pragma: no cover - unexpected failure
+            st.error(f"Unexpected error ingesting {uploaded.name}: {exc}")
+            registry[checksum] = {"name": uploaded.name, "added": False, "message": str(exc)}
+            continue
+
+        added, message = _add_overlay_payload(payload)
+        registry[checksum] = {"name": uploaded.name, "added": added, "message": message}
+        (st.success if added else st.info)(message)
+
+
 def _clear_overlays() -> None:
     st.session_state["overlay_traces"] = []
     st.session_state["reference_trace_id"] = None
     cache: SimilarityCache = st.session_state["similarity_cache"]
     cache.reset()
+    st.session_state["local_upload_registry"] = {}
 
 
 def _export_current_view(
@@ -949,11 +1016,13 @@ def _render_status_bar(version_info: Dict[str, str], patch_note: str) -> None:
 # Main tab renderers
 
 def _render_overlay_tab(version_info: Dict[str, str]) -> None:
-    overlays = _get_overlays()
     st.header("Overlay workspace")
+    _render_local_upload()
+    overlays = _get_overlays()
     if not overlays:
-        st.info("Load a reference spectrum or fetch from the archive tab to begin.")
+        st.info("Upload a recorded spectrum or fetch from the archive tab to begin.")
         return
+    st.divider()
 
     display_units = st.session_state.get("display_units", "nm")
     display_mode = st.session_state.get("display_mode", "Flux (raw)")
@@ -992,6 +1061,7 @@ def _render_overlay_tab(version_info: Dict[str, str]) -> None:
         reference_id=st.session_state.get("reference_trace_id"),
     )
     render_similarity_panel(visible_vectors, viewport, options, cache)
+    _render_metadata_summary(overlays)
     _render_line_tables(overlays)
 
 

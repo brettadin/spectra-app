@@ -97,6 +97,7 @@ def test_available_targets_metadata():
     assert sirius["instrument_label"].startswith("HST")
 
 
+
 def test_fetch_computes_effective_range(monkeypatch, tmp_path):
     mast.reset_index_cache()
     monkeypatch.setattr(mast, "_list_remote_files", lambda: ["sirius_stis_003.fits"])
@@ -123,3 +124,4 @@ def test_fetch_computes_effective_range(monkeypatch, tmp_path):
     assert effective is not None
     assert 90.0 < effective[0] < 150.0
     assert 900.0 < effective[1] < 2000.0
+
