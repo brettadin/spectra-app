@@ -3,6 +3,10 @@
 ## Goal
 - Replace the stubbed fetchers in `app/server/fetchers/` with real archive integrations so astronomers can retrieve spectra for bright nearby stars directly inside the app instead of relying on placeholder arrays.
 - Deliver a curated starter set of targets that spans ultraviolet through mid-infrared coverage and exercises the provenance contract introduced in v1.1.4/v1.1.5a of the Spectra App docs. 【F:docs/brains/v1.1.4 brains.md†L35-L71】【F:docs/brains/brains_v1.1.5a.md†L17-L59】
+codex/implement-data-fetching-for-nearby-stars-ft0zz8
+- Wire the “Fetch Data” experience to a resolver-backed search flow so any user-supplied star name can be located, routed to the correct archive module today, and leave room for future planet overlays that compare stellar and planetary spectra inside the same workspace. 【F:docs/brains/v1.1.4 brains.md†L106-L135】【F:docs/atlas/Atlas_08c_SIMBAD.md†L7-L114】【F:docs/differential/part1b.md†L15-L99】【F:docs/modeling/spectral_modeling_part1a.md†L55-L85】
+=======
+main
 
 ## Continuity Constraints
 - Returned payloads must conform to the `NormalizedSpectrum` schema (canonical wavelength in nm, harmonized flux, populated provenance metadata) so downstream overlays and exports remain stable. 【F:docs/brains/v1.1.4 brains.md†L35-L103】
@@ -24,8 +28,26 @@
 
 The list mixes hot standards, cool giants, solar analogues, and mid-IR dust-rich systems so that normalization, error propagation, and provenance code paths all receive realistic coverage.
 
+codex/implement-data-fetching-for-nearby-stars-ft0zz8
+## Search & Provider Routing Experience
+- Extend the existing “Fetch Data” panel with a search box that queries SIMBAD as the user types, returning canonical identifiers, object types, and coordinates so we can disambiguate objects that share a name (e.g., HD numbers vs. Bayer designations). 【F:docs/brains/v1.1.4 brains.md†L106-L135】【F:docs/atlas/Atlas_08c_SIMBAD.md†L7-L114】
+- Present the search matches as structured results (name, catalog IDs, distance, object class) and allow the user to either fetch immediately or drill into archive options. Default actions will auto-route to the highest-confidence archive based on availability rules (CALSPEC if CALSPEC HLSP exists, else ESO/IRSA as appropriate). 【F:docs/atlas/Atlas_08c_SIMBAD.md†L7-L114】【F:docs/sources/stellar_light_methods.md†L55-L66】
+- Keep the curated nearby-star list as “quick picks,” but treat them as shortcuts that simply pre-fill the search field to guarantee the unified resolver → fetch workflow exercises every code path.
+- Cache both positive and negative SIMBAD lookups in `data/providers/simbad/search_cache.json` alongside the per-target metadata so repeated queries stay within CDS rate limits while respecting the continuity guardrails already defined for provider directories. 【F:docs/brains/brains_v1.1.5a.md†L17-L59】【F:docs/atlas/Atlas_08c_SIMBAD.md†L60-L74】
+- When a search match is selected, assemble a provider scorecard (coverage, resolution, latency) so the UI can surface recommended archives yet still let power users force an alternate provider/instrument combination before the fetch executes.
+
 ## Implementation Roadmap
 
+### 0. Search-first fetch flow
+1. Build a `search_targets()` helper that wraps the SIMBAD cone/name queries, normalizes field names (including Gaia, 2MASS, HIP identifiers), and returns structured suggestions for the UI search box. 【F:docs/atlas/Atlas_08c_SIMBAD.md†L7-L114】
+2. Add a sidebar component that debounces user input, displays typeahead results, and pipes the selected match into the existing fetch router with archive hints (preferred provider list, requested resolution). 【F:docs/brains/v1.1.4 brains.md†L106-L135】
+3. Extend `fetch_archives.fetch_spectrum()` to accept the resolver payload, auto-selecting archive modules based on identifier coverage tables (e.g., CALSPEC hosts for CALSPEC IDs, ESO for HARPS program IDs) while still honoring manual overrides.
+4. Record each search + fetch decision inside `fetch_provenance` (resolver bibcode, candidate list, archive ranking) so exports and differential overlays can reconstruct why a particular data source was chosen for a given star. 【F:docs/brains/v1.1.4 brains.md†L64-L134】【F:docs/atlas/Atlas_08c_SIMBAD.md†L76-L114】
+
+=======
+## Implementation Roadmap
+
+main
 ### 1. SIMBAD resolver (metadata baseline)
 1. Use `astroquery.simbad.Simbad` with custom fields (`RA`, `DEC`, `SP_TYPE`, parallax) to normalize target identifiers before archive queries.
 2. Cache the SIMBAD table under `data/providers/simbad/` with SHA-256 hashed filenames to satisfy continuity requirements while enabling offline replays.
@@ -52,6 +74,15 @@ The list mixes hot standards, cool giants, solar analogues, and mid-IR dust-rich
 3. Because CASSIS bundles multiple nods/orders, implement order-aware stitching with robust scaling and document the steps in provenance.
 4. Decide whether to extend the `NormalizedSpectrum.meta['archive']` enum to include `"IRSA"`; if so, update the brains spec in a subsequent patch, otherwise treat the integration as a MAST-hosted HLSP if the dataset is mirrored there.
 
+codex/implement-data-fetching-for-nearby-stars-ft0zz8
+## Planet Overlay Roadmap
+- Stage 1 — Metadata plumbing: query the NASA Exoplanet Archive (or Exo.MAST mirror) for confirmed planets around the resolved host star, storing planetary radii, temperatures, and discovery references alongside the stellar provenance so overlays can explain which planet template is being displayed. 【F:docs/atlas/Atlas_08a_Index.md†L1-L70】[^nea]
+- Stage 2 — Spectrum sourcing: ingest public planet-star differential spectra (e.g., HST/JWST transmission spectra) when available and normalize them into the same `NormalizedSpectrum` envelope, tagging them as `trace_type="planet"` so overlays can render host + planet simultaneously. 【F:docs/differential/part1b.md†L15-L99】
+- Stage 3 — Synthetic fallback: integrate with PSG (Planetary Spectrum Generator) or similar modeling pipelines to synthesize planet spectra when no archival observation exists, recording the input parameters and generator version in provenance for reproducibility. 【F:docs/modeling/spectral_modeling_part1a.md†L55-L85】
+- Stage 4 — UI integration: update the overlay legend and fetch tab to list planets beneath their host stars, allow toggling star/planet combinations, and document how differential math tools can compare observed vs. synthetic atmospheres. 【F:docs/brains/v1.1.4 brains.md†L106-L135】【F:docs/differential/part1b.md†L15-L99】
+
+=======
+main
 ## Normalization, Caching, and Error Handling
 - Build a shared helper that accepts a FITS HDU and returns `(wavelength_nm, flux, uncertainty)` arrays along with the original units so every fetcher enforces the canonical baseline. 【F:docs/brains/v1.1.4 brains.md†L35-L71】
 - Save every raw download plus a compact JSON manifest (`provenance.json`) next to the cached file detailing the DOI, access URL, SHA-256, and extraction timestamp to simplify reprocessing runs.
@@ -65,14 +96,28 @@ The list mixes hot standards, cool giants, solar analogues, and mid-IR dust-rich
 - Extend `scripts/fetch_samples.py` to download one spectrum per provider and emit a manifest diff for regression testing.
 - Add unit tests that mock archive responses and verify unit conversion, provenance population, and caching behavior for each fetcher.
 - Run the existing verification scripts (`RUN_CMDS/Verify-Project.ps1`, `pytest`) plus a new end-to-end smoke test that fetches Sirius and confirms the trace appears in the overlay. 【F:docs/brains/brains_v1.1.5a.md†L56-L70】
+codex/implement-data-fetching-for-nearby-stars-ft0zz8
+- Add UI smoke coverage for searching an arbitrary star (e.g., “HD 189733”) and verifying the router selects an appropriate archive without manual intervention.
+- Prototype regression tests that mock a planet overlay (observed + synthetic) so future patches can validate that stellar and planetary spectra align in wavelength grids before differential math runs. 【F:docs/differential/part1b.md†L15-L99】
+=======
+main
 
 ## Open Questions & Follow-ups
 - Confirm target availability in each archive (especially the XSL entry for Arcturus and IRS coverage for ε Eri) and adjust the sample if any gaps appear.
 - Decide whether to bundle uncertainty vectors when archives supply them (e.g., CALSPEC includes error arrays) and update downstream plotting accordingly.
 - Evaluate authentication requirements for ESO TAP scripts in CI and document credential management if needed.
+codex/implement-data-fetching-for-nearby-stars-ft0zz8
+- How aggressively should the router favor higher-resolution data vs. faster-to-download products, and should we expose that preference as a user setting during search?
+- Which planetary datasets (observed or synthetic) will ship first, and how do we version their provenance so exports remain audit-ready when mixing host-star and planet traces? 【F:docs/modeling/spectral_modeling_part1a.md†L55-L85】
+=======
+main
 
 ## References
 [^calspec]: A. D. Bohlin, M. C. Harris, C. R. Deustua, et al., “Hubble Space Telescope CALSPEC Flux Standards: Sirius (and Vega)”, *Astronomical Journal*, 147, 127 (2014), doi:10.1088/0004-6256/147/6/127.
 [^xsl]: A. Arentsen, A. Lançon, M. Prugniel, et al., “Stellar atmospheric parameters for 754 spectra from the X-shooter Spectral Library”, *Astronomy & Astrophysics*, 627, A138 (2019), doi:10.1051/0004-6361/201834273.
 [^harps]: ESO Science Archive, “HARPS reduced data obtained by standard ESO pipeline processing”, Phase 3 Data Release (2017), doi:10.18727/archive/33.
 [^cassis]: V. Lebouteiller, J. Bernard-Salas, P. W. Morris, and C. Sloan, “The Cornell Atlas of Spitzer/IRS Sources (CASSIS)”, *Astrophysical Journal Supplement Series*, 218, 21 (2015), doi:10.1088/0067-0049/218/2/21.
+codex/implement-data-fetching-for-nearby-stars-ft0zz8
+[^nea]: NASA Exoplanet Archive, Caltech/IPAC, https://exoplanetarchive.ipac.caltech.edu/ (accessed 2025-02-15).
+=======
+main
