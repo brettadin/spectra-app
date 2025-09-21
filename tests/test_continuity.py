@@ -62,3 +62,5 @@ def test_build_manifest_includes_continuity():
     assert manifest['global_units']['wavelength'] == 'nm'
     assert manifest['global_units']['intensity_mode'] == 'Flux (raw)'
     assert manifest['exported_at'] == '2025-09-21T00:00:00Z'
+    assert manifest['transformations']['rows_exported'] == len(rows)
+    assert manifest['traces'] == []
