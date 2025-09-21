@@ -26,9 +26,6 @@ All contributors must consult the Brains before making changes.
 
 
 # Spectra App — AI Handoff Bridge
-        <<<<<<< codex/improve-unit-conversions-and-file-uploads-4ct6vp
-_Last updated: 2025-09-21T23:00:00Z_
-=======
  codex/improve-unit-conversions-and-file-uploads-ussv5s
 _Last updated: 2025-09-21T23:00:00Z_
 =======
@@ -38,7 +35,6 @@ _Last updated: 2025-09-21T23:00:00Z_
 _Last updated: 2025-09-21T02:00:00Z_
  main
   main
-        >>>>>>> main
 
 This bridge document ties the brains log to the operative AI handoff prompt.
 It is part of the mandated continuity template: Brains → AI Handoff → Patch Notes.
@@ -48,23 +44,14 @@ It is part of the mandated continuity template: Brains → AI Handoff → Patch 
 - Next revision must update both this bridge and `docs/brains/brains_INDEX.md`.
 - Keep handoff prompts UTF-8, versioned, and cross-linked from the paired brains + patch notes.
 
-        <<<<<<< codex/improve-unit-conversions-and-file-uploads-4ct6vp
-=======
  codex/improve-unit-conversions-and-file-uploads-ussv5s
 =======
  codex/improve-unit-conversions-and-file-uploads-udgaxh
  main
-        >>>>>>> main
 ## Expectations for v1.1.5c
 - Reflect the Streamlit width migration so future edits continue using the `width` parameter instead of `use_container_width`.
 - Reference `docs/brains/brains_v1.1.5c.md`, `docs/PATCH_NOTES/v1.1.5c.txt`, and the Atlas index.
 - Capture guidance about similarity label aliasing and the wavelength-metadata fallback alongside the existing ingestion rules.
-        <<<<<<< codex/improve-unit-conversions-and-file-uploads-4ct6vp
-
-## Checklist Before Shipping Changes
-1. Read the latest brains entry and confirm the scope still matches.
-2. Verify `docs/PATCH_NOTES/v1.1.5c.txt` lists the same continuity obligations.
-=======
  codex/improve-unit-conversions-and-file-uploads-ussv5s
 
 ## Checklist Before Shipping Changes
@@ -93,6 +80,5 @@ It is part of the mandated continuity template: Brains → AI Handoff → Patch 
 2. Verify `docs/PATCH_NOTES/v1.1.5b.txt` lists the same continuity obligations.
  main
   main
-        >>>>>>> main
 3. Run `RUN_CMDS/Verify-Project.ps1` to confirm reciprocal links and provider directories are intact.
 4. Prepare necessary AI handoff notes for the next iteration.

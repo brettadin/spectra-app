@@ -1,11 +1,5 @@
 {
-        <<<<<<< codex/improve-unit-conversions-and-file-uploads-4ct6vp
-  "version": "v1.1.5f",
-  "date_utc": "2025-09-23T12:00:00Z",
-  "summary": "Added automated guards against merge-conflict markers and refreshed continuity documentation."
-=======
   "version": "v1.1.5d",
   "date_utc": "2025-09-22T00:00:00Z",
   "summary": "Import fixes for exports/ledger, Atlas-first docs tab, and refreshed provenance manifests."
-        >>>>>>> main
 }
