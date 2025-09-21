@@ -46,7 +46,10 @@ def _fake_payload():
             "description": "Bright primary CALSPEC standard",
             "wavelength_min_nm": 115.0,
             "wavelength_max_nm": 2400.0,
+
+
             "wavelength_effective_range_nm": [120.0, 2150.0],
+
         },
     }
 
@@ -70,11 +73,16 @@ def test_search_fetches_calspec_data(monkeypatch):
     assert hit.provider == "MAST"
     assert hit.metadata["target_name"] == "Sirius A"
     assert hit.summary.startswith("CALSPEC")
+
+    assert hit.provenance["archive"] == "MAST CALSPEC"
+    assert hit.provenance["query"]["instrument"] == "STIS"
+
     assert "120–2150 nm" in hit.summary
     assert hit.provenance["archive"] == "MAST CALSPEC"
     assert hit.provenance["query"]["instrument"] == "STIS"
     assert hit.metadata["wavelength_effective_range_nm"] == [120.0, 2150.0]
     assert hit.metadata["wavelength_range_nm"] == [115.0, 2400.0]
+
     assert fetch_calls == [("Sirius A", "STIS")]
 
 
