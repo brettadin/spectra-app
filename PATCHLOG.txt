@@ -7,3 +7,4 @@ Spectra App — Patch Log (append-only)
 - v1.1.5c: Migrated UI tables/plots to Streamlit's `width` API, aliased duplicate similarity labels to avoid Arrow failures, and restored missing `wavelength_m` data during overlay plotting for legacy payloads.
 - v1.1.5d: Restored missing imports for the export manifest and duplicate ledger, refreshed the Docs tab to surface the Spectra Atlas with rendered markdown, and hardened provenance exports to retain timestamps.
 - v1.1.5e: Fixed ingestion resolution estimates to avoid divide-by-zero masking errors and refreshed continuity metadata for the upload/provenance pipeline.
+- v1.1.5f: Added a repository guard test that fails builds when merge-conflict markers are present and updated continuity assets to document the safeguard.

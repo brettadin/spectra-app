@@ -1,5 +1,5 @@
 {
-  "version": "v1.1.5e",
-  "date_utc": "2025-09-22T12:00:00Z",
-  "summary": "Stabilised ingestion resolution estimates and continuity docs after the dual-axis upload rebuild."
+  "version": "v1.1.5f",
+  "date_utc": "2025-09-23T12:00:00Z",
+  "summary": "Added automated guards against merge-conflict markers and refreshed continuity documentation."
 }
