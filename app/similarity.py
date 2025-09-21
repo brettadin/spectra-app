@@ -257,17 +257,18 @@ def build_metric_frames(
     viewport: Viewport,
     options: SimilarityOptions,
     cache: SimilarityCache,
-) -> Dict[str, pd.DataFrame]:
+) -> Tuple[Dict[str, pd.DataFrame], Dict[str, str]]:
     if len(traces) < 2:
-        return {}
-    labels = [trace.label for trace in traces]
+        return {}, {}
+    identifiers = [trace.trace_id for trace in traces]
+    label_lookup = {trace.trace_id: trace.label for trace in traces}
     frames: Dict[str, pd.DataFrame] = {}
     for metric in options.metrics:
         diag_value = 1.0 if metric != "rmse" else 0.0
         frames[metric] = pd.DataFrame(
             diag_value,
-            index=labels,
-            columns=labels,
+            index=identifiers,
+            columns=identifiers,
             dtype=float,
         )
     for i, trace_a in enumerate(traces):
@@ -278,7 +279,7 @@ def build_metric_frames(
                 value = metrics.get(metric, float("nan"))
                 frames[metric].iat[i, j] = value
                 frames[metric].iat[j, i] = value
-    return frames
+    return frames, label_lookup
 
 
 def viewport_alignment(

@@ -3,7 +3,8 @@ from __future__ import annotations
 import math
 
 import pytest
-from astropy.table import Table
+from astropy import units as u
+from astropy.table import Column, Table
 
 from app.server.fetchers import nist
 
@@ -77,7 +78,7 @@ def test_fetch_basic(monkeypatch: pytest.MonkeyPatch, sample_table: Table) -> No
     assert pytest.approx(captured['max_wav'].value, rel=1e-6) == 780.0
     assert result['meta']['label'] == 'H I (NIST ASD)'
     assert result['meta']['element_symbol'] == 'H'
-    assert result['wavelength_nm'] == [500.2, 600.0]
+    assert result['wavelength_nm'] == pytest.approx([500.2, 600.0])
     assert result['intensity'][0] == pytest.approx(20.0)
     assert result['intensity'][1] is None
     assert result['intensity_normalized'][0] == pytest.approx(1.0)
@@ -95,6 +96,56 @@ def test_fetch_basic(monkeypatch: pytest.MonkeyPatch, sample_table: Table) -> No
     assert first_line['lower_level_energy_ev'] == pytest.approx(10.0)
     assert first_line['upper_level_energy_ev'] == pytest.approx(11.0)
     assert '2P*' in (first_line['upper_level'] or '')
+
+
+def test_fetch_respects_table_units(monkeypatch: pytest.MonkeyPatch) -> None:
+    table = Table()
+    table['Observed'] = Column([500.0, float('nan')], unit=u.nm)
+    table['Ritz'] = Column([500.2, 600.0], unit=u.nm)
+    table['Rel.'] = ['20', '']
+    table['Aki'] = ['1.0e+6', '']
+    table['fik'] = ['5.0e-1', '']
+    table['Acc.'] = ['AAA', '']
+    table['Ei           Ek'] = ['10.0  -  11.0', '']
+    table['Lower level'] = ['1s     | 2S | 1/2 |', '']
+    table['Upper level'] = ['2p     | 2P* | 3/2 |', '']
+    table['Type'] = ['E1', '']
+    table['TP'] = ['T1000', '']
+    table['Line'] = ['L2000', '']
+
+    monkeypatch.setattr(nist, 'Nist', type('Dummy', (), {'query': staticmethod(lambda *args, **kwargs: table)}))
+
+    result = nist.fetch(element='H', lower_wavelength=380.0, upper_wavelength=780.0)
+
+    assert result['wavelength_nm'] == pytest.approx([500.2, 600.0])
+    first_line = result['lines'][0]
+    assert math.isclose(first_line['observed_wavelength_nm'] or 0.0, 500.0)
+    assert math.isclose(first_line['ritz_wavelength_nm'] or 0.0, 500.2)
+
+
+def test_fetch_infers_scale_without_unit_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
+    table = Table()
+    table['Observed'] = Column([500.0, float('nan')])
+    table['Ritz'] = Column([500.2, 600.0])
+    table['Rel.'] = ['20', '']
+    table['Aki'] = ['1.0e+6', '']
+    table['fik'] = ['5.0e-1', '']
+    table['Acc.'] = ['AAA', '']
+    table['Ei           Ek'] = ['10.0  -  11.0', '']
+    table['Lower level'] = ['1s     | 2S | 1/2 |', '']
+    table['Upper level'] = ['2p     | 2P* | 3/2 |', '']
+    table['Type'] = ['E1', '']
+    table['TP'] = ['T1000', '']
+    table['Line'] = ['L2000', '']
+
+    monkeypatch.setattr(nist, 'Nist', type('Dummy', (), {'query': staticmethod(lambda *args, **kwargs: table)}))
+
+    result = nist.fetch(element='H', lower_wavelength=380.0, upper_wavelength=780.0)
+
+    assert result['wavelength_nm'] == pytest.approx([500.2, 600.0])
+    first_line = result['lines'][0]
+    assert math.isclose(first_line['observed_wavelength_nm'] or 0.0, 500.0)
+    assert math.isclose(first_line['ritz_wavelength_nm'] or 0.0, 500.2)
 
 
 def test_fetch_linename(monkeypatch: pytest.MonkeyPatch) -> None:

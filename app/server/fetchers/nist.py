@@ -308,6 +308,161 @@ def _extract_float(value: Any) -> Optional[float]:
         return None
 
 
+def _unit_to_nm_scale(unit: Any) -> Optional[float]:
+    if unit is None:
+        return None
+    try:
+        parsed = u.Unit(unit)
+    except Exception:
+        return None
+    if parsed == u.dimensionless_unscaled:
+        return 1.0
+    try:
+        return (1 * parsed).to(u.nm).value
+    except Exception:
+        if parsed == u.AA:
+            return 0.1
+        return None
+
+
+def _string_to_nm_scale(text: Any) -> Optional[float]:
+    if text is None:
+        return None
+    scale = _unit_to_nm_scale(text)
+    if scale is not None:
+        return scale
+    lowered = str(text).strip().lower()
+    if not lowered:
+        return None
+    if "angstrom" in lowered or "ångström" in lowered or lowered in {"aa", "ång", "a"}:
+        return 0.1
+    if any(token in lowered for token in {"nanomet", "nanom", "nm"}):
+        return 1.0
+    if any(token in lowered for token in {"microm", "micron", "µm", "um"}):
+        return 1000.0
+    return None
+
+
+def _extract_numeric_samples(column, limit: int = 8) -> List[float]:
+    samples: List[float] = []
+    for value in column:
+        numeric = _extract_float(value)
+        if numeric is None or not math.isfinite(numeric):
+            continue
+        samples.append(float(abs(numeric)))
+        if len(samples) >= limit:
+            break
+    return samples
+
+
+def _infer_scale_from_metadata(table, column: str) -> Optional[float]:
+    col = table[column]
+    candidates: List[Any] = []
+    for attribute in (getattr(col, "meta", None), getattr(col.info, "meta", None)):
+        if isinstance(attribute, dict):
+            candidates.extend(attribute.get(key) for key in ("unit", "units", "wave_unit", "waveunit", "wavelength_unit") if key in attribute)
+    table_meta = getattr(table, "meta", None)
+    if isinstance(table_meta, dict):
+        candidates.extend(table_meta.get(key) for key in ("unit", "units", "wave_unit", "waveunit", "wavelength_unit") if key in table_meta)
+    description = getattr(col, "description", None)
+    if description:
+        candidates.append(description)
+    for candidate in candidates:
+        scale = _string_to_nm_scale(candidate)
+        if scale is not None:
+            return scale
+    return None
+
+
+def _infer_scale_from_values(
+    table,
+    column: str,
+    requested_range_nm: Optional[Tuple[float, float]],
+) -> Optional[float]:
+    samples = _extract_numeric_samples(table[column])
+    if not samples:
+        return None
+    samples.sort()
+    sample = samples[len(samples) // 2]
+    if sample <= 0:
+        sample = max(samples)
+        if sample <= 0:
+            return None
+
+    candidates = [1.0, 0.1, 1000.0]
+    if requested_range_nm:
+        low, high = requested_range_nm
+        if not math.isfinite(low) or not math.isfinite(high):
+            requested_range_nm = None
+    best_scale: Optional[float] = None
+    best_distance = float("inf")
+    if requested_range_nm:
+        low, high = requested_range_nm
+        if low > high:
+            low, high = high, low
+        for scale in candidates:
+            scaled = sample * scale
+            if not math.isfinite(scaled):
+                continue
+            if low <= scaled <= high:
+                distance = 0.0
+            elif scaled < low:
+                distance = low - scaled
+            else:
+                distance = scaled - high
+            if distance < best_distance - 1e-9:
+                best_distance = distance
+                best_scale = scale
+        if best_scale is not None and best_distance == 0.0:
+            return best_scale
+    midpoint = None
+    if requested_range_nm:
+        low, high = requested_range_nm
+        midpoint = (low + high) / 2.0
+    if midpoint is None or not math.isfinite(midpoint) or midpoint <= 0:
+        midpoint = sample
+    for scale in candidates:
+        scaled = sample * scale
+        if not math.isfinite(scaled):
+            continue
+        distance = abs(scaled - midpoint)
+        if distance < best_distance:
+            best_distance = distance
+            best_scale = scale
+    return best_scale
+
+
+def _column_scale_to_nm(
+    table,
+    column: str,
+    requested_range_nm: Optional[Tuple[float, float]],
+) -> float:
+    """Return a multiplicative factor that converts the column to nm."""
+
+    default_scale = 0.1  # Historical default assumes Å when unit metadata is missing.
+    if table is None or column not in getattr(table, "colnames", []):
+        return default_scale
+
+    col = table[column]
+    for candidate in (
+        getattr(col, "unit", None),
+        getattr(col.info, "unit", None),
+    ):
+        scale = _unit_to_nm_scale(candidate)
+        if scale is not None:
+            return scale
+
+    metadata_scale = _infer_scale_from_metadata(table, column)
+    if metadata_scale is not None:
+        return metadata_scale
+
+    inferred = _infer_scale_from_values(table, column, requested_range_nm)
+    if inferred is not None:
+        return inferred
+
+    return default_scale
+
+
 def _split_energy(value: Any) -> Tuple[Optional[float], Optional[float]]:
     text = str(value).strip()
     if not text or text in {"-", "--"}:
@@ -409,13 +564,30 @@ def fetch(
     lines: List[Dict[str, Any]] = []
     max_relative_intensity = 0.0
 
+    try:
+        requested_range_nm: Optional[Tuple[float, float]] = (
+            float(min_wav.to(u.nm).value),
+            float(max_wav.to(u.nm).value),
+        )
+    except Exception:
+        requested_range_nm = None
+
+    observed_scale = (
+        _column_scale_to_nm(table, "Observed", requested_range_nm) if table is not None else 0.1
+    )
+    ritz_scale = (
+        _column_scale_to_nm(table, "Ritz", requested_range_nm) if table is not None else 0.1
+    )
+
     if table is not None:
         for row in table:
             observed_value = _extract_float(row.get("Observed"))
             ritz_value = _extract_float(row.get("Ritz"))
 
-            observed_nm = observed_value / 10.0 if observed_value is not None else None
-            ritz_nm = ritz_value / 10.0 if ritz_value is not None else None
+            observed_nm = (
+                observed_value * observed_scale if observed_value is not None else None
+            )
+            ritz_nm = ritz_value * ritz_scale if ritz_value is not None else None
 
             if use_ritz and ritz_nm is not None:
                 chosen_nm = ritz_nm
