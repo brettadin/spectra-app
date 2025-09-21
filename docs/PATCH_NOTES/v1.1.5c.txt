@@ -1,0 +1,39 @@
+Spectra App — Patch Notes v1.1.5c
+================================
+Release Date (UTC): 2025-09-21
+
+## Highlights
+- Migrated Streamlit layout calls to the new `width` argument to silence
+  `use_container_width` deprecation warnings across overlay, archive, and
+  similarity views.
+- Enumerated duplicate trace labels in similarity matrices with alias captions
+  so pyarrow export/rendering succeeds even when identical labels are present.
+- Rebuilt overlay plotting to regenerate missing `wavelength_m` columns from
+  nanometre grids, preventing crashes when legacy payloads skip metre units.
+
+## Modules Touched
+- `app/ui/main.py`
+- `app/similarity.py`
+- `app/similarity_panel.py`
+- `app/archive_ui.py`
+- `docs/brains/*`
+- `docs/PATCH_NOTES/v1.1.5c.txt`
+- `PATCHLOG.txt`
+
+## Continuity Links
+- Brains log: `docs/brains/brains_v1.1.5c.md`
+- AI handoff bridge: `docs/brains/ai_handoff.md`
+- Atlas index: `docs/atlas/index.md`
+
+## Verification
+- `.\RUN_CMDS\Verify-Project.ps1`
+- `pytest`
+- Manual QA: load duplicate-labelled overlays (e.g. multiple lamp spectra),
+  confirm similarity matrices render with enumerated aliases, and verify Streamlit
+  emits no `use_container_width` deprecation warnings.
+
+## Follow-up
+- Extend exporter manifests to capture the similarity alias map once the format
+  stabilises.
+- Add automated coverage for `_unique_labels` and the wavelength fallback.
+- Monitor future Streamlit layout API changes.
