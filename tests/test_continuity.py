@@ -71,6 +71,7 @@ def test_build_manifest_includes_continuity():
     assert manifest['exported_at'] == '2025-09-21T00:00:00Z'
     assert manifest['transformations']['rows_exported'] == len(rows)
     assert manifest['traces'] == []
+        <<<<<<< codex/improve-unit-conversions-and-file-uploads-4ct6vp
 
 
 def test_repository_has_no_merge_conflict_markers():
@@ -107,3 +108,5 @@ def test_repository_has_no_merge_conflict_markers():
         'Merge conflict markers detected in repository files: '
         + ', '.join(offenders)
     )
+=======
+        >>>>>>> main
