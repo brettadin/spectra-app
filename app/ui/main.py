@@ -701,17 +701,26 @@ def _remove_overlays(trace_ids: Sequence[str]) -> None:
     cache.reset()
 
 
-def _render_metadata_summary(overlays: Sequence[OverlayTrace]) -> None:
-    if not overlays:
-        return
+def _normalise_wavelength_range(meta: Dict[str, object]) -> str:
+    range_candidates = [
+        meta.get("wavelength_effective_range_nm"),
+        meta.get("wavelength_range_nm"),
+    ]
+    for candidate in range_candidates:
+        if isinstance(candidate, (list, tuple)) and len(candidate) == 2:
+            try:
+                low = float(candidate[0])
+                high = float(candidate[1])
+            except (TypeError, ValueError):
+                continue
+            return f"{low:.2f} – {high:.2f}"
+    return "—"
+
+
+def _build_metadata_summary_rows(overlays: Sequence[OverlayTrace]) -> List[Dict[str, object]]:
     rows: List[Dict[str, object]] = []
     for trace in overlays:
         meta = {str(k).lower(): v for k, v in (trace.metadata or {}).items()}
-        wavelength_range = meta.get("wavelength_range_nm")
-        if isinstance(wavelength_range, (list, tuple)) and len(wavelength_range) == 2:
-            wavelength_range = f"{wavelength_range[0]:.2f} – {wavelength_range[1]:.2f}"
-        elif wavelength_range is None:
-            wavelength_range = "—"
         rows.append(
             {
                 "Label": trace.label,
@@ -719,11 +728,21 @@ def _render_metadata_summary(overlays: Sequence[OverlayTrace]) -> None:
                 "Flux unit": trace.flux_unit,
                 "Instrument": meta.get("instrument") or meta.get("instrume") or "—",
                 "Telescope": meta.get("telescope") or meta.get("telescop") or "—",
-                "Observation": meta.get("date-obs") or meta.get("date_obs") or meta.get("observation_date") or "—",
-                "Range (nm)": wavelength_range,
+                "Observation": meta.get("date-obs")
+                or meta.get("date_obs")
+                or meta.get("observation_date")
+                or "—",
+                "Range (nm)": _normalise_wavelength_range(meta),
                 "Resolution": meta.get("resolution_native") or meta.get("resolution") or "—",
             }
         )
+    return rows
+
+
+def _render_metadata_summary(overlays: Sequence[OverlayTrace]) -> None:
+    if not overlays:
+        return
+    rows = _build_metadata_summary_rows(overlays)
     if rows:
         st.markdown("#### Metadata summary")
         st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
@@ -742,6 +761,21 @@ def _render_metadata_summary(overlays: Sequence[OverlayTrace]) -> None:
 
 def _get_upload_registry() -> Dict[str, Dict[str, object]]:
     return st.session_state.setdefault("local_upload_registry", {})
+
+
+def _read_uploaded_file(uploaded) -> Tuple[Optional[str], Optional[bytes], Optional[str], str]:
+    """Return the checksum and payload bytes for a Streamlit upload widget."""
+
+    try:
+        payload_bytes = uploaded.getvalue()
+    except Exception as exc:  # pragma: no cover - Streamlit defensive branch
+        return None, None, f"Unable to read {uploaded.name}: {exc}", "warning"
+
+    if not payload_bytes:
+        return None, None, f"{uploaded.name} is empty; skipping upload.", "warning"
+
+    checksum = hashlib.sha256(payload_bytes).hexdigest()
+    return checksum, payload_bytes, None, "info"
 
 
 def _render_local_upload() -> None:
@@ -780,6 +814,21 @@ def _render_local_upload() -> None:
             continue
 
         checksum = hashlib.sha256(payload_bytes).hexdigest()
+        
+        checksum, payload_bytes, error_message, level = _read_uploaded_file(uploaded)
+        if error_message:
+            (st.error if level == "error" else st.warning)(error_message)
+            if checksum:
+                registry[checksum] = {
+                    "name": uploaded.name,
+                    "added": False,
+                    "message": error_message,
+                }
+            continue
+
+        if not checksum or payload_bytes is None:
+            continue
+
         if checksum in registry:
             continue
 
@@ -792,6 +841,15 @@ def _render_local_upload() -> None:
         except Exception as exc:  # pragma: no cover - unexpected failure
             st.error(f"Unexpected error ingesting {uploaded.name}: {exc}")
             registry[checksum] = {"name": uploaded.name, "added": False, "message": str(exc)}
+            
+            message = str(exc)
+            st.warning(message)
+            registry[checksum] = {"name": uploaded.name, "added": False, "message": message}
+            continue
+        except Exception as exc:  # pragma: no cover - unexpected failure
+            message = f"Unexpected error ingesting {uploaded.name}: {exc}"
+            st.error(message)
+            registry[checksum] = {"name": uploaded.name, "added": False, "message": message}
             continue
 
         added, message = _add_overlay_payload(payload)
