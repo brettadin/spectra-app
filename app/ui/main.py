@@ -6,17 +6,20 @@ import math
 import time
 import uuid
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import streamlit as st
 
 from app._version import get_version_info
 from app.archive_ui import ArchiveUI
 from app.export_manifest import build_manifest
+from app.server.differential import ratio, resample_to_common_grid, subtract
 from app.server.fetch_archives import FetchError, fetch_spectrum
 from app.similarity import (
     SimilarityCache,
@@ -86,6 +89,121 @@ class OverlayTrace:
         return len(self.wavelength_nm)
 
 
+@dataclass(frozen=True)
+class ExampleSpec:
+    slug: str
+    label: str
+    filename: str
+    description: str
+
+
+@dataclass
+class DifferentialResult:
+    grid_nm: Tuple[float, ...]
+    values_a: Tuple[float, ...]
+    values_b: Tuple[float, ...]
+    result: Tuple[float, ...]
+    trace_a_id: str
+    trace_b_id: str
+    trace_a_label: str
+    trace_b_label: str
+    operation_code: str
+    operation_label: str
+    normalization: str
+    sample_points: int
+    computed_at: float
+    label: str
+
+
+@dataclass(frozen=True)
+class DocEntry:
+    title: str
+    path: Path
+    description: str
+
+
+@dataclass(frozen=True)
+class DocCategory:
+    title: str
+    description: str
+    entries: Tuple[DocEntry, ...]
+
+
+EXAMPLE_LIBRARY: Tuple[ExampleSpec, ...] = (
+    ExampleSpec(
+        slug="He",
+        label="Helium lamp (example)",
+        filename="He.csv",
+        description="Synthetic helium discharge lamp with broadened emission lines.",
+    ),
+    ExampleSpec(
+        slug="Ne",
+        label="Neon lamp (example)",
+        filename="Ne.csv",
+        description="Synthetic neon lamp spectrum for testing overlay workflows.",
+    ),
+)
+
+
+DOC_LIBRARY: Tuple[DocCategory, ...] = (
+    DocCategory(
+        title="Getting started",
+        description="Orient yourself and load spectra into the workspace.",
+        entries=(
+            DocEntry(
+                title="Quick start",
+                path=Path("docs/app/user_guide.md"),
+                description="Overview of the refreshed Spectra App experience.",
+            ),
+        ),
+    ),
+    DocCategory(
+        title="Workspace reference",
+        description="Deep-dives on the overlay and differential tooling.",
+        entries=(
+            DocEntry(
+                title="Overlay workspace",
+                path=Path("docs/app/overlay_workspace.md"),
+                description="Manage overlays, visibility, and exports.",
+            ),
+            DocEntry(
+                title="Differential workspace",
+                path=Path("docs/app/differential_workspace.md"),
+                description="Compute subtraction or ratio curves between traces.",
+            ),
+        ),
+    ),
+    DocCategory(
+        title="Archives & provenance",
+        description="Fetch spectra from archives and track metadata.",
+        entries=(
+            DocEntry(
+                title="Archive & provenance",
+                path=Path("docs/app/archive_and_provenance.md"),
+                description="Archive lookup flow and provenance best practices.",
+            ),
+        ),
+    ),
+)
+
+
+DIFFERENTIAL_OPERATIONS: Dict[str, Dict[str, object]] = {
+    "Subtract (A − B)": {"code": "subtract", "symbol": "−", "func": subtract},
+    "Ratio (A ÷ B)": {"code": "ratio", "symbol": "÷", "func": ratio},
+}
+
+
+def _format_version_timestamp(raw: object) -> str:
+    value = str(raw or "").strip()
+    if not value:
+        return ""
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return value
+    return parsed.strftime("%Y-%m-%d %H:%M UTC")
+
+
 # ---------------------------------------------------------------------------
 # Session state helpers
 
@@ -105,6 +223,9 @@ def _ensure_session_state() -> None:
     st.session_state.setdefault("similarity_normalization", st.session_state.get("normalization_mode", "unit"))
     st.session_state.setdefault("duplicate_policy", "allow")
     st.session_state.setdefault("local_upload_registry", {})
+    st.session_state.setdefault("differential_result", None)
+    st.session_state.setdefault("differential_sample_points", 2000)
+    st.session_state.setdefault("overlay_visibility_selection", [])
     if "duplicate_ledger" not in st.session_state:
         st.session_state["duplicate_ledger"] = DuplicateLedger()
     if "similarity_cache" not in st.session_state:
@@ -242,41 +363,65 @@ def _add_overlay_payload(payload: Dict[str, object]) -> Tuple[bool, str]:
     )
 
 
-def _add_example_trace(example: str, label: str) -> Tuple[bool, str]:
-    csv_path = Path("app/examples") / f"{example}.csv"
+def _add_example_trace(spec: ExampleSpec) -> Tuple[bool, str]:
+    csv_path = Path("app/examples") / spec.filename
     if not csv_path.exists():
-        return False, f"Missing example data: {example}."
+        return False, f"Missing example data: {spec.filename}."
     try:
         df = pd.read_csv(csv_path)
     except Exception as exc:
-        return False, f"Failed to load example {example}: {exc}"
+        return False, f"Failed to load example {spec.slug}: {exc}"
     if "wavelength_nm" not in df or "intensity" not in df:
-        return False, f"Example {example} missing required columns."
-    metadata = {"source": "example", "path": str(csv_path)}
-    provenance = {"source": "example", "file": str(csv_path)}
+        return False, f"Example {spec.slug} missing required columns."
+    metadata = {
+        "source": "example",
+        "path": str(csv_path),
+        "description": spec.description,
+        "slug": spec.slug,
+        "points": int(df.shape[0]),
+    }
+    provenance = {
+        "source": "example",
+        "file": str(csv_path),
+        "description": spec.description,
+        "slug": spec.slug,
+    }
+    summary = spec.description or "Built-in example trace"
     return _add_overlay(
-        label,
+        spec.label,
         df["wavelength_nm"].tolist(),
         df["intensity"].tolist(),
         provider="EXAMPLE",
-        summary="Built-in example trace",
+        summary=summary,
         metadata=metadata,
         provenance=provenance,
     )
+
+
+def _render_example_loader() -> None:
+    if not EXAMPLE_LIBRARY:
+        return
+    st.sidebar.markdown("#### Example overlays")
+    selection = st.sidebar.selectbox(
+        "Add a built-in spectrum",
+        EXAMPLE_LIBRARY,
+        format_func=lambda spec: spec.label,
+    )
+    st.sidebar.caption(selection.description)
+    if st.sidebar.button("Add example overlay", key="example_loader_add"):
+        added, message = _add_example_trace(selection)
+        (st.sidebar.success if added else st.sidebar.info)(message)
 
 # ---------------------------------------------------------------------------
 # Sidebar rendering
 
 def _render_reference_section() -> None:
     st.sidebar.markdown("### Reference spectra")
-    col1, col2 = st.sidebar.columns(2)
-    if col1.button("Add He"):
-        added, message = _add_example_trace("He", "He (example)")
-        (st.sidebar.success if added else st.sidebar.info)(message)
-    if col2.button("Add Ne"):
-        added, message = _add_example_trace("Ne", "Ne (example)")
-        (st.sidebar.success if added else st.sidebar.info)(message)
+    _render_example_loader()
+    st.sidebar.divider()
+    st.sidebar.markdown("#### NIST ASD lines")
     _render_nist_form()
+    st.sidebar.divider()
 
     overlays = _get_overlays()
     if overlays:
@@ -300,7 +445,6 @@ def _render_reference_section() -> None:
 
 
 def _render_nist_form() -> None:
-    st.sidebar.markdown("#### NIST ASD lines")
     with st.sidebar.form("nist_overlay_form", clear_on_submit=False):
         identifier = st.text_input("Element or spectrum", placeholder="e.g. Fe II")
         lower = st.number_input("Lower λ (nm)", min_value=0.0, value=380.0, step=5.0)
@@ -665,24 +809,62 @@ def _render_overlay_table(overlays: Sequence[OverlayTrace]) -> None:
             "Visible": [trace.visible for trace in overlays],
         }
     )
-    edited = st.data_editor(
-        table,
-        hide_index=True,
-        width="stretch",
-        column_config={
-            "Label": st.column_config.TextColumn("Label", disabled=True),
-            "Provider": st.column_config.TextColumn("Provider", disabled=True),
-            "Kind": st.column_config.TextColumn("Kind", disabled=True),
-            "Points": st.column_config.NumberColumn("Points", disabled=True),
-            "Visible": st.column_config.CheckboxColumn("Visible"),
-        },
-        key="overlay_table_editor",
-    )
-    for trace, visible in zip(overlays, edited["Visible"].tolist()):
-        trace.visible = bool(visible)
-    _set_overlays(overlays)
+    st.dataframe(table, hide_index=True, width="stretch")
 
     options = [trace.trace_id for trace in overlays]
+    stored_selection = [
+        trace_id
+        for trace_id in st.session_state.get("overlay_visibility_selection", [])
+        if trace_id in options
+    ]
+    default_visible = [trace.trace_id for trace in overlays if trace.visible]
+    for trace_id in default_visible:
+        if trace_id not in stored_selection:
+            stored_selection.append(trace_id)
+    st.session_state["overlay_visibility_selection"] = stored_selection
+
+    with st.form("overlay_visibility_form"):
+        selection = st.multiselect(
+            "Visible overlays",
+            options,
+            default=stored_selection,
+            format_func=_trace_label,
+        )
+        col_apply, col_all, col_none = st.columns(3)
+        apply = col_apply.form_submit_button("Apply visibility")
+        show_all = col_all.form_submit_button("Show all")
+        hide_all = col_none.form_submit_button("Hide all")
+
+    if show_all:
+        selection = options
+        apply = True
+    elif hide_all:
+        selection = []
+        apply = True
+
+    if apply:
+        st.session_state["overlay_visibility_selection"] = selection
+        mutated = False
+        for trace in overlays:
+            desired = trace.trace_id in selection
+            if trace.visible != desired:
+                trace.visible = desired
+                mutated = True
+        if mutated:
+            _set_overlays(overlays)
+        st.success("Updated overlay visibility.")
+    else:
+        # Keep the underlying traces in sync with stored selection to avoid UI drift.
+        selection_set = set(st.session_state.get("overlay_visibility_selection", []))
+        mutated = False
+        for trace in overlays:
+            desired = trace.trace_id in selection_set
+            if trace.visible != desired:
+                trace.visible = desired
+                mutated = True
+        if mutated:
+            _set_overlays(overlays)
+
     selected = st.multiselect(
         "Remove overlays",
         options,
@@ -701,17 +883,26 @@ def _remove_overlays(trace_ids: Sequence[str]) -> None:
     cache.reset()
 
 
-def _render_metadata_summary(overlays: Sequence[OverlayTrace]) -> None:
-    if not overlays:
-        return
+def _normalise_wavelength_range(meta: Dict[str, object]) -> str:
+    range_candidates = [
+        meta.get("wavelength_effective_range_nm"),
+        meta.get("wavelength_range_nm"),
+    ]
+    for candidate in range_candidates:
+        if isinstance(candidate, (list, tuple)) and len(candidate) == 2:
+            try:
+                low = float(candidate[0])
+                high = float(candidate[1])
+            except (TypeError, ValueError):
+                continue
+            return f"{low:.2f} – {high:.2f}"
+    return "—"
+
+
+def _build_metadata_summary_rows(overlays: Sequence[OverlayTrace]) -> List[Dict[str, object]]:
     rows: List[Dict[str, object]] = []
     for trace in overlays:
         meta = {str(k).lower(): v for k, v in (trace.metadata or {}).items()}
-        wavelength_range = meta.get("wavelength_range_nm")
-        if isinstance(wavelength_range, (list, tuple)) and len(wavelength_range) == 2:
-            wavelength_range = f"{wavelength_range[0]:.2f} – {wavelength_range[1]:.2f}"
-        elif wavelength_range is None:
-            wavelength_range = "—"
         rows.append(
             {
                 "Label": trace.label,
@@ -719,11 +910,21 @@ def _render_metadata_summary(overlays: Sequence[OverlayTrace]) -> None:
                 "Flux unit": trace.flux_unit,
                 "Instrument": meta.get("instrument") or meta.get("instrume") or "—",
                 "Telescope": meta.get("telescope") or meta.get("telescop") or "—",
-                "Observation": meta.get("date-obs") or meta.get("date_obs") or meta.get("observation_date") or "—",
-                "Range (nm)": wavelength_range,
+                "Observation": meta.get("date-obs")
+                or meta.get("date_obs")
+                or meta.get("observation_date")
+                or "—",
+                "Range (nm)": _normalise_wavelength_range(meta),
                 "Resolution": meta.get("resolution_native") or meta.get("resolution") or "—",
             }
         )
+    return rows
+
+
+def _render_metadata_summary(overlays: Sequence[OverlayTrace]) -> None:
+    if not overlays:
+        return
+    rows = _build_metadata_summary_rows(overlays)
     if rows:
         st.markdown("#### Metadata summary")
         st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
@@ -742,6 +943,21 @@ def _render_metadata_summary(overlays: Sequence[OverlayTrace]) -> None:
 
 def _get_upload_registry() -> Dict[str, Dict[str, object]]:
     return st.session_state.setdefault("local_upload_registry", {})
+
+
+def _read_uploaded_file(uploaded) -> Tuple[Optional[str], Optional[bytes], Optional[str], str]:
+    """Return the checksum and payload bytes for a Streamlit upload widget."""
+
+    try:
+        payload_bytes = uploaded.getvalue()
+    except Exception as exc:  # pragma: no cover - Streamlit defensive branch
+        return None, None, f"Unable to read {uploaded.name}: {exc}", "warning"
+
+    if not payload_bytes:
+        return None, None, f"{uploaded.name} is empty; skipping upload.", "warning"
+
+    checksum = hashlib.sha256(payload_bytes).hexdigest()
+    return checksum, payload_bytes, None, "info"
 
 
 def _render_local_upload() -> None:
@@ -780,6 +996,21 @@ def _render_local_upload() -> None:
             continue
 
         checksum = hashlib.sha256(payload_bytes).hexdigest()
+        
+        checksum, payload_bytes, error_message, level = _read_uploaded_file(uploaded)
+        if error_message:
+            (st.error if level == "error" else st.warning)(error_message)
+            if checksum:
+                registry[checksum] = {
+                    "name": uploaded.name,
+                    "added": False,
+                    "message": error_message,
+                }
+            continue
+
+        if not checksum or payload_bytes is None:
+            continue
+
         if checksum in registry:
             continue
 
@@ -792,6 +1023,15 @@ def _render_local_upload() -> None:
         except Exception as exc:  # pragma: no cover - unexpected failure
             st.error(f"Unexpected error ingesting {uploaded.name}: {exc}")
             registry[checksum] = {"name": uploaded.name, "added": False, "message": str(exc)}
+            
+            message = str(exc)
+            st.warning(message)
+            registry[checksum] = {"name": uploaded.name, "added": False, "message": message}
+            continue
+        except Exception as exc:  # pragma: no cover - unexpected failure
+            message = f"Unexpected error ingesting {uploaded.name}: {exc}"
+            st.error(message)
+            registry[checksum] = {"name": uploaded.name, "added": False, "message": message}
             continue
 
         added, message = _add_overlay_payload(payload)
@@ -805,6 +1045,8 @@ def _clear_overlays() -> None:
     cache: SimilarityCache = st.session_state["similarity_cache"]
     cache.reset()
     st.session_state["local_upload_registry"] = {}
+    st.session_state["overlay_visibility_selection"] = []
+    st.session_state["differential_result"] = None
 
 
 def _export_current_view(
@@ -904,19 +1146,32 @@ def _render_line_tables(overlays: Sequence[OverlayTrace]) -> None:
 # ---------------------------------------------------------------------------
 # Patch log helpers
 
-def _load_patch_note() -> str:
-    path = Path("PATCHLOG.txt")
-    if not path.exists():
-        return ""
-    try:
-        lines = path.read_text(encoding="utf-8").splitlines()
-    except Exception:
-        return ""
-    cleaned = [line.strip() for line in lines if line.strip() and not line.startswith("=")]
-    for line in reversed(cleaned):
-        if line.startswith("-"):
-            return line.lstrip("- ")
-    return ""
+def _resolve_patch_metadata(version_info: Mapping[str, object]) -> Tuple[str, str, str]:
+    """Derive patch version and summary strings for UI presentation."""
+
+    def _text(value: object) -> str:
+        return str(value).strip() if value is not None else ""
+
+    patch_version = _text(version_info.get("patch_version"))
+    version_fallback = _text(version_info.get("version")) or "v?"
+    if not patch_version:
+        patch_version = version_fallback
+
+    patch_summary = _text(version_info.get("patch_summary"))
+    if not patch_summary:
+        patch_summary = _text(version_info.get("summary"))
+    if not patch_summary:
+        patch_summary = "No summary recorded."
+
+    patch_line = _text(version_info.get("patch_raw"))
+    if patch_line:
+        display_line = patch_line
+    elif patch_version:
+        display_line = f"{patch_version}: {patch_summary}" if patch_summary else patch_version
+    else:
+        display_line = patch_summary
+
+    return patch_version, patch_summary, display_line
 
 
 def _format_line_hover(line: Dict[str, object]) -> str:
@@ -987,7 +1242,7 @@ def _convert_nist_payload(data: Dict[str, object]) -> Optional[Dict[str, object]
 # ---------------------------------------------------------------------------
 # Status bar
 
-def _render_status_bar(version_info: Dict[str, str], patch_note: str) -> None:
+def _render_status_bar(version_info: Mapping[str, object]) -> None:
     overlays = _get_overlays()
     viewport = st.session_state.get("viewport_nm", (None, None))
     low, high = viewport
@@ -1003,9 +1258,7 @@ def _render_status_bar(version_info: Dict[str, str], patch_note: str) -> None:
     st.markdown(
         (
             "<div style='margin-top:1rem;padding:0.6rem 0.8rem;border-top:1px solid #333;font-size:0.85rem;opacity:0.85;'>"
-            f"<strong>{len(overlays)}</strong> overlays • viewport {low_str} – {high_str} • reference: {reference} • {policy}<br/>"
-            f"{version_info.get('version', 'v?')} • {version_info.get('date_utc', '')}<br/>"
-            f"<em>{patch_note}</em>"
+            f"<strong>{len(overlays)}</strong> overlays • viewport {low_str} – {high_str} • reference: {reference} • {policy}"
             "</div>"
         ),
         unsafe_allow_html=True,
@@ -1065,16 +1318,278 @@ def _render_overlay_tab(version_info: Dict[str, str]) -> None:
     _render_line_tables(overlays)
 
 
+def _normalization_display(mode: str) -> str:
+    mapping = {
+        "unit": "Unit vector (L2)",
+        "l2": "Unit vector (L2)",
+        "max": "Peak normalised",
+        "peak": "Peak normalised",
+        "zscore": "Z-score",
+        "z": "Z-score",
+        "standard": "Z-score",
+        "none": "Raw",
+    }
+    key = (mode or "raw").lower()
+    return mapping.get(key, mode or "Raw")
+
+
+def _compute_differential_result(
+    trace_a: OverlayTrace,
+    trace_b: OverlayTrace,
+    operation_label: str,
+    sample_points: int,
+    normalization: str,
+) -> DifferentialResult:
+    meta = DIFFERENTIAL_OPERATIONS[operation_label]
+    grid, values_a, values_b = resample_to_common_grid(
+        trace_a.wavelength_nm,
+        trace_a.flux,
+        trace_b.wavelength_nm,
+        trace_b.flux,
+        n=int(sample_points),
+    )
+    arr_a = np.asarray(values_a, dtype=float)
+    arr_b = np.asarray(values_b, dtype=float)
+    norm_a = apply_normalization(arr_a, normalization)
+    norm_b = apply_normalization(arr_b, normalization)
+    func = meta["func"]
+    result_values = func(norm_a, norm_b)
+    symbol = meta["symbol"]
+    label = f"{trace_a.label} {symbol} {trace_b.label}"
+    return DifferentialResult(
+        grid_nm=tuple(float(v) for v in grid),
+        values_a=tuple(float(v) for v in norm_a),
+        values_b=tuple(float(v) for v in norm_b),
+        result=tuple(float(v) for v in result_values),
+        trace_a_id=trace_a.trace_id,
+        trace_b_id=trace_b.trace_id,
+        trace_a_label=trace_a.label,
+        trace_b_label=trace_b.label,
+        operation_code=str(meta["code"]),
+        operation_label=operation_label,
+        normalization=normalization,
+        sample_points=int(sample_points),
+        computed_at=time.time(),
+        label=label,
+    )
+
+
+def _build_differential_figure(result: DifferentialResult) -> go.Figure:
+    grid = np.asarray(result.grid_nm, dtype=float)
+    values_a = np.asarray(result.values_a, dtype=float)
+    values_b = np.asarray(result.values_b, dtype=float)
+    result_values = np.asarray(result.result, dtype=float)
+    fig = make_subplots(
+        rows=2,
+        cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.08,
+        row_heights=[0.6, 0.4],
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=grid,
+            y=values_a,
+            name=f"A • {result.trace_a_label}",
+            mode="lines",
+        ),
+        row=1,
+        col=1,
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=grid,
+            y=values_b,
+            name=f"B • {result.trace_b_label}",
+            mode="lines",
+        ),
+        row=1,
+        col=1,
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=grid,
+            y=result_values,
+            name=f"Result ({result.operation_label})",
+            mode="lines",
+        ),
+        row=2,
+        col=1,
+    )
+    fig.update_layout(
+        height=520,
+        margin=dict(t=30, b=36, l=32, r=16),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1.0),
+    )
+    fig.update_xaxes(title_text="Wavelength (nm)", row=2, col=1)
+    fig.update_yaxes(title_text=f"Flux ({_normalization_display(result.normalization)})", row=1, col=1)
+    fig.update_yaxes(title_text=result.operation_label, row=2, col=1)
+    return fig
+
+
+def _build_differential_summary(result: DifferentialResult) -> pd.DataFrame:
+    grid = np.asarray(result.grid_nm, dtype=float)
+    if grid.size:
+        range_text = f"{grid.min():.2f} – {grid.max():.2f}"
+    else:
+        range_text = "—"
+
+    def _series_stats(label: str, values: Sequence[float]) -> Dict[str, object]:
+        arr = np.asarray(values, dtype=float)
+        finite = arr[np.isfinite(arr)]
+        if finite.size:
+            min_val = float(finite.min())
+            max_val = float(finite.max())
+            mean_val = float(finite.mean())
+            std_val = float(finite.std())
+        else:
+            min_val = max_val = mean_val = std_val = float("nan")
+        return {
+            "Series": label,
+            "Min": min_val,
+            "Max": max_val,
+            "Mean": mean_val,
+            "Std": std_val,
+            "Samples": int(arr.size),
+            "Range (nm)": range_text,
+        }
+
+    rows = [
+        _series_stats(f"A • {result.trace_a_label}", result.values_a),
+        _series_stats(f"B • {result.trace_b_label}", result.values_b),
+        _series_stats(f"Result ({result.operation_label})", result.result),
+    ]
+    return pd.DataFrame(rows)
+
+
+def _add_differential_overlay(result: DifferentialResult) -> Tuple[bool, str]:
+    timestamp = datetime.utcfromtimestamp(result.computed_at).isoformat() + "Z"
+    metadata = {
+        "source": "differential",
+        "operation": result.operation_code,
+        "operation_label": result.operation_label,
+        "trace_a": {"id": result.trace_a_id, "label": result.trace_a_label},
+        "trace_b": {"id": result.trace_b_id, "label": result.trace_b_label},
+        "sample_points": result.sample_points,
+        "normalization": result.normalization,
+        "computed_at": timestamp,
+    }
+    if result.grid_nm:
+        metadata["wavelength_range_nm"] = [float(min(result.grid_nm)), float(max(result.grid_nm))]
+    summary = f"{result.operation_label} on {result.sample_points} samples"
+    return _add_overlay(
+        result.label,
+        result.grid_nm,
+        result.result,
+        provider="DIFF",
+        summary=summary,
+        metadata=metadata,
+        provenance=dict(metadata),
+        flux_kind="derived",
+    )
+
+
+def _render_differential_result(result: Optional[DifferentialResult]) -> None:
+    if result is None:
+        return
+    fig = _build_differential_figure(result)
+    st.plotly_chart(fig, use_container_width=True)
+    grid = np.asarray(result.grid_nm, dtype=float)
+    if grid.size:
+        st.caption(
+            f"Overlap {grid.min():.2f} – {grid.max():.2f} nm • "
+            f"{result.sample_points} samples • Normalization: {_normalization_display(result.normalization)}"
+        )
+    summary = _build_differential_summary(result)
+    st.dataframe(summary, hide_index=True, width="stretch")
+    if st.button("Add result to overlays", key="add_differential_overlay"):
+        added, message = _add_differential_overlay(result)
+        (st.success if added else st.info)(message)
+
+
 def _render_differential_tab() -> None:
     st.header("Differential analysis")
     overlays = _get_overlays()
-    if len(overlays) < 2:
-        st.info("Add at least two traces to explore differential workflows.")
-    norm = st.session_state.get("normalization_mode", "unit")
-    diff = st.session_state.get("differential_mode", "Off")
-    st.write(f"Normalization mode: **{norm}**")
-    st.write(f"Differential mode: **{diff}**")
-    st.caption("Differential tooling shares normalization controls with the overlay tab.")
+    spectral_overlays = [trace for trace in overlays if trace.kind != "lines"]
+    if len(spectral_overlays) < 2:
+        st.info("Add at least two spectra to compare differentially.")
+        return
+
+    trace_map = {trace.trace_id: trace for trace in spectral_overlays}
+    options = list(trace_map.keys())
+    default_a = st.session_state.get("differential_trace_a_id")
+    if default_a not in options:
+        reference = st.session_state.get("reference_trace_id")
+        default_a = reference if reference in options else options[0]
+    default_b = st.session_state.get("differential_trace_b_id")
+    if default_b not in options or default_b == default_a:
+        default_b = next((tid for tid in options if tid != default_a), options[0])
+
+    operation_labels = list(DIFFERENTIAL_OPERATIONS.keys())
+    default_operation = st.session_state.get("differential_operation_label")
+    if default_operation not in operation_labels:
+        default_operation = operation_labels[0]
+
+    sample_default = int(st.session_state.get("differential_sample_points", 2000))
+
+    with st.form("differential_compute_form"):
+        col_a, col_b = st.columns(2)
+        trace_a_id = col_a.selectbox(
+            "Trace A",
+            options,
+            index=options.index(default_a),
+            format_func=_trace_label,
+        )
+        trace_b_id = col_b.selectbox(
+            "Trace B",
+            options,
+            index=options.index(default_b),
+            format_func=_trace_label,
+        )
+        col_op, col_samples = st.columns(2)
+        operation_label = col_op.selectbox(
+            "Operation",
+            operation_labels,
+            index=operation_labels.index(default_operation),
+        )
+        sample_points = col_samples.slider(
+            "Resample points",
+            min_value=300,
+            max_value=8000,
+            step=100,
+            value=sample_default,
+        )
+        submitted = st.form_submit_button("Compute differential", use_container_width=True)
+
+    result = st.session_state.get("differential_result")
+    if submitted:
+        if trace_a_id == trace_b_id:
+            st.warning("Select two distinct traces to compute a differential.")
+        else:
+            normalization = st.session_state.get("normalization_mode", "unit")
+            try:
+                result = _compute_differential_result(
+                    trace_map[trace_a_id],
+                    trace_map[trace_b_id],
+                    operation_label,
+                    int(sample_points),
+                    normalization,
+                )
+            except ValueError as exc:
+                st.error(str(exc))
+                result = None
+            else:
+                st.session_state["differential_result"] = result
+                st.session_state["differential_trace_a_id"] = trace_a_id
+                st.session_state["differential_trace_b_id"] = trace_b_id
+                st.session_state["differential_operation_label"] = operation_label
+                st.session_state["differential_sample_points"] = int(sample_points)
+
+    st.caption(
+        "Differential maths uses the normalization selected in the sidebar "
+        "and resamples both traces onto a shared wavelength grid."
+    )
+    _render_differential_result(result)
 
 
 def _render_archive_tab() -> None:
@@ -1084,34 +1599,52 @@ def _render_archive_tab() -> None:
 
 def _render_docs_tab() -> None:
     st.header("Docs & provenance")
-    documents = [
-        "docs/index.md",
-        "docs/ingestion.md",
-        "docs/ui/displaying_data_guide.md",
-        "docs/ui/ui_design_guide.md",
-        "docs/ui/bad_ui_guide.md",
-        "docs/sources/astro_data_docs.md",
-        "docs/sources/telescopes_overview.md",
-        "docs/sources/notable_sources_techniques_tools.md",
-        "docs/sources/stellar_light_methods.md",
-        "docs/math/spectroscopy_math_part1.md",
-        "docs/math/spectroscopy_math_part2.md",
-        "docs/math/instrument_accuracy_errors_interpretation.md",
-        "docs/differential/part1b.md",
-        "docs/differential/part1c.md",
-        "docs/differential/part2.md",
-        "docs/modeling/spectral_modeling_part1a.md",
-    ]
-    selection = st.selectbox("Open doc", documents)
-    try:
-        content = Path(selection).read_text(encoding="utf-8")
-    except Exception as exc:
-        st.error(f"Failed to load doc {selection}: {exc}")
+    if not DOC_LIBRARY:
+        st.info("Documentation library is empty.")
+        return
+
+    category_titles = [category.title for category in DOC_LIBRARY]
+    if "docs_category_select" not in st.session_state:
+        st.session_state["docs_category_select"] = category_titles[0]
+    selected_category_title = st.selectbox("Guide category", category_titles, key="docs_category_select")
+    category = next(cat for cat in DOC_LIBRARY if cat.title == selected_category_title)
+    if category.description:
+        st.caption(category.description)
+
+    entry_titles = [entry.title for entry in category.entries]
+    if not entry_titles:
+        st.warning("No documents available in this category yet.")
+        entry = None
     else:
-        st.code(content, language="markdown")
+        if "docs_entry_select" not in st.session_state or st.session_state["docs_entry_select"] not in entry_titles:
+            st.session_state["docs_entry_select"] = entry_titles[0]
+        selected_entry_title = st.selectbox("Document", entry_titles, key="docs_entry_select")
+        entry = next(e for e in category.entries if e.title == selected_entry_title)
+        if entry.description:
+            st.caption(entry.description)
+    if entry:
+        try:
+            content = entry.path.read_text(encoding="utf-8")
+        except Exception as exc:
+            st.error(f"Failed to load {entry.path}: {exc}")
+        else:
+            st.markdown(content)
+            st.download_button(
+                "Download Markdown",
+                content,
+                file_name=entry.path.name,
+                mime="text/markdown",
+            )
+            try:
+                modified = datetime.utcfromtimestamp(entry.path.stat().st_mtime).strftime("%Y-%m-%d %H:%M UTC")
+            except OSError:
+                modified = ""
+            if modified:
+                st.caption(f"Last updated {modified}")
 
     overlays = _get_overlays()
     if overlays:
+        st.divider()
         st.subheader("Session provenance")
         for trace in overlays:
             with st.expander(trace.label):
@@ -1131,11 +1664,17 @@ def _render_docs_tab() -> None:
 def render() -> None:
     _ensure_session_state()
     version_info = get_version_info()
-    patch_note = _load_patch_note() or version_info.get("summary") or "No summary recorded."
+    _, patch_summary, _ = _resolve_patch_metadata(version_info)
 
     st.title("Spectra App")
-    st.caption(f"Build {version_info.get('version', 'v?')} • {version_info.get('date_utc', '')}")
-    st.info(f"Patch: {patch_note}")
+    build_version = str(version_info.get("version") or "v?")
+    timestamp = _format_version_timestamp(version_info.get("date_utc"))
+    caption_parts = [build_version]
+    if timestamp:
+        caption_parts.append(f"Updated {timestamp}")
+    if patch_summary:
+        caption_parts.append(str(patch_summary))
+    st.caption(" • ".join(part for part in caption_parts if part))
 
     _render_reference_section()
     st.sidebar.divider()
@@ -1157,7 +1696,7 @@ def render() -> None:
     with docs_tab:
         _render_docs_tab()
 
-    _render_status_bar(version_info, patch_note)
+    _render_status_bar(version_info)
 
 
 def main() -> None:

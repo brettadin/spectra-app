@@ -294,6 +294,49 @@ def _normalise_axis(value: Optional[str]) -> Optional[str]:
     return value.strip()
 
 
+
+
+def _extract_flux_unit_from_label(label: str) -> Optional[str]:
+    matches = UNIT_PATTERN.findall(label)
+    for match in matches:
+        candidate = next((part for part in match if part), None)
+        if candidate:
+            cleaned = candidate.strip()
+            if cleaned:
+                return cleaned
+    return None
+
+
+def _normalise_flux_unit(unit: Optional[str]) -> Tuple[str, str]:
+    if not unit:
+        return "arb", "relative"
+    cleaned = unit.strip()
+    if not cleaned:
+        return "arb", "relative"
+    lowered = cleaned.lower()
+    relative_tokens = {"arb", "arbitrary", "adu", "counts", "count", "relative", "norm"}
+    if any(token in lowered for token in relative_tokens):
+        return cleaned, "relative"
+    return cleaned, "absolute"
+
+
+def _normalise_axis(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    lowered = value.strip().lower()
+    if not lowered:
+        return None
+    if "abs" in lowered:
+        return "absorption"
+    if "trans" in lowered:
+        return "transmission"
+    if "reflec" in lowered:
+        return "reflection"
+    if "emiss" in lowered:
+        return "emission"
+    return value.strip()
+
+
 def parse_ascii(
     dataframe: pd.DataFrame,
     *,
@@ -367,16 +410,47 @@ def parse_ascii(
 
     metadata["wavelength_range_nm"] = [float(min(wavelength_nm)), float(max(wavelength_nm))]
     metadata.setdefault("wavelength_effective_range_nm", metadata["wavelength_range_nm"])
+    if flux_unit_label and not metadata.get("reported_flux_unit"):
+        metadata["reported_flux_unit"] = flux_unit_label
+
+    data_range = [float(min(wavelength_nm)), float(max(wavelength_nm))]
+    metadata.setdefault("data_wavelength_range_nm", data_range)
+    metadata.setdefault("wavelength_range_nm", data_range)
+    metadata.setdefault(
+        "wavelength_effective_range_nm",
+        metadata.get("wavelength_range_nm", data_range),
+    )
     try:
         metadata["original_wavelength_unit"] = canonical_unit(wavelength_unit)
     except ValueError:
         metadata["original_wavelength_unit"] = wavelength_unit
     metadata.setdefault("points", len(wavelength_nm))
 
+    provenance_units: Dict[str, object] = {"wavelength_converted_to": "nm", "flux_unit": flux_unit}
+    if wavelength_unit:
+        provenance_units["wavelength_input"] = wavelength_unit
+    if metadata.get("reported_wavelength_unit"):
+        provenance_units["wavelength_reported"] = metadata["reported_wavelength_unit"]
+    if metadata.get("original_wavelength_unit"):
+        provenance_units["wavelength_original"] = metadata["original_wavelength_unit"]
+    if flux_unit_label:
+        provenance_units["flux_input"] = flux_unit_label
+    provenance["units"] = provenance_units
+
     axis = _normalise_axis(axis_hint) or "emission"
 
     provenance["samples"] = len(wavelength_nm)
     provenance.setdefault("unit_inference", {})["resolved"] = wavelength_unit
+
+    conversions: Dict[str, object] = {}
+    original_unit = metadata.get("original_wavelength_unit")
+    if original_unit and str(original_unit).lower() != "nm":
+        conversions["wavelength_unit"] = {"from": original_unit, "to": "nm"}
+    reported_flux = metadata.get("reported_flux_unit")
+    if reported_flux and str(reported_flux) != flux_unit:
+        conversions["flux_unit"] = {"from": reported_flux, "to": flux_unit}
+    if conversions:
+        provenance["conversions"] = conversions
 
     label_hint = next((candidate for candidate in label_candidates if candidate), None)
 
