@@ -308,6 +308,34 @@ def _extract_float(value: Any) -> Optional[float]:
         return None
 
 
+def _column_scale_to_nm(table, column: str) -> float:
+    """Return a multiplicative factor that converts the column to nm."""
+
+    default_scale = 0.1  # Historical default assumes Å when unit metadata is missing.
+    if table is None or column not in getattr(table, "colnames", []):
+        return default_scale
+
+    col = table[column]
+    unit = getattr(col, "unit", None)
+    if unit is None:
+        return default_scale
+
+    try:
+        parsed_unit = u.Unit(unit)
+    except Exception:
+        return default_scale
+
+    if parsed_unit == u.dimensionless_unscaled:
+        return 1.0
+
+    try:
+        return (1 * parsed_unit).to(u.nm).value
+    except Exception:
+        if parsed_unit == u.AA:
+            return 0.1
+        return default_scale
+
+
 def _split_energy(value: Any) -> Tuple[Optional[float], Optional[float]]:
     text = str(value).strip()
     if not text or text in {"-", "--"}:
@@ -409,13 +437,18 @@ def fetch(
     lines: List[Dict[str, Any]] = []
     max_relative_intensity = 0.0
 
+    observed_scale = _column_scale_to_nm(table, "Observed") if table is not None else 0.1
+    ritz_scale = _column_scale_to_nm(table, "Ritz") if table is not None else 0.1
+
     if table is not None:
         for row in table:
             observed_value = _extract_float(row.get("Observed"))
             ritz_value = _extract_float(row.get("Ritz"))
 
-            observed_nm = observed_value / 10.0 if observed_value is not None else None
-            ritz_nm = ritz_value / 10.0 if ritz_value is not None else None
+            observed_nm = (
+                observed_value * observed_scale if observed_value is not None else None
+            )
+            ritz_nm = ritz_value * ritz_scale if ritz_value is not None else None
 
             if use_ritz and ritz_nm is not None:
                 chosen_nm = ritz_nm

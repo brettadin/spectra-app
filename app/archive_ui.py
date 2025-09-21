@@ -67,7 +67,7 @@ class ArchiveUI:
 
         summary_df = self._build_summary(hits)
         if not summary_df.empty:
-            st.dataframe(summary_df, use_container_width=True, hide_index=True)
+            st.dataframe(summary_df, width="stretch", hide_index=True)
 
         for idx, hit in enumerate(hits):
             exp_label = f"{hit.label} — {hit.summary}"
@@ -88,7 +88,7 @@ class ArchiveUI:
                     height=260,
                     margin=dict(t=20, b=20, l=40, r=10),
                 )
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width="stretch")
                 st.caption(hit.summary)
                 cols = st.columns(2)
                 with cols[0]:
