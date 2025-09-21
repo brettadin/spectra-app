@@ -168,6 +168,10 @@ def ingest_local_file(name: str, content: bytes) -> Dict[str, object]:
     )
     if compression:
         ingest_info["compression"] = compression
+
+    label = _choose_label(original_name, parsed)
+    flux_unit = str(parsed.get("flux_unit") or "arb")
+    
     if processed_name:
         ingest_info.setdefault("filename", processed_name)
     checksum = provenance.get("checksum")

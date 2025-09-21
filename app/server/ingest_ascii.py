@@ -294,6 +294,49 @@ def _normalise_axis(value: Optional[str]) -> Optional[str]:
     return value.strip()
 
 
+
+
+def _extract_flux_unit_from_label(label: str) -> Optional[str]:
+    matches = UNIT_PATTERN.findall(label)
+    for match in matches:
+        candidate = next((part for part in match if part), None)
+        if candidate:
+            cleaned = candidate.strip()
+            if cleaned:
+                return cleaned
+    return None
+
+
+def _normalise_flux_unit(unit: Optional[str]) -> Tuple[str, str]:
+    if not unit:
+        return "arb", "relative"
+    cleaned = unit.strip()
+    if not cleaned:
+        return "arb", "relative"
+    lowered = cleaned.lower()
+    relative_tokens = {"arb", "arbitrary", "adu", "counts", "count", "relative", "norm"}
+    if any(token in lowered for token in relative_tokens):
+        return cleaned, "relative"
+    return cleaned, "absolute"
+
+
+def _normalise_axis(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    lowered = value.strip().lower()
+    if not lowered:
+        return None
+    if "abs" in lowered:
+        return "absorption"
+    if "trans" in lowered:
+        return "transmission"
+    if "reflec" in lowered:
+        return "reflection"
+    if "emiss" in lowered:
+        return "emission"
+    return value.strip()
+
+
 def parse_ascii(
     dataframe: pd.DataFrame,
     *,
@@ -364,6 +407,9 @@ def parse_ascii(
         flux_unit_label = label_flux_unit
     flux_unit, flux_kind = _normalise_flux_unit(flux_unit_label)
     metadata["flux_unit"] = flux_unit
+
+    metadata["wavelength_range_nm"] = [float(min(wavelength_nm)), float(max(wavelength_nm))]
+    metadata.setdefault("wavelength_effective_range_nm", metadata["wavelength_range_nm"])
     if flux_unit_label and not metadata.get("reported_flux_unit"):
         metadata["reported_flux_unit"] = flux_unit_label
 

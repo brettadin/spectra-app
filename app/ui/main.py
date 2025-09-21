@@ -7,7 +7,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
@@ -803,6 +803,18 @@ def _render_local_upload() -> None:
     registry = _get_upload_registry()
 
     for uploaded in uploader:
+        try:
+            payload_bytes = uploaded.getvalue()
+        except Exception as exc:  # pragma: no cover - Streamlit defensive branch
+            st.warning(f"Unable to read {uploaded.name}: {exc}")
+            continue
+
+        if not payload_bytes:
+            st.warning(f"{uploaded.name} is empty; skipping upload.")
+            continue
+
+        checksum = hashlib.sha256(payload_bytes).hexdigest()
+        
         checksum, payload_bytes, error_message, level = _read_uploaded_file(uploaded)
         if error_message:
             (st.error if level == "error" else st.warning)(error_message)
@@ -823,6 +835,13 @@ def _render_local_upload() -> None:
         try:
             payload = ingest_local_file(uploaded.name, payload_bytes)
         except LocalIngestError as exc:
+            st.warning(str(exc))
+            registry[checksum] = {"name": uploaded.name, "added": False, "message": str(exc)}
+            continue
+        except Exception as exc:  # pragma: no cover - unexpected failure
+            st.error(f"Unexpected error ingesting {uploaded.name}: {exc}")
+            registry[checksum] = {"name": uploaded.name, "added": False, "message": str(exc)}
+            
             message = str(exc)
             st.warning(message)
             registry[checksum] = {"name": uploaded.name, "added": False, "message": message}
@@ -943,19 +962,32 @@ def _render_line_tables(overlays: Sequence[OverlayTrace]) -> None:
 # ---------------------------------------------------------------------------
 # Patch log helpers
 
-def _load_patch_note() -> str:
-    path = Path("PATCHLOG.txt")
-    if not path.exists():
-        return ""
-    try:
-        lines = path.read_text(encoding="utf-8").splitlines()
-    except Exception:
-        return ""
-    cleaned = [line.strip() for line in lines if line.strip() and not line.startswith("=")]
-    for line in reversed(cleaned):
-        if line.startswith("-"):
-            return line.lstrip("- ")
-    return ""
+def _resolve_patch_metadata(version_info: Mapping[str, object]) -> Tuple[str, str, str]:
+    """Derive patch version and summary strings for UI presentation."""
+
+    def _text(value: object) -> str:
+        return str(value).strip() if value is not None else ""
+
+    patch_version = _text(version_info.get("patch_version"))
+    version_fallback = _text(version_info.get("version")) or "v?"
+    if not patch_version:
+        patch_version = version_fallback
+
+    patch_summary = _text(version_info.get("patch_summary"))
+    if not patch_summary:
+        patch_summary = _text(version_info.get("summary"))
+    if not patch_summary:
+        patch_summary = "No summary recorded."
+
+    patch_line = _text(version_info.get("patch_raw"))
+    if patch_line:
+        display_line = patch_line
+    elif patch_version:
+        display_line = f"{patch_version}: {patch_summary}" if patch_summary else patch_version
+    else:
+        display_line = patch_summary
+
+    return patch_version, patch_summary, display_line
 
 
 def _format_line_hover(line: Dict[str, object]) -> str:
@@ -1026,7 +1058,9 @@ def _convert_nist_payload(data: Dict[str, object]) -> Optional[Dict[str, object]
 # ---------------------------------------------------------------------------
 # Status bar
 
-def _render_status_bar(version_info: Dict[str, str], patch_note: str) -> None:
+def _render_status_bar(
+    version_info: Mapping[str, object], patch_note: str, patch_version: str
+) -> None:
     overlays = _get_overlays()
     viewport = st.session_state.get("viewport_nm", (None, None))
     low, high = viewport
@@ -1039,11 +1073,21 @@ def _render_status_bar(version_info: Dict[str, str], patch_note: str) -> None:
     }
     policy = policy_map.get(st.session_state.get("duplicate_policy"), "duplicates allowed")
     reference = _trace_label(st.session_state.get("reference_trace_id")) if overlays else "—"
+    build_version = str(version_info.get("version") or "v?")
+    patch_display = patch_version or build_version
+    date_text = str(version_info.get("date_utc") or "")
+    meta_parts = [f"build {build_version}"]
+    if patch_display:
+        meta_parts.append(f"patch {patch_display}")
+    if date_text:
+        meta_parts.append(date_text)
+    meta_line = " • ".join(part for part in meta_parts if part)
+
     st.markdown(
         (
             "<div style='margin-top:1rem;padding:0.6rem 0.8rem;border-top:1px solid #333;font-size:0.85rem;opacity:0.85;'>"
             f"<strong>{len(overlays)}</strong> overlays • viewport {low_str} – {high_str} • reference: {reference} • {policy}<br/>"
-            f"{version_info.get('version', 'v?')} • {version_info.get('date_utc', '')}<br/>"
+            f"{meta_line}<br/>"
             f"<em>{patch_note}</em>"
             "</div>"
         ),
@@ -1170,11 +1214,22 @@ def _render_docs_tab() -> None:
 def render() -> None:
     _ensure_session_state()
     version_info = get_version_info()
-    patch_note = _load_patch_note() or version_info.get("summary") or "No summary recorded."
+    patch_version, patch_summary, patch_line = _resolve_patch_metadata(version_info)
 
     st.title("Spectra App")
-    st.caption(f"Build {version_info.get('version', 'v?')} • {version_info.get('date_utc', '')}")
-    st.info(f"Patch: {patch_note}")
+    build_version = str(version_info.get("version") or "v?")
+    date_text = str(version_info.get("date_utc") or "")
+    caption_parts = [f"Build {build_version}"]
+    if patch_version:
+        caption_parts.append(f"Patch {patch_version}")
+    if date_text:
+        caption_parts.append(date_text)
+    st.caption(" • ".join(part for part in caption_parts if part))
+
+    if patch_version:
+        st.info(f"Patch {patch_version}: {patch_summary}")
+    else:
+        st.info(f"Patch: {patch_summary}")
 
     _render_reference_section()
     st.sidebar.divider()
@@ -1196,7 +1251,7 @@ def render() -> None:
     with docs_tab:
         _render_docs_tab()
 
-    _render_status_bar(version_info, patch_note)
+    _render_status_bar(version_info, patch_line, patch_version)
 
 
 def main() -> None:

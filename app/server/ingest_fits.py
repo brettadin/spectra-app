@@ -209,6 +209,8 @@ def _normalise_wavelength_unit(unit: Optional[str], default: str = "nm") -> str:
     return text
 
 
+
+
 def _normalise_flux_unit(unit: Optional[str]) -> Tuple[str, str]:
     if not unit:
         return "arb", "relative"
@@ -362,6 +364,9 @@ def parse_fits(content: HeaderInput, *, filename: Optional[str] = None) -> Dict[
 
         flux_unit, flux_kind = _normalise_flux_unit(flux_unit_hint)
 
+        metadata: Dict[str, object] = {
+            "wavelength_range_nm": [float(np.min(wavelength_nm)), float(np.max(wavelength_nm))],
+            "wavelength_effective_range_nm": [float(np.min(wavelength_nm)), float(np.max(wavelength_nm))],
         range_min = float(np.min(wavelength_nm))
         range_max = float(np.max(wavelength_nm))
         metadata: Dict[str, object] = {
@@ -385,6 +390,16 @@ def parse_fits(content: HeaderInput, *, filename: Optional[str] = None) -> Dict[
             if value is None:
                 continue
             metadata.setdefault(meta_key, value)
+
+        metadata.setdefault("wavelength_axis_type", header.get("CTYPE1"))
+        metadata.setdefault("spectral_reference", header.get("SPECSYS"))
+
+        label_candidates: List[str] = []
+        for field in ("target", "source"):
+            value = metadata.get(field)
+            if isinstance(value, str) and value.strip():
+                label_candidates.append(value.strip())
+
 
         metadata.setdefault("wavelength_axis_type", header.get("CTYPE1"))
         metadata.setdefault("spectral_reference", header.get("SPECSYS"))
