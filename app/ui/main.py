@@ -53,14 +53,10 @@ class OverlayTrace:
     trace_id: str
     label: str
     wavelength_m: Tuple[float, ...]
-        <<<<<<< codex/improve-unit-conversions-and-file-uploads-4ct6vp
-    flux: Tuple[float, ...]
-=======
  codex/improve-unit-conversions-and-file-uploads-ussv5s
     flux: Tuple[float, ...]
 =======
  main
-        >>>>>>> main
     flux_unit: str
     flux_kind: str
     kind: str = "spectrum"
@@ -700,13 +696,11 @@ def _build_overlay_figure(
                     "flux": values_trace - values_ref,
                 }
             )
-        <<<<<<< codex/improve-unit-conversions-and-file-uploads-4ct6vp
-=======
+
  codex/improve-unit-conversions-and-file-uploads-ussv5s
 =======
  codex/improve-unit-conversions-and-file-uploads-udgaxh
  main
-        >>>>>>> main
         if "wavelength_m" not in df.columns:
             if "wavelength_nm" in df.columns:
                 converted_m = wavelength_to_m(df["wavelength_nm"].to_numpy(dtype=float), "nm")
@@ -715,15 +709,12 @@ def _build_overlay_figure(
                 st.warning(f"{trace.label}: missing wavelength data; trace skipped.")
                 continue
 
-        <<<<<<< codex/improve-unit-conversions-and-file-uploads-4ct6vp
-=======
  codex/improve-unit-conversions-and-file-uploads-ussv5s
 =======
 =======
 
  main
   main
-        >>>>>>> main
         converted, axis_title = _convert_wavelength(df["wavelength_m"], display_units)
         df = df.assign(wavelength=converted, flux=df["flux"].astype(float))
         if "hover" in df:
@@ -903,9 +894,6 @@ def _render_metadata_summary(overlays: Sequence[OverlayTrace]) -> None:
         )
     if rows:
         st.markdown("#### Metadata summary")
-        <<<<<<< codex/improve-unit-conversions-and-file-uploads-4ct6vp
-        st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
-=======
  codex/improve-unit-conversions-and-file-uploads-ussv5s
         st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
 =======
@@ -915,7 +903,6 @@ def _render_metadata_summary(overlays: Sequence[OverlayTrace]) -> None:
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
  main
   main
-        >>>>>>> main
     with st.expander("Metadata & provenance details", expanded=False):
         for trace in overlays:
             st.markdown(f"**{trace.label}**")

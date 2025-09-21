@@ -37,13 +37,10 @@ def build_manifest(
     rows_list = list(rows)
 
     flux_reference = 'normalized' if display_mode != 'Flux (raw)' else 'W m⁻² m⁻¹'
-        <<<<<<< codex/improve-unit-conversions-and-file-uploads-4ct6vp
-=======
 
     rows_list = list(rows)
 
     flux_reference = 'normalized' if display_mode != 'Flux (raw)' else 'W m⁻² m⁻¹'
-        >>>>>>> main
 
     manifest = {
         'exported_at': timestamp,
