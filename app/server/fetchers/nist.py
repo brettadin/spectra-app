@@ -334,6 +334,7 @@ def _column_scale_to_nm(table, column: str) -> float:
         if parsed_unit == u.AA:
             return 0.1
         return default_scale
+<<<<<<< main
     for candidate in (
         getattr(col, "unit", None),
         getattr(col.info, "unit", None),
@@ -351,6 +352,8 @@ def _column_scale_to_nm(table, column: str) -> float:
         return inferred
 
     return default_scale
+=======
+>>>>>>> 95503f4
 
 
 def _split_energy(value: Any) -> Tuple[Optional[float], Optional[float]]:
@@ -456,6 +459,7 @@ def fetch(
 
     observed_scale = _column_scale_to_nm(table, "Observed") if table is not None else 0.1
     ritz_scale = _column_scale_to_nm(table, "Ritz") if table is not None else 0.1
+<<<<<<< main
     try:
         requested_range_nm: Optional[Tuple[float, float]] = (
             float(min_wav.to(u.nm).value),
@@ -470,6 +474,8 @@ def fetch(
     ritz_scale = (
         _column_scale_to_nm(table, "Ritz", requested_range_nm) if table is not None else 0.1
     )
+=======
+>>>>>>> 95503f4
 
     if table is not None:
         for row in table:
