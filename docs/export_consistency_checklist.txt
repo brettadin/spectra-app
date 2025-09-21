@@ -5,3 +5,5 @@ Export Consistency Checklist
 - Manifest includes: data sources, transformations, unit decisions, export UTC, app version.
 - All file encodings UTF-8, no curly quotes.
 - Checksums updated.
+- brains updated
+- patch notes updated
