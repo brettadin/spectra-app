@@ -362,15 +362,19 @@ def parse_fits(content: HeaderInput, *, filename: Optional[str] = None) -> Dict[
 
         flux_unit, flux_kind = _normalise_flux_unit(flux_unit_hint)
 
+        range_min = float(np.min(wavelength_nm))
+        range_max = float(np.max(wavelength_nm))
         metadata: Dict[str, object] = {
-            "wavelength_range_nm": [float(np.min(wavelength_nm)), float(np.max(wavelength_nm))],
-            "wavelength_effective_range_nm": [float(np.min(wavelength_nm)), float(np.max(wavelength_nm))],
+            "wavelength_range_nm": [range_min, range_max],
+            "wavelength_effective_range_nm": [range_min, range_max],
+            "data_wavelength_range_nm": [range_min, range_max],
             "points": int(flux_array.size),
             "flux_unit": flux_unit,
             "reported_flux_unit": _coerce_header_value(flux_unit_hint) if flux_unit_hint else None,
             "reported_wavelength_unit": _coerce_header_value(reported_wavelength_unit) if reported_wavelength_unit else None,
         }
         metadata["original_wavelength_unit"] = resolved_unit
+        metadata.setdefault("wavelength_coverage_nm", [range_min, range_max])
 
         if flux_array.size >= 2:
             metadata["wavelength_step_nm"] = float(wavelength_nm[1] - wavelength_nm[0])
@@ -404,6 +408,7 @@ def parse_fits(content: HeaderInput, *, filename: Optional[str] = None) -> Dict[
             "data_mode": data_mode,
             "samples": int(flux_array.size),
         }
+        provenance["hdu_type"] = type(data_hdu).__name__
         if filtered_unit_inference:
             provenance["unit_inference"] = filtered_unit_inference
         provenance.update(provenance_details)
@@ -412,6 +417,26 @@ def parse_fits(content: HeaderInput, *, filename: Optional[str] = None) -> Dict[
             provenance["checksum"] = checksum_bytes(payload)
         if inferred_name:
             provenance["filename"] = inferred_name
+
+        provenance_units: Dict[str, object] = {"wavelength_converted_to": "nm", "flux_unit": flux_unit}
+        if resolved_unit:
+            provenance_units["wavelength_input"] = resolved_unit
+        if reported_wavelength_unit:
+            provenance_units["wavelength_reported"] = _coerce_header_value(reported_wavelength_unit)
+        if flux_unit_hint:
+            provenance_units["flux_input"] = _coerce_header_value(flux_unit_hint)
+        provenance["units"] = provenance_units
+
+        conversions: Dict[str, object] = {}
+        if resolved_unit and str(resolved_unit).lower() != "nm":
+            conversions["wavelength_unit"] = {"from": resolved_unit, "to": "nm"}
+        if flux_unit_hint and str(flux_unit_hint) != flux_unit:
+            conversions["flux_unit"] = {
+                "from": _coerce_header_value(flux_unit_hint),
+                "to": flux_unit,
+            }
+        if conversions:
+            provenance["conversions"] = conversions
 
         interesting_cards = [
             "OBJECT",
