@@ -23,7 +23,7 @@ class ArchiveUI:
         st.subheader("Archive lookups")
         st.caption(
             "Query public archives or DOI references and push results into the overlay "
-            "workspace. Synthetic samples stand in for real responses until adapters are wired."
+            "workspace. Responses stream real spectra with full provenance metadata."
         )
         labels = provider_labels()
         tabs = st.tabs([labels[name] for name in ("MAST", "ESO", "SDSS", "DOI")])

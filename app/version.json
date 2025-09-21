@@ -1,5 +1,5 @@
 {
-  "version": "v1.1.5a",
-  "date_utc": "2025-09-21T00:00:00Z",
-  "summary": "Continuity index rollout, manifest links, and provider directory checks."
+  "version": "v1.1.6",
+  "date_utc": "2025-09-22T00:00:00Z",
+  "summary": "Replaced synthetic providers with live archive-backed spectra and expanded CALSPEC coverage."
 }
