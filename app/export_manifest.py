@@ -38,6 +38,10 @@ def build_manifest(
 
     flux_reference = 'normalized' if display_mode != 'Flux (raw)' else 'W m⁻² m⁻¹'
 
+    rows_list = list(rows)
+
+    flux_reference = 'normalized' if display_mode != 'Flux (raw)' else 'W m⁻² m⁻¹'
+
     manifest = {
         'exported_at': timestamp,
         'viewport': viewport,
