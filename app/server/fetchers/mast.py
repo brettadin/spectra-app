@@ -24,7 +24,7 @@ import requests
 
 from app._version import get_version_info
 
-__all__ = ["fetch", "MastFetchError"]
+__all__ = ["fetch", "MastFetchError", "available_targets"]
 
 
 CALSPEC_INDEX_URL = "https://ssb.stsci.edu/cdbs/calspec/"
@@ -129,6 +129,26 @@ for target in _CALSPEC_TARGETS:
     _ALIAS_LOOKUP[_normalise_token(target.canonical_name)] = target
     for alias in target.aliases:
         _ALIAS_LOOKUP[_normalise_token(alias)] = target
+
+
+def available_targets() -> Tuple[Dict[str, object], ...]:
+    """Return metadata describing the curated CALSPEC targets."""
+
+    records: List[Dict[str, object]] = []
+    for target in _CALSPEC_TARGETS:
+        records.append(
+            {
+                "canonical_name": target.canonical_name,
+                "aliases": tuple(target.aliases),
+                "instrument_label": target.instrument_label,
+                "spectral_type": target.spectral_type,
+                "distance_pc": target.distance_pc,
+                "description": target.description,
+                "preferred_modes": tuple(target.preferred_modes),
+                "fallback_modes": tuple(target.fallback_modes),
+            }
+        )
+    return tuple(records)
 
 
 _CACHED_INDEX: Optional[List[str]] = None

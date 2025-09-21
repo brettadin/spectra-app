@@ -86,3 +86,11 @@ def test_unknown_target_raises():
     mast.reset_index_cache()
     with pytest.raises(mast.MastFetchError):
         mast.fetch(target="Unknown Star")
+
+
+def test_available_targets_metadata():
+    targets = mast.available_targets()
+    assert {entry["canonical_name"] for entry in targets} >= {"Sirius A", "Vega", "18 Sco"}
+    sirius = next(entry for entry in targets if entry["canonical_name"] == "Sirius A")
+    assert "sirius" in {alias.lower() for alias in sirius["aliases"]}
+    assert sirius["instrument_label"].startswith("HST")
