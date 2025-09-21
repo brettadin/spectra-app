@@ -1,7 +1,7 @@
 # 🔑 BRAINS FIRST — DO NOT SKIP
 
 All contributors must consult the Brains before making changes.  
-- The canonical knowledge base is in `docs/brains/brains_<version>.md` (use the latest version).  
+- The canonical knowledge base is in `docs/brains/brains_<version>.md` (use the latest version).  past versions can be found as v1.1.x brains.md 
 - Every change/learning must be recorded there with a new **REF code**:
   - Format: `<PATCH>-<PART><SEQ>` (e.g., 1.1.5b-A01).  
   - Each REF entry includes: What, Why, Where, How, Verification, Provenance.  
