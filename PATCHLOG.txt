@@ -1,4 +1,4 @@
 Spectra App — Patch Log (append-only)
 ===============================
 
-- v1.1.5a: Refactored Streamlit UI with overlay/differential/archive tabs, similarity ribbon, and provider-backed archive workflows.
+- v1.1.5b: is this the thing that updates the header lol

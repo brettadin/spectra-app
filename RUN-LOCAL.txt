@@ -29,3 +29,10 @@ Expected files (fast check):
   - PATCHLOG.txt (root)
   - docs\patches\PATCH_NOTES_<version>.md
   - docs\ai_handoff\AI_HANDOFF_PROMPT_<version>.txt
+  - docs\brains\brains_<version>.md
+  - docs\brains\<version>_brains.md
+  - docs\brains\<version>_brains.txt
+  - docs\brains\ai_handoff.md
+  - docs\brains\brains_INDEX.md
+  - docs\atlas\
+  - docs\basics\
