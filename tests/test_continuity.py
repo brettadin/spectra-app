@@ -1,9 +1,16 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from app.continuity import get_continuity_links
 from app.export_manifest import build_manifest
+
+
+_CONFLICT_PATTERNS = (
+    re.compile(r'^<{7}(?: .*)?$', re.MULTILINE),
+    re.compile(r'^>{7}(?: .*)?$', re.MULTILINE),
+)
 
 
 def _repo_root() -> Path:
@@ -64,3 +71,42 @@ def test_build_manifest_includes_continuity():
     assert manifest['exported_at'] == '2025-09-21T00:00:00Z'
     assert manifest['transformations']['rows_exported'] == len(rows)
     assert manifest['traces'] == []
+        <<<<<<< codex/improve-unit-conversions-and-file-uploads-4ct6vp
+
+
+def test_repository_has_no_merge_conflict_markers():
+    repo_root = _repo_root()
+    skip_dirs = {
+        '.git',
+        '.pytest_cache',
+        '__pycache__',
+        'exports',
+    }
+    offenders = []
+
+    for path in repo_root.rglob('*'):
+        if path.is_dir():
+            continue
+
+        rel = path.relative_to(repo_root)
+        if any(part in skip_dirs for part in rel.parts):
+            continue
+
+        # Skip binary assets and provider caches.
+        if path.suffix.lower() in {'.png', '.jpg', '.jpeg', '.fits', '.gz', '.zip'}:
+            continue
+
+        try:
+            text = path.read_text(encoding='utf-8')
+        except UnicodeDecodeError:
+            continue
+
+        if any(pattern.search(text) for pattern in _CONFLICT_PATTERNS):
+            offenders.append(rel.as_posix())
+
+    assert not offenders, (
+        'Merge conflict markers detected in repository files: '
+        + ', '.join(offenders)
+    )
+=======
+        >>>>>>> main

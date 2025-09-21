@@ -46,6 +46,26 @@ def _maybe_air_to_vacuum_metadata(
     return wavelength_m
 
 
+        <<<<<<< codex/improve-unit-conversions-and-file-uploads-4ct6vp
+def _estimate_resolution(wavelength_m: np.ndarray) -> Optional[float]:
+    finite = np.asarray(wavelength_m, dtype=float)
+    finite = finite[np.isfinite(finite)]
+    if finite.size < 2:
+        return None
+    sorted_wl = np.sort(finite)
+    diffs = np.diff(sorted_wl)
+    positive = diffs > 0
+    if not np.any(positive):
+        return None
+    ratios = sorted_wl[1:][positive] / diffs[positive]
+    ratios = ratios[np.isfinite(ratios) & (ratios > 0)]
+    if ratios.size == 0:
+        return None
+    return float(np.median(ratios))
+
+
+=======
+        >>>>>>> main
 @dataclass
 class SpectrumSegment:
     """Canonical internal representation of an ingested spectral segment."""
@@ -215,6 +235,11 @@ def ingest_ascii_bytes(name: str, data: bytes) -> Tuple[List[SpectrumSegment], D
     if uncertainty_unit:
         metadata_out["uncertainty_unit_input"] = uncertainty_unit
 
+        <<<<<<< codex/improve-unit-conversions-and-file-uploads-4ct6vp
+    resolution = _estimate_resolution(wavelength_m)
+    if resolution is not None:
+        metadata_out["resolution_native"] = resolution
+=======
     finite = wavelength_m[np.isfinite(wavelength_m)]
     if finite.size > 1:
         diffs = np.diff(np.sort(finite))
@@ -222,6 +247,7 @@ def ingest_ascii_bytes(name: str, data: bytes) -> Tuple[List[SpectrumSegment], D
         if diffs.size > 0:
             r_native = float(np.median(finite[1:] / diffs))
             metadata_out["resolution_native"] = r_native
+        >>>>>>> main
 
     axis = infer_axis_assignment(flux_si, flux_kind)
 
@@ -334,12 +360,18 @@ def ingest_fits_bytes(name: str, data: bytes) -> Tuple[List[SpectrumSegment], Di
                     float(np.nanmax(wavelength_m) * 1e9),
                 ],
             }
+        <<<<<<< codex/improve-unit-conversions-and-file-uploads-4ct6vp
+            resolution = _estimate_resolution(wavelength_m)
+            if resolution is not None:
+                meta_segment["resolution_native"] = resolution
+=======
             finite = wavelength_m[np.isfinite(wavelength_m)]
             if finite.size > 1:
                 diffs = np.diff(np.sort(finite))
                 diffs = diffs[diffs > 0]
                 if diffs.size > 0:
                     meta_segment["resolution_native"] = float(np.median(finite[1:] / diffs))
+        >>>>>>> main
             meta_segment.update(_extract_fits_metadata(header))
 
             segment = SpectrumSegment(

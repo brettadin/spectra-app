@@ -1,0 +1,31 @@
+Spectra App — Patch Notes v1.1.5f
+=================================
+Release Date (UTC): 2025-09-23
+
+## Highlights
+- Added a repository hygiene test that fails the suite if merge-conflict markers
+  are detected in tracked files.
+- Updated version metadata, brains documentation, and the patch log to reflect
+  the new safeguard and keep continuity intact.
+
+## Modules Touched
+- `tests/test_continuity.py`
+- `PATCHLOG.txt`
+- `app/version.json`
+- `docs/brains/brains_INDEX.md`
+- `docs/brains/brains_v1.1.5f.md`
+- `docs/PATCH_NOTES/v1.1.5f.txt`
+
+## Continuity Links
+- Brains log: `docs/brains/brains_v1.1.5f.md`
+- AI handoff bridge: `docs/brains/ai_handoff.md`
+- Atlas index: `docs/atlas/index.md`
+
+## Verification
+- `pytest`
+
+## Follow-up
+- Evaluate adding local pre-commit hooks to mirror the merge-conflict scan for
+  quicker developer feedback.
+- Expand hygiene checks to catch other repository footguns (binary blobs,
+  accidental credential dumps) before release.
