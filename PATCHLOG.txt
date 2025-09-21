@@ -3,3 +3,4 @@ Spectra App — Patch Log (append-only)
 
 
 - v1.1.5a: Refactored Streamlit UI with overlay/differential/archive tabs, similarity ribbon, and provider-backed archive workflows.
+- v1.1.5b: Normalised ingestion to SI units, added CSV/TXT/FITS upload pipeline with provenance logging, dual-axis overlay plotting, enriched export manifest/metadata presentation, and rebuilt the Atlas documentation for in-app delivery.

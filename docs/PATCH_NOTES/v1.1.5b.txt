@@ -1,0 +1,33 @@
+Spectra App — Patch Notes v1.1.5b
+================================
+Release Date (UTC): 2025-09-21
+
+## Highlights
+- Normalised all ingestion steps to SI units with full provenance logging for wavelength and flux conversions.
+- Expanded upload pipeline to support CSV/TXT/FITS inputs with duplicate detection, segment-aware FITS handling, and metadata extraction for telescope/instrument context.
+- Reorganised the Atlas documentation (`docs/atlas/`) into site-ready pages embedded in the in-app Docs tab (getting started, ingestion, uploads, visualisation, exporting, developer guide).
+
+## Modules Touched
+- `app/server/ingestion_pipeline.py`
+- `app/utils/units.py`
+- `app/ui/main.py`
+- `app/export_manifest.py`
+- `docs/atlas/*`
+- `docs/brains/*`
+- `docs/index.md`
+- `PATCHLOG.txt`
+
+## Continuity Links
+- Brains log: `docs/brains/brains_v1.1.5b.md`
+- AI handoff bridge: `docs/brains/ai_handoff.md`
+- Atlas index: `docs/atlas/index.md`
+
+## Verification
+- `.\RUN_CMDS\Verify-Project.ps1`
+- `pytest`
+- Manual QA: upload FITS/CSV/TXT samples, toggle emission/absorption axes, confirm export manifest lists conversions and metadata.
+
+## Follow-up
+- Add troubleshooting examples for malformed FITS headers to the Atlas.
+- Capture screenshots of the Docs tab once image bundling is supported.
+- Evaluate a CLI helper that rebuilds plots from exported manifests for headless validation.
