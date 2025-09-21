@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import List
 
+import numpy as np
 import pytest
 
 from app.server.fetchers import mast
@@ -94,3 +95,33 @@ def test_available_targets_metadata():
     sirius = next(entry for entry in targets if entry["canonical_name"] == "Sirius A")
     assert "sirius" in {alias.lower() for alias in sirius["aliases"]}
     assert sirius["instrument_label"].startswith("HST")
+
+
+
+def test_fetch_computes_effective_range(monkeypatch, tmp_path):
+    mast.reset_index_cache()
+    monkeypatch.setattr(mast, "_list_remote_files", lambda: ["sirius_stis_003.fits"])
+
+    def fake_download(url, destination):
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(b"stub")
+
+    monkeypatch.setattr(mast, "_download_file", fake_download)
+
+    def fake_parse(path):
+        return {
+            "wavelength_nm": np.array([100.0, 200.0, 250.0, 1000.0, 4000.0]),
+            "flux": np.array([1.0, 0.8, 0.9, 0.001, 0.0]),
+            "stat_uncertainty": None,
+            "sys_uncertainty": None,
+        }
+
+    monkeypatch.setattr(mast, "_parse_calspec_spectrum", fake_parse)
+
+    result = mast.fetch(target="Sirius", cache_dir=tmp_path)
+
+    effective = result["meta"].get("wavelength_effective_range_nm")
+    assert effective is not None
+    assert 90.0 < effective[0] < 150.0
+    assert 900.0 < effective[1] < 2000.0
+

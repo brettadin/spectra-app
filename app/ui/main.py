@@ -461,14 +461,44 @@ def _render_duplicate_sidebar() -> None:
 # Overlay rendering helpers
 
 def _infer_viewport_bounds(overlays: Sequence[OverlayTrace]) -> Tuple[float, float]:
-    wavelengths: List[float] = []
+    if not overlays:
+        return 350.0, 900.0
+
+    meta_ranges: List[Tuple[float, float]] = []
+    data_wavelengths: List[float] = []
+
     for trace in overlays:
-        wavelengths.extend(trace.wavelength_nm)
-    arr = np.array(wavelengths, dtype=float)
+        meta_range = _extract_metadata_range(trace.metadata)
+        if meta_range is not None:
+            meta_ranges.append(meta_range)
+        data_wavelengths.extend(trace.wavelength_nm)
+
+    if meta_ranges:
+        lows, highs = zip(*meta_ranges)
+        low = float(min(lows))
+        high = float(max(highs))
+        if math.isfinite(low) and math.isfinite(high) and low < high:
+            return low, high
+
+    arr = np.array(data_wavelengths, dtype=float)
     arr = arr[np.isfinite(arr)]
     if arr.size == 0:
         return 350.0, 900.0
     return float(arr.min()), float(arr.max())
+
+
+def _extract_metadata_range(metadata: Dict[str, object]) -> Optional[Tuple[float, float]]:
+    for key in ("wavelength_effective_range_nm", "wavelength_range_nm"):
+        value = metadata.get(key) if metadata else None
+        if isinstance(value, (list, tuple)) and len(value) == 2:
+            try:
+                low = float(value[0])
+                high = float(value[1])
+            except (TypeError, ValueError):
+                continue
+            if math.isfinite(low) and math.isfinite(high) and low < high:
+                return min(low, high), max(low, high)
+    return None
 
 
 def _filter_viewport(df: pd.DataFrame, viewport: Tuple[float | None, float | None]) -> pd.DataFrame:
