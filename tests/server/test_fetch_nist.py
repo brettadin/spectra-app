@@ -123,6 +123,31 @@ def test_fetch_respects_table_units(monkeypatch: pytest.MonkeyPatch) -> None:
     assert math.isclose(first_line['ritz_wavelength_nm'] or 0.0, 500.2)
 
 
+def test_fetch_infers_scale_without_unit_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
+    table = Table()
+    table['Observed'] = Column([500.0, float('nan')])
+    table['Ritz'] = Column([500.2, 600.0])
+    table['Rel.'] = ['20', '']
+    table['Aki'] = ['1.0e+6', '']
+    table['fik'] = ['5.0e-1', '']
+    table['Acc.'] = ['AAA', '']
+    table['Ei           Ek'] = ['10.0  -  11.0', '']
+    table['Lower level'] = ['1s     | 2S | 1/2 |', '']
+    table['Upper level'] = ['2p     | 2P* | 3/2 |', '']
+    table['Type'] = ['E1', '']
+    table['TP'] = ['T1000', '']
+    table['Line'] = ['L2000', '']
+
+    monkeypatch.setattr(nist, 'Nist', type('Dummy', (), {'query': staticmethod(lambda *args, **kwargs: table)}))
+
+    result = nist.fetch(element='H', lower_wavelength=380.0, upper_wavelength=780.0)
+
+    assert result['wavelength_nm'] == pytest.approx([500.2, 600.0])
+    first_line = result['lines'][0]
+    assert math.isclose(first_line['observed_wavelength_nm'] or 0.0, 500.0)
+    assert math.isclose(first_line['ritz_wavelength_nm'] or 0.0, 500.2)
+
+
 def test_fetch_linename(monkeypatch: pytest.MonkeyPatch) -> None:
     def fake_query(min_wav, max_wav, *, linename=None, wavelength_type=None):  # noqa: D401 - simple stub
         return Table(rows=[], names=['Observed', 'Ritz', 'Rel.', 'Aki', 'fik', 'Acc.', 'Ei           Ek', 'Lower level', 'Upper level', 'Type', 'TP', 'Line'])
