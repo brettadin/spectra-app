@@ -1,7 +1,6 @@
 """Fetch spectral line data from the NIST Atomic Spectra Database."""
 from __future__ import annotations
 
-"""Client helpers for fetching NIST Atomic Spectra Database line lists."""
 
 import math
 import re
@@ -306,6 +305,24 @@ def _extract_float(value: Any) -> Optional[float]:
         return float(match.group(0))
     except ValueError:
         return None
+
+
+def _scaled_float(value: Optional[float], scale: float) -> Optional[float]:
+    """Multiply ``value`` by ``scale`` and return a plain ``float`` if finite."""
+
+    if value is None:
+        return None
+
+    scaled = value * scale
+    try:
+        scaled_float = float(scaled)
+    except Exception:
+        return None
+
+    if not math.isfinite(scaled_float):
+        return None
+
+    return scaled_float
 
 
 _ANGSTROM_PATTERN = re.compile(r"(ångstr(?:ö|o)m|angstrom|\bå\b|\[aa\])", re.IGNORECASE)
@@ -661,10 +678,8 @@ def fetch(
             observed_value = _extract_float(row.get("Observed"))
             ritz_value = _extract_float(row.get("Ritz"))
 
-            observed_nm = (
-                observed_value * observed_scale if observed_value is not None else None
-            )
-            ritz_nm = ritz_value * ritz_scale if ritz_value is not None else None
+            observed_nm = _scaled_float(observed_value, observed_scale)
+            ritz_nm = _scaled_float(ritz_value, ritz_scale)
 
             if use_ritz and ritz_nm is not None:
                 chosen_nm = ritz_nm
