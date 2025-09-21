@@ -29,7 +29,9 @@ def test_parse_fits_uses_first_data_extension(tmp_path):
     expected_wavelength = [400.0 + 0.5 * i for i in range(flux_values.size)]
 
     assert result["flux"] == flux_values.tolist()
-    assert result["wavelength"] == expected_wavelength
-    assert result["unit_wavelength"] == "nm"
-    assert result["meta"]["original_unit_wavelength"] == "nm"
-    assert result["unit_flux"] == "arb"
+    assert result["wavelength_nm"] == expected_wavelength
+    assert result["flux_unit"] == "arb"
+    assert result["flux_kind"] == "relative"
+    assert result["metadata"]["original_wavelength_unit"] == "nm"
+    assert result["metadata"]["wavelength_range_nm"] == [400.0, 401.0]
+    assert result["provenance"]["data_mode"] == "image"

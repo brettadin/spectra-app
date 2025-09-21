@@ -7,7 +7,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
@@ -27,6 +27,12 @@ from app.similarity import (
 )
 from app.similarity_panel import render_similarity_panel
 from app.utils.duplicate_ledger import DuplicateLedger
+from app.utils.local_ingest import (
+    SUPPORTED_ASCII_EXTENSIONS,
+    SUPPORTED_FITS_EXTENSIONS,
+    LocalIngestError,
+    ingest_local_file,
+)
 
 st.set_page_config(page_title="Spectra App", layout="wide")
 
@@ -98,6 +104,7 @@ def _ensure_session_state() -> None:
     st.session_state.setdefault("similarity_line_peaks", 8)
     st.session_state.setdefault("similarity_normalization", st.session_state.get("normalization_mode", "unit"))
     st.session_state.setdefault("duplicate_policy", "allow")
+    st.session_state.setdefault("local_upload_registry", {})
     if "duplicate_ledger" not in st.session_state:
         st.session_state["duplicate_ledger"] = DuplicateLedger()
     if "similarity_cache" not in st.session_state:
@@ -733,11 +740,71 @@ def _render_metadata_summary(overlays: Sequence[OverlayTrace]) -> None:
                 st.caption("No conversion provenance available.")
 
 
+def _get_upload_registry() -> Dict[str, Dict[str, object]]:
+    return st.session_state.setdefault("local_upload_registry", {})
+
+
+def _render_local_upload() -> None:
+    st.markdown("### Upload recorded spectra")
+    supported = sorted(SUPPORTED_ASCII_EXTENSIONS | SUPPORTED_FITS_EXTENSIONS)
+    accepted_types = sorted({ext.lstrip(".") for ext in supported if ext.startswith(".")})
+    uploader = st.file_uploader(
+        "Select spectral files",
+        type=accepted_types,
+        accept_multiple_files=True,
+        key="local_upload_widget",
+        help="Supports ASCII tables (CSV/TXT/TSV/ASCII), FITS spectral products, and gzip-compressed variants.",
+    )
+    st.caption(
+        "Supported extensions: "
+        + ", ".join(sorted(supported))
+    )
+    if st.button("Reset uploaded file tracker", key="reset_upload_registry"):
+        st.session_state["local_upload_registry"] = {}
+        st.success("Cleared upload tracker.")
+
+    if not uploader:
+        return
+
+    registry = _get_upload_registry()
+
+    for uploaded in uploader:
+        try:
+            payload_bytes = uploaded.getvalue()
+        except Exception as exc:  # pragma: no cover - Streamlit defensive branch
+            st.warning(f"Unable to read {uploaded.name}: {exc}")
+            continue
+
+        if not payload_bytes:
+            st.warning(f"{uploaded.name} is empty; skipping upload.")
+            continue
+
+        checksum = hashlib.sha256(payload_bytes).hexdigest()
+        if checksum in registry:
+            continue
+
+        try:
+            payload = ingest_local_file(uploaded.name, payload_bytes)
+        except LocalIngestError as exc:
+            st.warning(str(exc))
+            registry[checksum] = {"name": uploaded.name, "added": False, "message": str(exc)}
+            continue
+        except Exception as exc:  # pragma: no cover - unexpected failure
+            st.error(f"Unexpected error ingesting {uploaded.name}: {exc}")
+            registry[checksum] = {"name": uploaded.name, "added": False, "message": str(exc)}
+            continue
+
+        added, message = _add_overlay_payload(payload)
+        registry[checksum] = {"name": uploaded.name, "added": added, "message": message}
+        (st.success if added else st.info)(message)
+
+
 def _clear_overlays() -> None:
     st.session_state["overlay_traces"] = []
     st.session_state["reference_trace_id"] = None
     cache: SimilarityCache = st.session_state["similarity_cache"]
     cache.reset()
+    st.session_state["local_upload_registry"] = {}
 
 
 def _export_current_view(
@@ -837,19 +904,32 @@ def _render_line_tables(overlays: Sequence[OverlayTrace]) -> None:
 # ---------------------------------------------------------------------------
 # Patch log helpers
 
-def _load_patch_note() -> str:
-    path = Path("PATCHLOG.txt")
-    if not path.exists():
-        return ""
-    try:
-        lines = path.read_text(encoding="utf-8").splitlines()
-    except Exception:
-        return ""
-    cleaned = [line.strip() for line in lines if line.strip() and not line.startswith("=")]
-    for line in reversed(cleaned):
-        if line.startswith("-"):
-            return line.lstrip("- ")
-    return ""
+def _resolve_patch_metadata(version_info: Mapping[str, object]) -> Tuple[str, str, str]:
+    """Derive patch version and summary strings for UI presentation."""
+
+    def _text(value: object) -> str:
+        return str(value).strip() if value is not None else ""
+
+    patch_version = _text(version_info.get("patch_version"))
+    version_fallback = _text(version_info.get("version")) or "v?"
+    if not patch_version:
+        patch_version = version_fallback
+
+    patch_summary = _text(version_info.get("patch_summary"))
+    if not patch_summary:
+        patch_summary = _text(version_info.get("summary"))
+    if not patch_summary:
+        patch_summary = "No summary recorded."
+
+    patch_line = _text(version_info.get("patch_raw"))
+    if patch_line:
+        display_line = patch_line
+    elif patch_version:
+        display_line = f"{patch_version}: {patch_summary}" if patch_summary else patch_version
+    else:
+        display_line = patch_summary
+
+    return patch_version, patch_summary, display_line
 
 
 def _format_line_hover(line: Dict[str, object]) -> str:
@@ -920,7 +1000,9 @@ def _convert_nist_payload(data: Dict[str, object]) -> Optional[Dict[str, object]
 # ---------------------------------------------------------------------------
 # Status bar
 
-def _render_status_bar(version_info: Dict[str, str], patch_note: str) -> None:
+def _render_status_bar(
+    version_info: Mapping[str, object], patch_note: str, patch_version: str
+) -> None:
     overlays = _get_overlays()
     viewport = st.session_state.get("viewport_nm", (None, None))
     low, high = viewport
@@ -933,11 +1015,21 @@ def _render_status_bar(version_info: Dict[str, str], patch_note: str) -> None:
     }
     policy = policy_map.get(st.session_state.get("duplicate_policy"), "duplicates allowed")
     reference = _trace_label(st.session_state.get("reference_trace_id")) if overlays else "—"
+    build_version = str(version_info.get("version") or "v?")
+    patch_display = patch_version or build_version
+    date_text = str(version_info.get("date_utc") or "")
+    meta_parts = [f"build {build_version}"]
+    if patch_display:
+        meta_parts.append(f"patch {patch_display}")
+    if date_text:
+        meta_parts.append(date_text)
+    meta_line = " • ".join(part for part in meta_parts if part)
+
     st.markdown(
         (
             "<div style='margin-top:1rem;padding:0.6rem 0.8rem;border-top:1px solid #333;font-size:0.85rem;opacity:0.85;'>"
             f"<strong>{len(overlays)}</strong> overlays • viewport {low_str} – {high_str} • reference: {reference} • {policy}<br/>"
-            f"{version_info.get('version', 'v?')} • {version_info.get('date_utc', '')}<br/>"
+            f"{meta_line}<br/>"
             f"<em>{patch_note}</em>"
             "</div>"
         ),
@@ -949,11 +1041,13 @@ def _render_status_bar(version_info: Dict[str, str], patch_note: str) -> None:
 # Main tab renderers
 
 def _render_overlay_tab(version_info: Dict[str, str]) -> None:
-    overlays = _get_overlays()
     st.header("Overlay workspace")
+    _render_local_upload()
+    overlays = _get_overlays()
     if not overlays:
-        st.info("Load a reference spectrum or fetch from the archive tab to begin.")
+        st.info("Upload a recorded spectrum or fetch from the archive tab to begin.")
         return
+    st.divider()
 
     display_units = st.session_state.get("display_units", "nm")
     display_mode = st.session_state.get("display_mode", "Flux (raw)")
@@ -992,6 +1086,7 @@ def _render_overlay_tab(version_info: Dict[str, str]) -> None:
         reference_id=st.session_state.get("reference_trace_id"),
     )
     render_similarity_panel(visible_vectors, viewport, options, cache)
+    _render_metadata_summary(overlays)
     _render_line_tables(overlays)
 
 
@@ -1061,11 +1156,22 @@ def _render_docs_tab() -> None:
 def render() -> None:
     _ensure_session_state()
     version_info = get_version_info()
-    patch_note = _load_patch_note() or version_info.get("summary") or "No summary recorded."
+    patch_version, patch_summary, patch_line = _resolve_patch_metadata(version_info)
 
     st.title("Spectra App")
-    st.caption(f"Build {version_info.get('version', 'v?')} • {version_info.get('date_utc', '')}")
-    st.info(f"Patch: {patch_note}")
+    build_version = str(version_info.get("version") or "v?")
+    date_text = str(version_info.get("date_utc") or "")
+    caption_parts = [f"Build {build_version}"]
+    if patch_version:
+        caption_parts.append(f"Patch {patch_version}")
+    if date_text:
+        caption_parts.append(date_text)
+    st.caption(" • ".join(part for part in caption_parts if part))
+
+    if patch_version:
+        st.info(f"Patch {patch_version}: {patch_summary}")
+    else:
+        st.info(f"Patch: {patch_summary}")
 
     _render_reference_section()
     st.sidebar.divider()
@@ -1087,7 +1193,7 @@ def render() -> None:
     with docs_tab:
         _render_docs_tab()
 
-    _render_status_bar(version_info, patch_note)
+    _render_status_bar(version_info, patch_line, patch_version)
 
 
 def main() -> None:
