@@ -168,9 +168,25 @@ def ingest_local_file(name: str, content: bytes) -> Dict[str, object]:
     )
     if compression:
         ingest_info["compression"] = compression
+    if processed_name:
+        ingest_info.setdefault("filename", processed_name)
+    checksum = provenance.get("checksum")
+    if checksum:
+        ingest_info.setdefault("checksum", checksum)
+
+    flux_unit = str(parsed.get("flux_unit") or "arb")
+    conversions: Dict[str, object] = {}
+    original_unit = metadata.get("original_wavelength_unit")
+    if original_unit and str(original_unit).lower() != "nm":
+        conversions["wavelength_unit"] = {"from": original_unit, "to": "nm"}
+    reported_flux = metadata.get("reported_flux_unit")
+    if reported_flux and str(reported_flux) != flux_unit:
+        conversions["flux_unit"] = {"from": reported_flux, "to": flux_unit}
+    if conversions:
+        ingest_info.setdefault("conversions", conversions)
+    ingest_info.setdefault("samples", len(parsed.get("wavelength_nm") or []))
 
     label = _choose_label(original_name, parsed)
-    flux_unit = str(parsed.get("flux_unit") or "arb")
     summary = parsed.get("summary") or _build_summary(
         len(parsed.get("wavelength_nm") or []), metadata, flux_unit
     )
