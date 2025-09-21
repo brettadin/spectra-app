@@ -38,10 +38,10 @@ EXPORT_DIR.mkdir(parents=True, exist_ok=True)
 class OverlayTrace:
     trace_id: str
     label: str
-<<<<<<< HEAD
-    wavelength_m: Tuple[float, ...]
- codex/improve-unit-conversions-and-file-uploads-ussv5s
-    flux: Tuple[float, ...]
+HEAD
+wavelength_m: Tuple[float, ...]
+codex/improve-unit-conversions-and-file-uploads-ussv5s
+ flux: Tuple[float, ...]
 =======
  main
     flux_unit: str
@@ -49,7 +49,7 @@ class OverlayTrace:
 =======
     wavelength_nm: Tuple[float, ...]
     flux: Tuple[float, ...]
->>>>>>> parent of 9fe7c940 (v1.1.5d: fix export imports and surface atlas docs)
+   parent of 9fe7c940 (v1.1.5d: fix export imports and surface atlas docs)
     kind: str = "spectrum"
     provider: Optional[str] = None
     summary: Optional[str] = None
@@ -559,7 +559,7 @@ def _build_overlay_figure(
                 continue
             df = pd.DataFrame({"wavelength_nm": axis, "flux": values_trace - values_ref})
 
-<<<<<<< HEAD
+HEAD
  codex/improve-unit-conversions-and-file-uploads-ussv5s
 =======
  codex/improve-unit-conversions-and-file-uploads-udgaxh
