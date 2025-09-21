@@ -53,6 +53,10 @@ class OverlayTrace:
     trace_id: str
     label: str
     wavelength_m: Tuple[float, ...]
+ codex/improve-unit-conversions-and-file-uploads-ussv5s
+    flux: Tuple[float, ...]
+=======
+ main
     flux_unit: str
     flux_kind: str
     kind: str = "spectrum"
@@ -693,7 +697,10 @@ def _build_overlay_figure(
                 }
             )
 
+ codex/improve-unit-conversions-and-file-uploads-ussv5s
+=======
  codex/improve-unit-conversions-and-file-uploads-udgaxh
+ main
         if "wavelength_m" not in df.columns:
             if "wavelength_nm" in df.columns:
                 converted_m = wavelength_to_m(df["wavelength_nm"].to_numpy(dtype=float), "nm")
@@ -702,9 +709,12 @@ def _build_overlay_figure(
                 st.warning(f"{trace.label}: missing wavelength data; trace skipped.")
                 continue
 
+ codex/improve-unit-conversions-and-file-uploads-ussv5s
+=======
 =======
 
->>>> main
+ main
+  main
         converted, axis_title = _convert_wavelength(df["wavelength_m"], display_units)
         df = df.assign(wavelength=converted, flux=df["flux"].astype(float))
         if "hover" in df:
@@ -884,11 +894,15 @@ def _render_metadata_summary(overlays: Sequence[OverlayTrace]) -> None:
         )
     if rows:
         st.markdown("#### Metadata summary")
+ codex/improve-unit-conversions-and-file-uploads-ussv5s
+        st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
+=======
  codex/improve-unit-conversions-and-file-uploads-udgaxh
         st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
 =======
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
  main
+  main
     with st.expander("Metadata & provenance details", expanded=False):
         for trace in overlays:
             st.markdown(f"**{trace.label}**")
@@ -1266,33 +1280,71 @@ def _render_archive_tab() -> None:
     controller.render()
 
 
+def _extract_doc_title(path: Path) -> str:
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                return stripped.lstrip("# ").strip() or path.stem
+    except Exception:
+        pass
+    name = path.stem.replace("_", " ").replace("-", " ")
+    return name.title()
+
+
+def _gather_document_options() -> List[Tuple[str, Path]]:
+    options: List[Tuple[str, Path]] = []
+    index_path = Path("docs/index.md")
+    if index_path.exists():
+        options.append(("Docs • Index", index_path))
+
+    atlas_dir = Path("docs/atlas")
+    if atlas_dir.exists():
+        for path in sorted(atlas_dir.glob("*.md")):
+            label = _extract_doc_title(path)
+            options.append((f"Atlas • {label}", path))
+
+    legacy_paths = [
+        Path("docs/ingestion.md"),
+        Path("docs/ui/displaying_data_guide.md"),
+        Path("docs/ui/ui_design_guide.md"),
+        Path("docs/ui/bad_ui_guide.md"),
+        Path("docs/sources/astro_data_docs.md"),
+        Path("docs/sources/telescopes_overview.md"),
+        Path("docs/sources/notable_sources_techniques_tools.md"),
+        Path("docs/sources/stellar_light_methods.md"),
+        Path("docs/math/spectroscopy_math_part1.md"),
+        Path("docs/math/spectroscopy_math_part2.md"),
+        Path("docs/math/instrument_accuracy_errors_interpretation.md"),
+        Path("docs/differential/part1b.md"),
+        Path("docs/differential/part1c.md"),
+        Path("docs/differential/part2.md"),
+        Path("docs/modeling/spectral_modeling_part1a.md"),
+    ]
+    for path in legacy_paths:
+        if path.exists():
+            options.append((f"Legacy • {_extract_doc_title(path)}", path))
+
+    return options
+
+
 def _render_docs_tab() -> None:
     st.header("Docs & provenance")
-    documents = [
-        "docs/index.md",
-        "docs/ingestion.md",
-        "docs/ui/displaying_data_guide.md",
-        "docs/ui/ui_design_guide.md",
-        "docs/ui/bad_ui_guide.md",
-        "docs/sources/astro_data_docs.md",
-        "docs/sources/telescopes_overview.md",
-        "docs/sources/notable_sources_techniques_tools.md",
-        "docs/sources/stellar_light_methods.md",
-        "docs/math/spectroscopy_math_part1.md",
-        "docs/math/spectroscopy_math_part2.md",
-        "docs/math/instrument_accuracy_errors_interpretation.md",
-        "docs/differential/part1b.md",
-        "docs/differential/part1c.md",
-        "docs/differential/part2.md",
-        "docs/modeling/spectral_modeling_part1a.md",
-    ]
-    selection = st.selectbox("Open doc", documents)
+    documents = _gather_document_options()
+    if not documents:
+        st.info("No documentation files available.")
+        return
+
+    labels = [label for label, _ in documents]
+    selection = st.selectbox("Open doc", labels)
+    selected_path = next(path for label, path in documents if label == selection)
     try:
-        content = Path(selection).read_text(encoding="utf-8")
+        content = selected_path.read_text(encoding="utf-8")
     except Exception as exc:
-        st.error(f"Failed to load doc {selection}: {exc}")
+        st.error(f"Failed to load doc {selected_path}: {exc}")
     else:
-        st.code(content, language="markdown")
+        st.markdown(content)
+        st.caption(f"Source: `{selected_path}`")
 
     overlays = _get_overlays()
     if overlays:
