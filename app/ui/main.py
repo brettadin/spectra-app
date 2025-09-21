@@ -38,18 +38,8 @@ EXPORT_DIR.mkdir(parents=True, exist_ok=True)
 class OverlayTrace:
     trace_id: str
     label: str
-HEAD
-wavelength_m: Tuple[float, ...]
-codex/improve-unit-conversions-and-file-uploads-ussv5s
- flux: Tuple[float, ...]
-=======
- main
-    flux_unit: str
-    flux_kind: str
-=======
     wavelength_nm: Tuple[float, ...]
     flux: Tuple[float, ...]
-   parent of 9fe7c940 (v1.1.5d: fix export imports and surface atlas docs)
     kind: str = "spectrum"
     provider: Optional[str] = None
     summary: Optional[str] = None
@@ -58,6 +48,9 @@ codex/improve-unit-conversions-and-file-uploads-ussv5s
     provenance: Dict[str, object] = field(default_factory=dict)
     fingerprint: str = ""
     hover: Optional[Tuple[str, ...]] = None
+    flux_unit: str = "arb"
+    flux_kind: str = "relative"
+    axis: str = "emission"
 
     def to_dataframe(self) -> pd.DataFrame:
         data: Dict[str, Iterable[object]] = {
@@ -155,12 +148,15 @@ def _add_overlay(
     wavelengths: Sequence[float],
     flux: Sequence[float],
     *,
+    flux_unit: Optional[str] = None,
+    flux_kind: Optional[str] = None,
     kind: str = "spectrum",
     provider: Optional[str] = None,
     summary: Optional[str] = None,
     metadata: Optional[Dict[str, object]] = None,
     provenance: Optional[Dict[str, object]] = None,
     hover: Optional[Sequence[str]] = None,
+    axis: Optional[str] = None,
 ) -> Tuple[bool, str]:
     try:
         values_w = [float(v) for v in wavelengths]
@@ -194,6 +190,9 @@ def _add_overlay(
         provenance=dict(provenance or {}),
         fingerprint=fingerprint,
         hover=tuple(str(text) for text in (hover or [])) if hover else None,
+        flux_unit=str(flux_unit or "arb"),
+        flux_kind=str(flux_kind or "relative"),
+        axis=str(axis or "emission"),
     )
     overlays.append(trace)
     _set_overlays(overlays)
@@ -224,12 +223,15 @@ def _add_overlay_payload(payload: Dict[str, object]) -> Tuple[bool, str]:
         str(payload.get("label") or "Trace"),
         payload.get("wavelength_nm") or [],
         payload.get("flux") or [],
+        flux_unit=payload.get("flux_unit"),
+        flux_kind=payload.get("flux_kind"),
         kind=str(payload.get("kind") or "spectrum"),
         provider=payload.get("provider"),
         summary=payload.get("summary"),
         metadata=payload.get("metadata"),
         provenance=payload.get("provenance"),
         hover=payload.get("hover"),
+        axis=payload.get("axis"),
     )
 
 
@@ -558,30 +560,11 @@ def _build_overlay_figure(
             if axis is None or values_trace is None or values_ref is None:
                 continue
             df = pd.DataFrame({"wavelength_nm": axis, "flux": values_trace - values_ref})
+        if "wavelength_nm" not in df.columns:
+            st.warning(f"{trace.label}: missing wavelength data; trace skipped.")
+            continue
 
-HEAD
- codex/improve-unit-conversions-and-file-uploads-ussv5s
-=======
- codex/improve-unit-conversions-and-file-uploads-udgaxh
- main
-        if "wavelength_m" not in df.columns:
-            if "wavelength_nm" in df.columns:
-                converted_m = wavelength_to_m(df["wavelength_nm"].to_numpy(dtype=float), "nm")
-                df = df.assign(wavelength_m=converted_m)
-            else:
-                st.warning(f"{trace.label}: missing wavelength data; trace skipped.")
-                continue
-
- codex/improve-unit-conversions-and-file-uploads-ussv5s
-=======
-=======
-
- main
-  main
-        converted, axis_title = _convert_wavelength(df["wavelength_m"], display_units)
-=======
         converted, axis_title = _convert_wavelength(df["wavelength_nm"], display_units)
->>>>>>> parent of 9fe7c940 (v1.1.5d: fix export imports and surface atlas docs)
         df = df.assign(wavelength=converted, flux=df["flux"].astype(float))
         if "hover" in df:
             df["hover"] = df["hover"].astype(str)
@@ -681,7 +664,6 @@ def _remove_overlays(trace_ids: Sequence[str]) -> None:
     cache.reset()
 
 
-<<<<<<< HEAD
 def _render_metadata_summary(overlays: Sequence[OverlayTrace]) -> None:
     if not overlays:
         return
@@ -707,15 +689,7 @@ def _render_metadata_summary(overlays: Sequence[OverlayTrace]) -> None:
         )
     if rows:
         st.markdown("#### Metadata summary")
- codex/improve-unit-conversions-and-file-uploads-ussv5s
-        st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
-=======
- codex/improve-unit-conversions-and-file-uploads-udgaxh
-        st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
-=======
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
- main
-  main
     with st.expander("Metadata & provenance details", expanded=False):
         for trace in overlays:
             st.markdown(f"**{trace.label}**")
@@ -729,8 +703,6 @@ def _render_metadata_summary(overlays: Sequence[OverlayTrace]) -> None:
                 st.caption("No conversion provenance available.")
 
 
-=======
->>>>>>> parent of 9fe7c940 (v1.1.5d: fix export imports and surface atlas docs)
 def _clear_overlays() -> None:
     st.session_state["overlay_traces"] = []
     st.session_state["reference_trace_id"] = None

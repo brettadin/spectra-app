@@ -1,5 +1,9 @@
-from astropy.io import fits
+from __future__ import annotations
+
+from typing import Dict
+
 import numpy as np
+from astropy.io import fits
 
 from .units import to_nm
 
@@ -20,9 +24,14 @@ def _ensure_1d(array: np.ndarray) -> np.ndarray:
     )
 
 
-def parse_fits(path: str):
+def parse_fits(path: str) -> Dict[str, object]:
+    """Extract a spectrum from a FITS file into the normalised payload."""
+
     with fits.open(path) as hdul:
-        data_hdu = next((hdu for hdu in hdul if getattr(hdu, "data", None) is not None), None)
+        data_hdu = next(
+            (hdu for hdu in hdul if getattr(hdu, "data", None) is not None),
+            None,
+        )
         if data_hdu is None:
             raise ValueError("No array data found in FITS file.")
 
@@ -41,8 +50,9 @@ def parse_fits(path: str):
             if value is None
         ]
         if missing:
+            joined = ", ".join(missing)
             raise ValueError(
-                "Missing WCS keyword(s) " + ", ".join(missing) + " in FITS header for spectral axis."
+                f"Missing WCS keyword(s) {joined} in FITS header for spectral axis."
             )
 
         try:
@@ -55,11 +65,11 @@ def parse_fits(path: str):
         unit = header.get("CUNIT1", "nm")
 
         pix = np.arange(flux.size, dtype=float)
-        wl = crval1 + (pix - (crpix1 - 1.0)) * cdelt1
-        wl_nm = to_nm(wl.tolist(), unit)
+        wavelengths = crval1 + (pix - (crpix1 - 1.0)) * cdelt1
+        wavelength_nm = to_nm(wavelengths.tolist(), unit)
 
         return {
-            "wavelength": wl_nm,
+            "wavelength": wavelength_nm,
             "flux": flux.tolist(),
             "unit_wavelength": "nm",
             "unit_flux": "arb",
