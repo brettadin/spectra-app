@@ -3,6 +3,7 @@ Spectra App — Patch Log (append-only)
 
 
 - v1.1.5a: Refactored Streamlit UI with overlay/differential/archive tabs, similarity ribbon, and provider-backed archive workflows.
+<<<<<<< HEAD
  codex/improve-unit-conversions-and-file-uploads-ussv5s
 - v1.1.5b: Normalised ingestion to SI units, added CSV/TXT/FITS upload pipeline with provenance logging, dual-axis overlay plotting, enriched export manifest/metadata presentation, and rebuilt the Atlas documentation for in-app delivery.
 - v1.1.5c: Migrated UI tables/plots to Streamlit's `width` API, aliased duplicate similarity labels to avoid Arrow failures, and restored missing `wavelength_m` data during overlay plotting for legacy payloads.
@@ -19,3 +20,5 @@ Spectra App — Patch Log (append-only)
  main
  main
  main
+=======
+>>>>>>> parent of 9fe7c940 (v1.1.5d: fix export imports and surface atlas docs)

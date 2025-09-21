@@ -13,18 +13,11 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
-from plotly.subplots import make_subplots
 
 from app._version import get_version_info
 from app.archive_ui import ArchiveUI
 from app.export_manifest import build_manifest
 from app.server.fetch_archives import FetchError, fetch_spectrum
-from app.server.ingestion_pipeline import (
-    SpectrumSegment,
-    checksum_bytes,
-    ingest_ascii_bytes,
-    ingest_fits_bytes,
-)
 from app.similarity import (
     SimilarityCache,
     SimilarityOptions,
@@ -34,13 +27,6 @@ from app.similarity import (
 )
 from app.similarity_panel import render_similarity_panel
 from app.utils.duplicate_ledger import DuplicateLedger
-from app.utils.units import (
-    convert_wavelength_for_display,
-    flux_to_f_lambda,
-    format_flux_unit,
-    infer_axis_assignment,
-    wavelength_to_m,
-)
 
 st.set_page_config(page_title="Spectra App", layout="wide")
 
@@ -52,6 +38,7 @@ EXPORT_DIR.mkdir(parents=True, exist_ok=True)
 class OverlayTrace:
     trace_id: str
     label: str
+<<<<<<< HEAD
     wavelength_m: Tuple[float, ...]
  codex/improve-unit-conversions-and-file-uploads-ussv5s
     flux: Tuple[float, ...]
@@ -59,26 +46,24 @@ class OverlayTrace:
  main
     flux_unit: str
     flux_kind: str
+=======
+    wavelength_nm: Tuple[float, ...]
+    flux: Tuple[float, ...]
+>>>>>>> parent of 9fe7c940 (v1.1.5d: fix export imports and surface atlas docs)
     kind: str = "spectrum"
     provider: Optional[str] = None
     summary: Optional[str] = None
     visible: bool = True
     metadata: Dict[str, object] = field(default_factory=dict)
-    provenance: List[Dict[str, object]] = field(default_factory=list)
+    provenance: Dict[str, object] = field(default_factory=dict)
     fingerprint: str = ""
     hover: Optional[Tuple[str, ...]] = None
-    uncertainty: Optional[Tuple[float, ...]] = None
-    axis: str = "emission"
 
     def to_dataframe(self) -> pd.DataFrame:
-        arr_m = np.asarray(self.wavelength_m, dtype=float)
         data: Dict[str, Iterable[object]] = {
-            "wavelength_m": arr_m,
-            "wavelength_nm": arr_m * 1e9,
-            "flux": np.asarray(self.flux, dtype=float),
+            "wavelength_nm": self.wavelength_nm,
+            "flux": self.flux,
         }
-        if self.uncertainty is not None:
-            data["uncertainty"] = np.asarray(self.uncertainty, dtype=float)
         if self.hover:
             data["hover"] = list(self.hover)
         df = pd.DataFrame(data)
@@ -99,7 +84,7 @@ class OverlayTrace:
 
     @property
     def points(self) -> int:
-        return len(self.wavelength_m)
+        return len(self.wavelength_nm)
 
 
 # ---------------------------------------------------------------------------
@@ -120,7 +105,6 @@ def _ensure_session_state() -> None:
     st.session_state.setdefault("similarity_line_peaks", 8)
     st.session_state.setdefault("similarity_normalization", st.session_state.get("normalization_mode", "unit"))
     st.session_state.setdefault("duplicate_policy", "allow")
-    st.session_state.setdefault("uploaded_hashes", set())
     if "duplicate_ledger" not in st.session_state:
         st.session_state["duplicate_ledger"] = DuplicateLedger()
     if "similarity_cache" not in st.session_state:
@@ -159,7 +143,7 @@ def _trace_label(trace_id: Optional[str]) -> str:
 
 def _compute_fingerprint(wavelengths: Sequence[float], flux: Sequence[float]) -> str:
     payload = {
-        "wavelength_m": [round(float(w), 12) for w in wavelengths],
+        "wavelength_nm": [round(float(w), 6) for w in wavelengths],
         "flux": [round(float(f), 6) for f in flux],
     }
     encoded = json.dumps(payload, sort_keys=True).encode("utf-8")
@@ -168,34 +152,23 @@ def _compute_fingerprint(wavelengths: Sequence[float], flux: Sequence[float]) ->
 
 def _add_overlay(
     label: str,
-    wavelengths_m: Sequence[float],
+    wavelengths: Sequence[float],
     flux: Sequence[float],
     *,
-    flux_unit: str = "W m⁻² m⁻¹",
-    flux_kind: str = "F_lambda",
     kind: str = "spectrum",
     provider: Optional[str] = None,
     summary: Optional[str] = None,
     metadata: Optional[Dict[str, object]] = None,
-    provenance: Optional[Iterable[Dict[str, object]] | Dict[str, object]] = None,
+    provenance: Optional[Dict[str, object]] = None,
     hover: Optional[Sequence[str]] = None,
-    uncertainty: Optional[Sequence[float]] = None,
-    axis: Optional[str] = None,
 ) -> Tuple[bool, str]:
     try:
-        values_w = [float(v) for v in wavelengths_m]
+        values_w = [float(v) for v in wavelengths]
         values_f = [float(v) for v in flux]
     except (TypeError, ValueError):
         return False, "Unable to coerce spectral data to floats."
     if not values_w or not values_f or len(values_w) != len(values_f):
         return False, "No spectral samples available."
-
-    values_uncert: Optional[Tuple[float, ...]] = None
-    if uncertainty is not None:
-        try:
-            values_uncert = tuple(float(v) for v in uncertainty)
-        except (TypeError, ValueError):
-            values_uncert = None
 
     overlays = _get_overlays()
     fingerprint = _compute_fingerprint(values_w, values_f)
@@ -209,46 +182,18 @@ def _add_overlay(
             if ledger.seen(fingerprint):
                 return False, f"Trace already recorded in ledger: {label}"
 
-    meta = dict(metadata or {})
-    if "flux_unit_display" not in meta:
-        meta["flux_unit_display"] = format_flux_unit(flux_unit)
-    meta.setdefault("wavelength_unit_internal", "m")
-
-    if isinstance(provenance, dict):
-        provenance_records = [
-            {
-                "stage": "legacy",
-                "details": dict(provenance),
-            }
-        ]
-    elif provenance is None:
-        provenance_records = []
-    else:
-        provenance_records = [dict(event) for event in provenance]
-
-    axis_choice = axis or str(meta.get("axis") or "")
-    axis_choice = axis_choice.lower()
-    if axis_choice not in {"emission", "absorption"}:
-        axis_choice = infer_axis_assignment(values_f, flux_kind)
-
-    meta["axis"] = axis_choice
-
     trace = OverlayTrace(
         trace_id=str(uuid.uuid4()),
         label=label,
-        wavelength_m=tuple(values_w),
+        wavelength_nm=tuple(values_w),
         flux=tuple(values_f),
-        flux_unit=format_flux_unit(flux_unit),
-        flux_kind=flux_kind,
         kind=kind,
         provider=provider,
         summary=summary,
-        metadata=meta,
-        provenance=provenance_records,
+        metadata=dict(metadata or {}),
+        provenance=dict(provenance or {}),
         fingerprint=fingerprint,
         hover=tuple(str(text) for text in (hover or [])) if hover else None,
-        uncertainty=values_uncert,
-        axis=axis_choice,
     )
     overlays.append(trace)
     _set_overlays(overlays)
@@ -275,28 +220,16 @@ def _add_overlay(
 
 
 def _add_overlay_payload(payload: Dict[str, object]) -> Tuple[bool, str]:
-    wavelengths_m = payload.get("wavelength_m")
-    if not wavelengths_m and payload.get("wavelength_nm"):
-        wavelengths_m = wavelength_to_m(payload.get("wavelength_nm") or [], "nm")
-    flux_unit = str(payload.get("flux_unit") or "W m⁻² m⁻¹")
-    flux_kind = str(payload.get("flux_kind") or "F_lambda")
-    uncertainty = payload.get("uncertainty")
-    meta = payload.get("metadata") or {}
-    axis = payload.get("axis") or meta.get("axis")
     return _add_overlay(
         str(payload.get("label") or "Trace"),
-        wavelengths_m or [],
+        payload.get("wavelength_nm") or [],
         payload.get("flux") or [],
-        flux_unit=flux_unit,
-        flux_kind=flux_kind,
         kind=str(payload.get("kind") or "spectrum"),
         provider=payload.get("provider"),
         summary=payload.get("summary"),
-        metadata=meta,
+        metadata=payload.get("metadata"),
         provenance=payload.get("provenance"),
         hover=payload.get("hover"),
-        uncertainty=uncertainty,
-        axis=axis,
     )
 
 
@@ -310,33 +243,12 @@ def _add_example_trace(example: str, label: str) -> Tuple[bool, str]:
         return False, f"Failed to load example {example}: {exc}"
     if "wavelength_nm" not in df or "intensity" not in df:
         return False, f"Example {example} missing required columns."
-    wavelength_m = wavelength_to_m(df["wavelength_nm"].to_numpy(dtype=float), "nm")
-    flux_si, flux_unit, flux_kind = flux_to_f_lambda(
-        df["intensity"].to_numpy(dtype=float),
-        wavelength_m,
-        "W/m^2/nm",
-    )
-    metadata = {
-        "source": "example",
-        "path": str(csv_path),
-        "wavelength_unit_input": "nm",
-        "flux_unit_input": "W/m^2/nm",
-        "axis": infer_axis_assignment(flux_si, flux_kind),
-    }
-    provenance = [
-        {
-            "stage": "example_conversion",
-            "from": "W m⁻² nm⁻¹",
-            "to": flux_unit,
-            "formula": "Assumed built-in examples are provided per nm",
-        }
-    ]
+    metadata = {"source": "example", "path": str(csv_path)}
+    provenance = {"source": "example", "file": str(csv_path)}
     return _add_overlay(
         label,
-        wavelength_m,
-        flux_si,
-        flux_unit=flux_unit,
-        flux_kind=flux_kind,
+        df["wavelength_nm"].tolist(),
+        df["intensity"].tolist(),
         provider="EXAMPLE",
         summary="Built-in example trace",
         metadata=metadata,
@@ -546,53 +458,10 @@ def _render_duplicate_sidebar() -> None:
 # ---------------------------------------------------------------------------
 # Overlay rendering helpers
 
-
-def _render_upload_panel() -> None:
-    st.subheader("Upload spectra")
-    uploaded = st.file_uploader(
-        "Add spectra files (CSV/TXT/FITS)",
-        accept_multiple_files=True,
-        type=["csv", "txt", "fits"],
-    )
-    if not uploaded:
-        return
-
-    seen: set[str] = st.session_state.setdefault("uploaded_hashes", set())
-    for file in uploaded:
-        content = file.getvalue()
-        digest = checksum_bytes(content)
-        if digest in seen:
-            st.info(f"{file.name}: duplicate upload skipped.")
-            continue
-        try:
-            if file.name.lower().endswith(".fits"):
-                segments, meta = ingest_fits_bytes(file.name, content)
-            else:
-                segments, meta = ingest_ascii_bytes(file.name, content)
-        except Exception as exc:
-            st.error(f"Failed to ingest {file.name}: {exc}")
-            continue
-
-        for idx, segment in enumerate(segments, start=1):
-            payload = segment.as_payload()
-            metadata = payload.get("metadata") or {}
-            metadata.update({
-                "upload_digest": digest,
-                "upload_file": file.name,
-            })
-            payload["metadata"] = metadata
-            added, message = _add_overlay_payload(payload)
-            if added:
-                st.success(f"{file.name} segment {idx}: {message}")
-            else:
-                st.warning(f"{file.name} segment {idx}: {message}")
-        seen.add(digest)
-    st.session_state["uploaded_hashes"] = seen
-
 def _infer_viewport_bounds(overlays: Sequence[OverlayTrace]) -> Tuple[float, float]:
     wavelengths: List[float] = []
     for trace in overlays:
-        wavelengths.extend(float(w) * 1e9 for w in trace.wavelength_m)
+        wavelengths.extend(trace.wavelength_nm)
     arr = np.array(wavelengths, dtype=float)
     arr = arr[np.isfinite(arr)]
     if arr.size == 0:
@@ -612,11 +481,17 @@ def _filter_viewport(df: pd.DataFrame, viewport: Tuple[float | None, float | Non
 def _convert_wavelength(series: pd.Series, unit: str) -> Tuple[pd.Series, str]:
     unit = unit or "nm"
     values = pd.to_numeric(series, errors="coerce")
-    converted, axis_title = convert_wavelength_for_display(values.to_numpy(dtype=float), unit)
-    return pd.Series(converted, index=series.index), axis_title
+    if unit == "Å":
+        return values * 10.0, "Wavelength (Å)"
+    if unit == "µm":
+        return values / 1000.0, "Wavelength (µm)"
+    if unit == "cm^-1":
+        safe = values.replace(0, np.nan)
+        return 1e7 / safe, "Wavenumber (cm⁻¹)"
+    return values, "Wavelength (nm)"
 
 
-def _add_line_trace(fig: go.Figure, df: pd.DataFrame, label: str, *, secondary_y: bool = False) -> None:
+def _add_line_trace(fig: go.Figure, df: pd.DataFrame, label: str) -> None:
     xs: List[float | None] = []
     ys: List[float | None] = []
     hover: List[Optional[str]] = []
@@ -635,8 +510,7 @@ def _add_line_trace(fig: go.Figure, df: pd.DataFrame, label: str, *, secondary_y
             name=label,
             hovertext=hover if any(hover) else None,
             hoverinfo="text",
-        ),
-        secondary_y=secondary_y,
+        )
     )
     fig.add_trace(
         go.Scatter(
@@ -648,8 +522,7 @@ def _add_line_trace(fig: go.Figure, df: pd.DataFrame, label: str, *, secondary_y
             hovertext=df.get("hover"),
             hoverinfo="text",
             showlegend=False,
-        ),
-        secondary_y=secondary_y,
+        )
     )
 
 
@@ -663,10 +536,8 @@ def _build_overlay_figure(
     differential_mode: str,
     version_tag: str,
 ) -> Tuple[go.Figure, str]:
-    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    fig = go.Figure()
     axis_title = "Wavelength (nm)"
-    emission_units: set[str] = set()
-    absorption_units: set[str] = set()
     reference_vectors = reference.to_vectors() if reference else None
 
     for trace in overlays:
@@ -683,20 +554,12 @@ def _build_overlay_figure(
             and trace.trace_id != reference_vectors.trace_id
             and trace.kind != "lines"
         ):
-            axis_nm, values_trace, values_ref = viewport_alignment(
-                trace.to_vectors(), reference_vectors, viewport
-            )
-            if axis_nm is None or values_trace is None or values_ref is None:
+            axis, values_trace, values_ref = viewport_alignment(trace.to_vectors(), reference_vectors, viewport)
+            if axis is None or values_trace is None or values_ref is None:
                 continue
-            axis_m = wavelength_to_m(axis_nm, "nm")
-            df = pd.DataFrame(
-                {
-                    "wavelength_m": axis_m,
-                    "wavelength_nm": axis_nm,
-                    "flux": values_trace - values_ref,
-                }
-            )
+            df = pd.DataFrame({"wavelength_nm": axis, "flux": values_trace - values_ref})
 
+<<<<<<< HEAD
  codex/improve-unit-conversions-and-file-uploads-ussv5s
 =======
  codex/improve-unit-conversions-and-file-uploads-udgaxh
@@ -716,6 +579,9 @@ def _build_overlay_figure(
  main
   main
         converted, axis_title = _convert_wavelength(df["wavelength_m"], display_units)
+=======
+        converted, axis_title = _convert_wavelength(df["wavelength_nm"], display_units)
+>>>>>>> parent of 9fe7c940 (v1.1.5d: fix export imports and surface atlas docs)
         df = df.assign(wavelength=converted, flux=df["flux"].astype(float))
         if "hover" in df:
             df["hover"] = df["hover"].astype(str)
@@ -723,64 +589,28 @@ def _build_overlay_figure(
         if df.empty:
             continue
 
-        y_values = df["flux"].to_numpy(dtype=float)
-        mirrored = False
-        if trace.axis == "absorption":
-            finite = y_values[np.isfinite(y_values)]
-            if finite.size and np.mean(finite < 0) > 0.5:
-                y_values = -y_values
-                mirrored = True
         if display_mode != "Flux (raw)":
-            y_values = apply_normalization(y_values, "max")
+            df["flux"] = apply_normalization(df["flux"].to_numpy(dtype=float), "max")
         elif normalization_mode and normalization_mode != "none" and trace.kind != "lines":
-            y_values = apply_normalization(y_values, normalization_mode)
-
-        df_plot = df.copy()
-        df_plot["flux"] = y_values
-        secondary = trace.axis == "absorption"
-        if secondary:
-            absorption_units.add(trace.flux_unit)
-            if mirrored:
-                trace.metadata["absorption_mirrored"] = True
-        else:
-            emission_units.add(trace.flux_unit)
+            df["flux"] = apply_normalization(df["flux"].to_numpy(dtype=float), normalization_mode)
 
         if trace.kind == "lines":
-            _add_line_trace(fig, df_plot, trace.label, secondary_y=secondary)
+            _add_line_trace(fig, df, trace.label)
         else:
             fig.add_trace(
                 go.Scatter(
-                    x=df_plot["wavelength"],
-                    y=df_plot["flux"],
+                    x=df["wavelength"],
+                    y=df["flux"],
                     mode="lines",
                     name=trace.label,
-                    hovertext=df_plot.get("hover"),
+                    hovertext=df.get("hover"),
                     hoverinfo="text",
-                ),
-                secondary_y=secondary,
+                )
             )
-
-    if display_mode != "Flux (raw)":
-        left_title = "Normalized flux"
-        right_title = "Normalized absorption"
-    else:
-        left_title = "Flux"
-        if emission_units:
-            if len(emission_units) == 1:
-                left_title = f"Flux ({next(iter(emission_units))})"
-            else:
-                left_title = "Flux (mixed units)"
-        right_title = "Absorption"
-        if absorption_units:
-            if len(absorption_units) == 1:
-                right_title = f"Absorption ({next(iter(absorption_units))})"
-            else:
-                right_title = "Absorption (mixed units)"
-        else:
-            right_title = ""
 
     fig.update_layout(
         xaxis_title=axis_title,
+        yaxis_title="Normalized flux" if display_mode != "Flux (raw)" else "Flux",
         legend=dict(itemclick="toggleothers"),
         margin=dict(t=50, b=40, l=60, r=20),
         height=520,
@@ -800,8 +630,6 @@ def _build_overlay_figure(
             )
         ]
     )
-    fig.update_yaxes(title_text=left_title, secondary_y=False)
-    fig.update_yaxes(title_text=right_title, secondary_y=True, showticklabels=bool(absorption_units))
     return fig, axis_title
 
 
@@ -815,39 +643,23 @@ def _render_overlay_table(overlays: Sequence[OverlayTrace]) -> None:
             "Kind": [trace.kind for trace in overlays],
             "Points": [trace.points for trace in overlays],
             "Visible": [trace.visible for trace in overlays],
-            "Axis": [trace.axis for trace in overlays],
-            "Flux unit": [trace.flux_unit for trace in overlays],
         }
     )
     edited = st.data_editor(
         table,
         hide_index=True,
-        width="stretch",
+        use_container_width=True,
         column_config={
             "Label": st.column_config.TextColumn("Label", disabled=True),
             "Provider": st.column_config.TextColumn("Provider", disabled=True),
             "Kind": st.column_config.TextColumn("Kind", disabled=True),
             "Points": st.column_config.NumberColumn("Points", disabled=True),
             "Visible": st.column_config.CheckboxColumn("Visible"),
-            "Axis": st.column_config.SelectboxColumn(
-                "Axis",
-                options=["emission", "absorption"],
-            ),
-            "Flux unit": st.column_config.TextColumn("Flux unit", disabled=True),
         },
         key="overlay_table_editor",
     )
-    for trace, visible, axis in zip(
-        overlays,
-        edited["Visible"].tolist(),
-        edited["Axis"].tolist(),
-    ):
+    for trace, visible in zip(overlays, edited["Visible"].tolist()):
         trace.visible = bool(visible)
-        axis_value = str(axis or trace.axis).lower()
-        if axis_value not in {"emission", "absorption"}:
-            axis_value = trace.axis
-        trace.axis = axis_value
-        trace.metadata["axis"] = axis_value
     _set_overlays(overlays)
 
     options = [trace.trace_id for trace in overlays]
@@ -869,6 +681,7 @@ def _remove_overlays(trace_ids: Sequence[str]) -> None:
     cache.reset()
 
 
+<<<<<<< HEAD
 def _render_metadata_summary(overlays: Sequence[OverlayTrace]) -> None:
     if not overlays:
         return
@@ -916,6 +729,8 @@ def _render_metadata_summary(overlays: Sequence[OverlayTrace]) -> None:
                 st.caption("No conversion provenance available.")
 
 
+=======
+>>>>>>> parent of 9fe7c940 (v1.1.5d: fix export imports and surface atlas docs)
 def _clear_overlays() -> None:
     st.session_state["overlay_traces"] = []
     st.session_state["reference_trace_id"] = None
@@ -929,65 +744,19 @@ def _export_current_view(
     display_units: str,
     display_mode: str,
     viewport: Tuple[float | None, float | None],
-    normalization_mode: str,
-    differential_mode: str,
-    reference: Optional[OverlayTrace],
 ) -> None:
     rows: List[Dict[str, object]] = []
-    manifest_traces: List[Dict[str, object]] = []
-    reference_vectors = reference.to_vectors() if reference else None
-
     for trace in overlays:
         if not trace.visible:
             continue
         df = _filter_viewport(trace.to_dataframe(), viewport)
         if df.empty:
             continue
-
-        if (
-            differential_mode == "Relative to reference"
-            and reference_vectors is not None
-            and trace.trace_id != reference_vectors.trace_id
-            and trace.kind != "lines"
-        ):
-            axis_nm, values_trace, values_ref = viewport_alignment(
-                trace.to_vectors(), reference_vectors, viewport
-            )
-            if axis_nm is None or values_trace is None or values_ref is None:
-                continue
-            axis_m = wavelength_to_m(axis_nm, "nm")
-            df = pd.DataFrame(
-                {
-                    "wavelength_m": axis_m,
-                    "wavelength_nm": axis_nm,
-                    "flux": values_trace - values_ref,
-                }
-            )
-
-        converted, _ = _convert_wavelength(df["wavelength_m"], display_units)
-        df = df.assign(wavelength=converted, flux=df["flux"].astype(float))
-        df = df.dropna(subset=["wavelength", "flux"])
-        if df.empty:
-            continue
-
-        y_values = df["flux"].to_numpy(dtype=float)
-        mirrored = False
-        if trace.axis == "absorption":
-            finite = y_values[np.isfinite(y_values)]
-            if finite.size and np.mean(finite < 0) > 0.5:
-                y_values = -y_values
-                mirrored = True
-
+        converted, _ = _convert_wavelength(df["wavelength_nm"], display_units)
+        scaled = df["flux"].to_numpy(dtype=float)
         if display_mode != "Flux (raw)":
-            y_values = apply_normalization(y_values, "max")
-            flux_unit = "normalized"
-        elif normalization_mode and normalization_mode != "none" and trace.kind != "lines":
-            y_values = apply_normalization(y_values, normalization_mode)
-            flux_unit = trace.flux_unit
-        else:
-            flux_unit = trace.flux_unit
-
-        for wavelength_value, flux_value in zip(df["wavelength"], y_values):
+            scaled = apply_normalization(scaled, "max")
+        for wavelength_value, flux_value in zip(converted, scaled):
             if not math.isfinite(float(wavelength_value)) or not math.isfinite(float(flux_value)):
                 continue
             rows.append(
@@ -996,31 +765,12 @@ def _export_current_view(
                     "wavelength": float(wavelength_value),
                     "unit": display_units,
                     "flux": float(flux_value),
-                    "flux_unit": flux_unit,
-                    "axis": trace.axis,
                     "display_mode": display_mode,
                 }
             )
-
-        manifest_traces.append(
-            {
-                "label": trace.label,
-                "provider": trace.provider,
-                "kind": trace.kind,
-                "points": int(len(df)),
-                "axis": trace.axis,
-                "flux_unit": trace.flux_unit,
-                "flux_kind": trace.flux_kind,
-                "metadata": trace.metadata,
-                "provenance": trace.provenance,
-                "mirrored": mirrored,
-            }
-        )
-
     if not rows:
         st.warning("Nothing to export in the current viewport.")
         return
-
     df_export = pd.DataFrame(rows)
     timestamp = time.strftime("%Y%m%d-%H%M%S")
     csv_path = EXPORT_DIR / f"spectra_export_{timestamp}.csv"
@@ -1037,12 +787,7 @@ def _export_current_view(
         display_mode=display_mode,
         exported_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         viewport={"low_nm": viewport[0], "high_nm": viewport[1]},
-        traces=manifest_traces,
     )
-    manifest.setdefault("transformations", {})["normalization_mode"] = normalization_mode
-    manifest["transformations"]["differential_mode"] = differential_mode
-    if reference is not None:
-        manifest["transformations"]["reference"] = reference.label
     manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     st.success(f"Exported: {csv_path.name}, {png_path.name}, {manifest_path.name}")
 
@@ -1084,7 +829,7 @@ def _render_line_tables(overlays: Sequence[OverlayTrace]) -> None:
             if table.empty:
                 st.info("No line metadata available.")
             else:
-                st.dataframe(table, width="stretch", hide_index=True)
+                st.dataframe(table, use_container_width=True, hide_index=True)
 
 
 # ---------------------------------------------------------------------------
@@ -1153,10 +898,9 @@ def _convert_nist_payload(data: Dict[str, object]) -> Optional[Dict[str, object]
         return None
     provenance = dict(meta)
     provenance["archive"] = "NIST"
-    wavelength_m = wavelength_to_m(wavelengths, "nm")
     payload = {
         "label": meta.get("label") or "NIST ASD",
-        "wavelength_m": wavelength_m,
+        "wavelength_nm": wavelengths,
         "flux": flux,
         "provider": "NIST",
         "summary": f"{len(wavelengths)} NIST ASD lines",
@@ -1164,13 +908,9 @@ def _convert_nist_payload(data: Dict[str, object]) -> Optional[Dict[str, object]
         "metadata": {
             "lines": lines,
             "query": meta.get("query"),
-            "flux_unit_input": "relative_intensity",
-            "axis": "emission",
         },
         "provenance": provenance,
         "hover": hover,
-        "flux_unit": "dimensionless",
-        "flux_kind": "dimensionless",
     }
     return payload
 
@@ -1230,23 +970,14 @@ def _render_overlay_tab(version_info: Dict[str, str]) -> None:
         differential_mode,
         version_info.get("version", "v?"),
     )
-    st.plotly_chart(fig, width="stretch")
+    st.plotly_chart(fig, use_container_width=True)
 
     control_col, action_col = st.columns([3, 1])
     with control_col:
         _render_overlay_table(overlays)
     with action_col:
         if st.button("Export view", key="export_view"):
-            _export_current_view(
-                fig,
-                overlays,
-                display_units,
-                display_mode,
-                viewport,
-                normalization,
-                differential_mode,
-                reference,
-            )
+            _export_current_view(fig, overlays, display_units, display_mode, viewport)
         st.caption(f"Axis: {axis_title}")
 
     cache: SimilarityCache = st.session_state["similarity_cache"]
@@ -1259,7 +990,6 @@ def _render_overlay_tab(version_info: Dict[str, str]) -> None:
         reference_id=st.session_state.get("reference_trace_id"),
     )
     render_similarity_panel(visible_vectors, viewport, options, cache)
-    _render_metadata_summary([trace for trace in overlays if trace.visible])
     _render_line_tables(overlays)
 
 
@@ -1280,71 +1010,33 @@ def _render_archive_tab() -> None:
     controller.render()
 
 
-def _extract_doc_title(path: Path) -> str:
-    try:
-        for line in path.read_text(encoding="utf-8").splitlines():
-            stripped = line.strip()
-            if stripped.startswith("#"):
-                return stripped.lstrip("# ").strip() or path.stem
-    except Exception:
-        pass
-    name = path.stem.replace("_", " ").replace("-", " ")
-    return name.title()
-
-
-def _gather_document_options() -> List[Tuple[str, Path]]:
-    options: List[Tuple[str, Path]] = []
-    index_path = Path("docs/index.md")
-    if index_path.exists():
-        options.append(("Docs • Index", index_path))
-
-    atlas_dir = Path("docs/atlas")
-    if atlas_dir.exists():
-        for path in sorted(atlas_dir.glob("*.md")):
-            label = _extract_doc_title(path)
-            options.append((f"Atlas • {label}", path))
-
-    legacy_paths = [
-        Path("docs/ingestion.md"),
-        Path("docs/ui/displaying_data_guide.md"),
-        Path("docs/ui/ui_design_guide.md"),
-        Path("docs/ui/bad_ui_guide.md"),
-        Path("docs/sources/astro_data_docs.md"),
-        Path("docs/sources/telescopes_overview.md"),
-        Path("docs/sources/notable_sources_techniques_tools.md"),
-        Path("docs/sources/stellar_light_methods.md"),
-        Path("docs/math/spectroscopy_math_part1.md"),
-        Path("docs/math/spectroscopy_math_part2.md"),
-        Path("docs/math/instrument_accuracy_errors_interpretation.md"),
-        Path("docs/differential/part1b.md"),
-        Path("docs/differential/part1c.md"),
-        Path("docs/differential/part2.md"),
-        Path("docs/modeling/spectral_modeling_part1a.md"),
-    ]
-    for path in legacy_paths:
-        if path.exists():
-            options.append((f"Legacy • {_extract_doc_title(path)}", path))
-
-    return options
-
-
 def _render_docs_tab() -> None:
     st.header("Docs & provenance")
-    documents = _gather_document_options()
-    if not documents:
-        st.info("No documentation files available.")
-        return
-
-    labels = [label for label, _ in documents]
-    selection = st.selectbox("Open doc", labels)
-    selected_path = next(path for label, path in documents if label == selection)
+    documents = [
+        "docs/index.md",
+        "docs/ingestion.md",
+        "docs/ui/displaying_data_guide.md",
+        "docs/ui/ui_design_guide.md",
+        "docs/ui/bad_ui_guide.md",
+        "docs/sources/astro_data_docs.md",
+        "docs/sources/telescopes_overview.md",
+        "docs/sources/notable_sources_techniques_tools.md",
+        "docs/sources/stellar_light_methods.md",
+        "docs/math/spectroscopy_math_part1.md",
+        "docs/math/spectroscopy_math_part2.md",
+        "docs/math/instrument_accuracy_errors_interpretation.md",
+        "docs/differential/part1b.md",
+        "docs/differential/part1c.md",
+        "docs/differential/part2.md",
+        "docs/modeling/spectral_modeling_part1a.md",
+    ]
+    selection = st.selectbox("Open doc", documents)
     try:
-        content = selected_path.read_text(encoding="utf-8")
+        content = Path(selection).read_text(encoding="utf-8")
     except Exception as exc:
-        st.error(f"Failed to load doc {selected_path}: {exc}")
+        st.error(f"Failed to load doc {selection}: {exc}")
     else:
-        st.markdown(content)
-        st.caption(f"Source: `{selected_path}`")
+        st.code(content, language="markdown")
 
     overlays = _get_overlays()
     if overlays:
@@ -1372,8 +1064,6 @@ def render() -> None:
     st.title("Spectra App")
     st.caption(f"Build {version_info.get('version', 'v?')} • {version_info.get('date_utc', '')}")
     st.info(f"Patch: {patch_note}")
-
-    _render_upload_panel()
 
     _render_reference_section()
     st.sidebar.divider()

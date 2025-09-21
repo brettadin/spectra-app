@@ -26,6 +26,7 @@ All contributors must consult the Brains before making changes.
 
 
 # Spectra App — AI Handoff Bridge
+<<<<<<< HEAD
  codex/improve-unit-conversions-and-file-uploads-ussv5s
 _Last updated: 2025-09-21T23:00:00Z_
 =======
@@ -35,6 +36,9 @@ _Last updated: 2025-09-21T23:00:00Z_
 _Last updated: 2025-09-21T02:00:00Z_
  main
   main
+=======
+_Last updated: 2025-09-21T00:00:00Z_
+>>>>>>> parent of 9fe7c940 (v1.1.5d: fix export imports and surface atlas docs)
 
 This bridge document ties the brains log to the operative AI handoff prompt.
 It is part of the mandated continuity template: Brains → AI Handoff → Patch Notes.
@@ -44,6 +48,7 @@ It is part of the mandated continuity template: Brains → AI Handoff → Patch 
 - Next revision must update both this bridge and `docs/brains/brains_INDEX.md`.
 - Keep handoff prompts UTF-8, versioned, and cross-linked from the paired brains + patch notes.
 
+<<<<<<< HEAD
  codex/improve-unit-conversions-and-file-uploads-ussv5s
 =======
  codex/improve-unit-conversions-and-file-uploads-udgaxh
@@ -80,5 +85,15 @@ It is part of the mandated continuity template: Brains → AI Handoff → Patch 
 2. Verify `docs/PATCH_NOTES/v1.1.5b.txt` lists the same continuity obligations.
  main
   main
+=======
+## Expectations for v1.1.5a
+- Do **not** regenerate the entire prompt—extend it incrementally.
+- Include guidance about the new continuity manifest field and provider cache directories.
+- Ensure every future prompt references `docs/brains/brains_v1.1.5a.md` until superseded.
+
+## Checklist Before Shipping Changes
+1. Read the latest brains entry and confirm the scope still matches.
+2. Verify `docs/PATCH_NOTES/v1.1.5a.txt` lists the same continuity obligations.
+>>>>>>> parent of 9fe7c940 (v1.1.5d: fix export imports and surface atlas docs)
 3. Run `RUN_CMDS/Verify-Project.ps1` to confirm reciprocal links and provider directories are intact.
 4. Prepare necessary AI handoff notes for the next iteration.

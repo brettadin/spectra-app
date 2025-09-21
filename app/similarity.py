@@ -252,24 +252,6 @@ def _compute_metrics(
     return result
 
 
-def _unique_labels(labels: Sequence[str]) -> Tuple[List[str], Dict[str, str], Dict[str, int]]:
-    """Return unique labels plus alias and count lookups."""
-
-    counts: Dict[str, int] = {}
-    alias_map: Dict[str, str] = {}
-    unique: List[str] = []
-    for label in labels:
-        count = counts.get(label, 0) + 1
-        counts[label] = count
-        if count == 1:
-            alias = label
-        else:
-            alias = f"{label} [{count}]"
-        unique.append(alias)
-        alias_map[alias] = label
-    return unique, alias_map, counts
-
-
 def build_metric_frames(
     traces: Sequence[TraceVectors],
     viewport: Viewport,
@@ -279,19 +261,15 @@ def build_metric_frames(
     if len(traces) < 2:
         return {}
     labels = [trace.label for trace in traces]
-    unique_labels, alias_map, counts = _unique_labels(labels)
     frames: Dict[str, pd.DataFrame] = {}
     for metric in options.metrics:
         diag_value = 1.0 if metric != "rmse" else 0.0
-        frame = pd.DataFrame(
+        frames[metric] = pd.DataFrame(
             diag_value,
-            index=unique_labels,
-            columns=unique_labels,
+            index=labels,
+            columns=labels,
             dtype=float,
         )
-        frame.attrs["label_aliases"] = dict(alias_map)
-        frame.attrs["label_counts"] = dict(counts)
-        frames[metric] = frame
     for i, trace_a in enumerate(traces):
         for j in range(i + 1, len(traces)):
             trace_b = traces[j]
