@@ -1,7 +1,6 @@
 """Fetch spectral line data from the NIST Atomic Spectra Database."""
 from __future__ import annotations
 
-"""Client helpers for fetching NIST Atomic Spectra Database line lists."""
 
 import math
 import re
@@ -308,22 +307,92 @@ def _extract_float(value: Any) -> Optional[float]:
         return None
 
 
-def _column_scale_to_nm(table, column: str) -> float:
-    """Return a multiplicative factor that converts the column to nm."""
+def _scaled_float(value: Optional[float], scale: float) -> Optional[float]:
+    """Multiply ``value`` by ``scale`` and return a plain ``float`` if finite."""
 
-    default_scale = 0.1  # Historical default assumes Å when unit metadata is missing.
-    if table is None or column not in getattr(table, "colnames", []):
-        return default_scale
+    if value is None:
+        return None
 
-    col = table[column]
-    unit = getattr(col, "unit", None)
-    if unit is None:
-        return default_scale
+    scaled = value * scale
+    try:
+        scaled_float = float(scaled)
+    except Exception:
+        return None
+
+    if not math.isfinite(scaled_float):
+        return None
+
+    return scaled_float
+
+
+_ANGSTROM_PATTERN = re.compile(r"(ångstr(?:ö|o)m|angstrom|\bå\b|\[aa\])", re.IGNORECASE)
+_NANOMETER_PATTERN = re.compile(r"\bnm\b|nanomet(?:er|re)s?", re.IGNORECASE)
+_MICRON_PATTERN = re.compile(
+    r"\bµm\b|\bμm\b|\bum\b|micron(?:s)?|micromet(?:er|re)s?", re.IGNORECASE
+)
+
+
+def _guess_scale_from_text(text: Any) -> Optional[float]:
+    """Return a conversion factor inferred from textual metadata."""
+
+    if text is None:
+        return None
+    if isinstance(text, bytes):
+        try:
+            text = text.decode()
+        except Exception:
+            text = text.decode(errors="ignore")
+    text_str = str(text).strip()
+    if not text_str:
+        return None
+    normalised = text_str.lower()
+
+    if _NANOMETER_PATTERN.search(normalised):
+        return 1.0
+    if _ANGSTROM_PATTERN.search(normalised):
+        return 0.1
+    if _MICRON_PATTERN.search(normalised):
+        return 1000.0
+    return None
+
+
+def _unit_to_nm_scale(candidate: Any) -> Optional[float]:
+    """Resolve a conversion factor from assorted unit representations."""
+
+    if candidate is None:
+        return None
+    if isinstance(candidate, dict):
+        for key in ("unit", "units", "Unit", "Units"):
+            if key in candidate:
+                scale = _unit_to_nm_scale(candidate[key])
+                if scale is not None:
+                    return scale
+        for value in candidate.values():
+            scale = _unit_to_nm_scale(value)
+            if scale is not None:
+                return scale
+        return None
+    if isinstance(candidate, (list, tuple, set, frozenset)):
+        for item in candidate:
+            scale = _unit_to_nm_scale(item)
+            if scale is not None:
+                return scale
+        return None
+    if isinstance(candidate, bytes):
+        try:
+            candidate = candidate.decode()
+        except Exception:
+            candidate = candidate.decode(errors="ignore")
+
+    if isinstance(candidate, str):
+        text_scale = _guess_scale_from_text(candidate)
+        if text_scale is not None:
+            return text_scale
 
     try:
-        parsed_unit = u.Unit(unit)
+        parsed_unit = u.Unit(candidate)
     except Exception:
-        return default_scale
+        return None
 
     if parsed_unit == u.dimensionless_unscaled:
         return 1.0
@@ -331,13 +400,147 @@ def _column_scale_to_nm(table, column: str) -> float:
     try:
         return (1 * parsed_unit).to(u.nm).value
     except Exception:
-        if parsed_unit == u.AA:
+        if hasattr(u, "AA") and parsed_unit == u.AA:
             return 0.1
+        return None
+
+
+def _infer_scale_from_metadata(table, column: str) -> Optional[float]:
+    """Attempt to infer the wavelength scale using table metadata."""
+
+    if table is None or column not in getattr(table, "colnames", []):
+        return None
+
+    try:
+        col = table[column]
+    except Exception:
+        return None
+
+    info = getattr(col, "info", None)
+    metadata_candidates = [
+        getattr(col, "meta", None),
+        getattr(col, "description", None),
+        getattr(col, "format", None),
+        getattr(col, "name", None),
+        getattr(info, "meta", None) if info is not None else None,
+        getattr(info, "description", None) if info is not None else None,
+        getattr(info, "format", None) if info is not None else None,
+        getattr(info, "name", None) if info is not None else None,
+        column,
+    ]
+
+    table_meta = getattr(table, "meta", None)
+    if isinstance(table_meta, dict):
+        metadata_candidates.extend(
+            [
+                table_meta.get(column),
+                table_meta.get(column.lower()),
+                table_meta.get(column.upper()),
+                table_meta.get("comments"),
+                table_meta.get("Comments"),
+                table_meta.get("COMMENT"),
+            ]
+        )
+        units_map = table_meta.get("units")
+        if isinstance(units_map, dict):
+            metadata_candidates.extend(
+                [
+                    units_map.get(column),
+                    units_map.get(column.lower()),
+                    units_map.get(column.upper()),
+                ]
+            )
+
+    for candidate in metadata_candidates:
+        scale = _unit_to_nm_scale(candidate)
+        if scale is not None:
+            return scale
+    return None
+
+
+def _infer_scale_from_values(
+    table, column: str, requested_range_nm: Optional[Tuple[float, float]]
+) -> Optional[float]:
+    """Fallback heuristic that inspects numeric values to determine scaling."""
+
+    if table is None or column not in getattr(table, "colnames", []):
+        return None
+
+    values: List[float] = []
+    for row in table:
+        raw_value = None
+        if hasattr(row, "get"):
+            raw_value = row.get(column)
+        if raw_value is None:
+            try:
+                raw_value = row[column]
+            except Exception:
+                raw_value = None
+        extracted = _extract_float(raw_value)
+        if extracted is not None and math.isfinite(extracted):
+            values.append(extracted)
+
+    if not values:
+        return None
+
+    values.sort()
+    min_value = values[0]
+    max_value = values[-1]
+    if not math.isfinite(min_value) or not math.isfinite(max_value):
+        return None
+
+    if len(values) % 2 == 1:
+        median_value = values[len(values) // 2]
+    else:
+        lower_mid = values[len(values) // 2 - 1]
+        upper_mid = values[len(values) // 2]
+        median_value = (lower_mid + upper_mid) / 2
+
+    candidate_scales = [1.0, 0.1, 10.0, 1000.0]
+
+    if requested_range_nm is not None:
+        req_min, req_max = requested_range_nm
+        if req_min > req_max:
+            req_min, req_max = req_max, req_min
+        span = req_max - req_min
+        tolerance = max(1.0, span * 0.1 if span else max(abs(req_min), abs(req_max), 1.0) * 0.1)
+        for scale in candidate_scales:
+            scaled_min = min_value * scale
+            scaled_max = max_value * scale
+            if scaled_min > scaled_max:
+                scaled_min, scaled_max = scaled_max, scaled_min
+            if scaled_max < req_min - tolerance or scaled_min > req_max + tolerance:
+                continue
+            return scale
+
+    if median_value > 1500:
+        return 0.1
+    if median_value < 0.1:
+        return 1000.0
+    if 50 <= median_value <= 1500:
+        return 1.0
+    if median_value < 50 and max_value <= 50:
+        return 1000.0
+
+    return None
+
+
+def _column_scale_to_nm(
+    table,
+    column: str,
+    requested_range_nm: Optional[Tuple[float, float]] = None,
+) -> float:
+    """Return a multiplicative factor that converts the column to nm."""
+
+    default_scale = 0.1  # Historical default assumes Å when unit metadata is missing.
+    if table is None or column not in getattr(table, "colnames", []):
         return default_scale
-<<<<<<< main
+
+    col = table[column]
+
     for candidate in (
         getattr(col, "unit", None),
-        getattr(col.info, "unit", None),
+        getattr(getattr(col, "info", None), "unit", None),
     ):
         scale = _unit_to_nm_scale(candidate)
         if scale is not None:
@@ -352,8 +555,6 @@ def _column_scale_to_nm(table, column: str) -> float:
         return inferred
 
     return default_scale
-=======
->>>>>>> 95503f4
 
 
 def _split_energy(value: Any) -> Tuple[Optional[float], Optional[float]]:
@@ -457,9 +658,6 @@ def fetch(
     lines: List[Dict[str, Any]] = []
     max_relative_intensity = 0.0
 
-    observed_scale = _column_scale_to_nm(table, "Observed") if table is not None else 0.1
-    ritz_scale = _column_scale_to_nm(table, "Ritz") if table is not None else 0.1
-<<<<<<< main
     try:
         requested_range_nm: Optional[Tuple[float, float]] = (
             float(min_wav.to(u.nm).value),
@@ -474,18 +672,14 @@ def fetch(
     ritz_scale = (
         _column_scale_to_nm(table, "Ritz", requested_range_nm) if table is not None else 0.1
     )
-=======
->>>>>>> 95503f4
 
     if table is not None:
         for row in table:
             observed_value = _extract_float(row.get("Observed"))
             ritz_value = _extract_float(row.get("Ritz"))
 
-            observed_nm = (
-                observed_value * observed_scale if observed_value is not None else None
-            )
-            ritz_nm = ritz_value * ritz_scale if ritz_value is not None else None
+            observed_nm = _scaled_float(observed_value, observed_scale)
+            ritz_nm = _scaled_float(ritz_value, ritz_scale)
 
             if use_ritz and ritz_nm is not None:
                 chosen_nm = ritz_nm
