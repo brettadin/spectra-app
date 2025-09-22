@@ -1,5 +1,5 @@
 {
-  "version": "v1.1.6",
-  "date_utc": "2025-09-22T00:00:00Z",
-  "summary": "Replaced synthetic providers with live archive-backed spectra and expanded CALSPEC coverage."
+  "version": "v1.1.7",
+  "date_utc": "2025-09-22T12:00:00Z",
+  "summary": "Introduced an All Archives combined provider, updated the archive UI, and refreshed continuity docs."
 }
