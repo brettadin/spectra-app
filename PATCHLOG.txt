@@ -3,3 +3,4 @@ Spectra App — Patch Log (append-only)
 
 - v1.1.5b: is this the thing that updates the header lol
 - v1.1.6: replaced synthetic provider shims with live ESO/SDSS/DOI fetchers, expanded CALSPEC targets, and wired example overlays to live archive data.
+- v1.1.6b (REF 1.1.6b-A01): collapse archive metadata/provenance into expanders, drop redundant overlay visibility column, add smoothed+raw solar example with band filters, and formalize unit-aware emission/absorption axes.
