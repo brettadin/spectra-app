@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""Fetch VLT/X-Shooter spectra from curated open-data Zenodo records."""
+"""Fetch spectra linked to specific DOIs hosted on Zenodo."""
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -18,17 +18,16 @@ import requests
 
 from app._version import get_version_info
 
-__all__ = ["fetch", "EsoFetchError", "available_spectra"]
+__all__ = ["fetch", "DoiFetchError", "available_spectra"]
 
 
 REQUEST_TIMEOUT = 30  # seconds
-ARCHIVE_LABEL = "ESO"
 CANONICAL_WAVELENGTH_UNIT = "nm"
 CANONICAL_FLUX_UNIT = "erg s^-1 cm^-2 nm^-1"
 
 
-class EsoFetchError(RuntimeError):
-    """Raised when an ESO spectrum cannot be retrieved."""
+class DoiFetchError(RuntimeError):
+    """Raised when DOI-linked spectrum retrieval fails."""
 
 
 def _normalise_token(value: str) -> str:
@@ -38,22 +37,22 @@ def _normalise_token(value: str) -> str:
 
 
 @dataclass(frozen=True)
-class EsoSpectrum:
-    identifier: str
-    target_name: str
-    label: str
+class DoiSpectrum:
+    doi: str
     record_id: str
     filename: str
-    mode: str
+    label: str
+    target_name: str
     instrument: str
-    program: str
-    doi: str
-    citation: str
     description: str
-    spectral_type: str
-    distance_pc: float
+    citation: str
+    archive: str
     aliases: Tuple[str, ...]
     search_tokens: Tuple[str, ...]
+
+    @property
+    def identifier(self) -> str:
+        return f"DOI:{self.doi}"
 
     @property
     def cache_key(self) -> str:
@@ -67,78 +66,55 @@ class EsoSpectrum:
         )
 
 
-def _create_spectrum(**kwargs: Any) -> EsoSpectrum:
+def _create_spectrum(**kwargs: Any) -> DoiSpectrum:
     aliases = set(kwargs.get("aliases", ()))
     tokens: set[str] = set()
-    tokens.add(_normalise_token(kwargs.get("identifier", "")))
-    tokens.add(_normalise_token(kwargs.get("target_name", "")))
+    tokens.add(_normalise_token(kwargs.get("doi", "")))
     tokens.add(_normalise_token(kwargs.get("label", "")))
+    tokens.add(_normalise_token(kwargs.get("target_name", "")))
     for alias in aliases:
         tokens.add(_normalise_token(alias))
     tokens.discard("")
     kwargs["aliases"] = tuple(sorted(aliases))
     kwargs["search_tokens"] = tuple(sorted(tokens))
-    return EsoSpectrum(**kwargs)
+    return DoiSpectrum(**kwargs)
 
 
-_SPECTRA: Tuple[EsoSpectrum, ...] = (
+_SPECTRA: Tuple[DoiSpectrum, ...] = (
     _create_spectrum(
-        identifier="SZ71-UVB",
-        target_name="Sz 71",
-        label="Sz 71 • X-Shooter UVB",
-        record_id="10024073",
-        filename="flux_Sz71_uvb.fits",
-        mode="UVB",
+        doi="10.5281/zenodo.6829330",
+        record_id="6829330",
+        filename="VHS1256b_XShooter_Petrus_22.fits",
+        label="VHS 1256-1257 b • X-Shooter",
+        target_name="VHS 1256-1257 b",
         instrument="VLT/X-Shooter",
-        program="PENELLOPE",
-        doi="10.5281/zenodo.10024073",
-        citation="Manara, C. F. et al. (2023). PENELLOPE X-Shooter spectra of Lupus targets. Zenodo.",
-        description="PENELLOPE UVB arm spectrum of the Lupus young star Sz 71.",
-        spectral_type="M1.5e",
-        distance_pc=155.2,
-        aliases=("Sz71", "2MASS J16093030-3904316"),
+        description="Medium-resolution X-Shooter spectrum of the substellar companion VHS 1256-1257 b (Petrus et al. 2022).",
+        citation="Petrus, S. et al. (2022). X-Shooter spectrum of VHS 1256-1257 b. Zenodo.",
+        archive="Zenodo",
+        aliases=("VHS1256b", "Petrus2022"),
     ),
     _create_spectrum(
-        identifier="RYLUP-UVB",
-        target_name="RY Lup",
-        label="RY Lup • X-Shooter UVB",
-        record_id="10024073",
-        filename="flux_RYLup_uvb.fits",
-        mode="UVB",
+        doi="10.5281/zenodo.4268013",
+        record_id="4268013",
+        filename="GaiaJ1814-7355_SCI_SLIT_FLUX_MERGE1D_VIS.fits",
+        label="Gaia J1814-7355 • X-Shooter VIS",
+        target_name="Gaia J181417.84-735459.8",
         instrument="VLT/X-Shooter",
-        program="PENELLOPE",
-        doi="10.5281/zenodo.10024073",
-        citation="Manara, C. F. et al. (2023). PENELLOPE X-Shooter spectra of Lupus targets. Zenodo.",
-        description="High S/N UVB spectrum of the transitional disk star RY Lup from PENELLOPE.",
-        spectral_type="G8/K1IV-V",
-        distance_pc=153.5,
-        aliases=("RYLup", "RY Lupus"),
-    ),
-    _create_spectrum(
-        identifier="SZ130-NIR",
-        target_name="Sz 130",
-        label="Sz 130 • X-Shooter NIR",
-        record_id="10024073",
-        filename="flux_Sz130_nir_tell.fits",
-        mode="NIR",
-        instrument="VLT/X-Shooter",
-        program="PENELLOPE",
-        doi="10.5281/zenodo.10024073",
-        citation="Manara, C. F. et al. (2023). PENELLOPE X-Shooter spectra of Lupus targets. Zenodo.",
-        description="Telluric-corrected near-infrared arm spectrum of Sz 130 from PENELLOPE.",
-        spectral_type="M1.5",
-        distance_pc=159.2,
-        aliases=("Sz130", "Gaia DR3 6016650308488574208"),
+        description="VIS-arm merged spectrum of the white dwarf Gaia J181417.84-735459.8 from the X-Shooter reduced data release.",
+        citation="González Egea, E. (2020). Reduced spectroscopy objects WDJ181417.84-735459.83 and VHS 472908521370. Zenodo.",
+        archive="Zenodo",
+        aliases=("GaiaJ1814-7355", "WDJ181417"),
     ),
 )
 
-_TOKEN_LOOKUP: Dict[str, EsoSpectrum] = {}
+_TOKEN_LOOKUP: Dict[str, DoiSpectrum] = {}
 for spec in _SPECTRA:
+    _TOKEN_LOOKUP[_normalise_token(spec.doi)] = spec
     _TOKEN_LOOKUP[_normalise_token(spec.identifier)] = spec
     _TOKEN_LOOKUP[_normalise_token(spec.target_name)] = spec
-    for alias in spec.search_tokens:
-        if alias:
-            _TOKEN_LOOKUP.setdefault(alias, spec)
+    for token in spec.search_tokens:
+        if token:
+            _TOKEN_LOOKUP.setdefault(token, spec)
 
 
 def available_spectra() -> Tuple[Dict[str, object], ...]:
@@ -146,19 +122,15 @@ def available_spectra() -> Tuple[Dict[str, object], ...]:
     for spec in _SPECTRA:
         records.append(
             {
-                "identifier": spec.identifier,
-                "target_name": spec.target_name,
-                "label": spec.label,
+                "doi": spec.doi,
                 "record_id": spec.record_id,
                 "filename": spec.filename,
-                "mode": spec.mode,
+                "label": spec.label,
+                "target_name": spec.target_name,
                 "instrument": spec.instrument,
-                "program": spec.program,
-                "spectral_type": spec.spectral_type,
-                "distance_pc": spec.distance_pc,
-                "doi": spec.doi,
-                "citation": spec.citation,
                 "description": spec.description,
+                "citation": spec.citation,
+                "archive": spec.archive,
                 "aliases": tuple(spec.aliases),
             }
         )
@@ -166,15 +138,15 @@ def available_spectra() -> Tuple[Dict[str, object], ...]:
 
 
 def fetch(
-    target: str = "",
+    doi: str = "",
     *,
-    identifier: str | None = None,
+    target: str = "",
     cache_dir: str | Path | None = None,
     force_refresh: bool = False,
 ) -> Dict[str, Any]:
-    """Fetch an ESO X-Shooter spectrum and return normalised payload."""
+    """Fetch a DOI-linked spectrum and return normalised payload."""
 
-    spec = _resolve_spectrum(target=target, identifier=identifier)
+    spec = _resolve_spectrum(doi=doi, target=target)
     cache_directory = _resolve_cache_dir(cache_dir) / spec.cache_key
     cache_directory.mkdir(parents=True, exist_ok=True)
 
@@ -184,7 +156,7 @@ def fetch(
     if not cache_hit:
         _download_file(spec.access_url, local_path)
 
-    spectrum = _parse_xshooter_spectrum(local_path)
+    spectrum = _parse_zenodo_spectrum(local_path)
     effective_range = _flux_percentile_range(
         spectrum["wavelength_nm"], spectrum["flux"], coverage=0.985
     )
@@ -194,17 +166,12 @@ def fetch(
     version_info = get_version_info().get("version", "unknown")
 
     meta: Dict[str, Any] = {
-        "archive": ARCHIVE_LABEL,
-        "target_name": spec.target_name,
-        "identifier": spec.identifier,
-        "instrument": spec.instrument,
-        "mode": spec.mode,
-        "program": spec.program,
+        "archive": spec.archive,
         "doi": spec.doi,
-        "citation_text": spec.citation,
+        "target_name": spec.target_name,
+        "instrument": spec.instrument,
         "description": spec.description,
-        "spectral_type": spec.spectral_type,
-        "distance_pc": spec.distance_pc,
+        "citation_text": spec.citation,
         "record_id": spec.record_id,
         "filename": spec.filename,
         "access_url": spec.access_url,
@@ -241,9 +208,9 @@ def fetch(
     return payload
 
 
-def _resolve_spectrum(target: str, identifier: str | None) -> EsoSpectrum:
-    if identifier:
-        token = _normalise_token(identifier)
+def _resolve_spectrum(doi: str, target: str) -> DoiSpectrum:
+    if doi:
+        token = _normalise_token(doi)
         entry = _TOKEN_LOOKUP.get(token)
         if entry is not None:
             return entry
@@ -258,14 +225,14 @@ def _resolve_spectrum(target: str, identifier: str | None) -> EsoSpectrum:
                     return candidate
     if _SPECTRA:
         return _SPECTRA[0]
-    raise EsoFetchError("No ESO spectra configured")
+    raise DoiFetchError("No DOI spectra configured")
 
 
 def _resolve_cache_dir(cache_dir: str | Path | None) -> Path:
     if cache_dir is not None:
         return Path(cache_dir)
     root = Path(__file__).resolve().parents[3]
-    return root / "data" / "providers" / "eso"
+    return root / "data" / "providers" / "doi"
 
 
 def _download_file(url: str, destination: Path) -> None:
@@ -278,12 +245,12 @@ def _download_file(url: str, destination: Path) -> None:
                     handle.write(chunk)
 
 
-def _parse_xshooter_spectrum(path: Path) -> Dict[str, np.ndarray]:
+def _parse_zenodo_spectrum(path: Path) -> Dict[str, np.ndarray]:
     with fits.open(path) as hdul:
         primary = hdul[0]
         data = primary.data
         if data is None:
-            raise EsoFetchError(f"ESO spectrum {path} contains no data")
+            raise DoiFetchError(f"Spectrum {path} contains no data")
 
         if data.ndim == 3 and data.shape[0] >= 3:
             wavelength = np.asarray(data[0, 0, :], dtype=float) * u.um
@@ -318,7 +285,7 @@ def _parse_xshooter_spectrum(path: Path) -> Dict[str, np.ndarray]:
         try:
             flux_quantity = flux * u.Unit(bunit)
         except ValueError as exc:  # pragma: no cover - defensive
-            raise EsoFetchError(f"Unrecognised flux unit '{bunit}' in {path}") from exc
+            raise DoiFetchError(f"Unrecognised flux unit '{bunit}' in {path}") from exc
         flux_converted = flux_quantity.to(u.erg / (u.s * u.cm**2 * u.nm)).value
 
         uncertainty = None
@@ -327,7 +294,7 @@ def _parse_xshooter_spectrum(path: Path) -> Dict[str, np.ndarray]:
             try:
                 err_quantity = err_data * u.Unit(bunit)
             except ValueError as exc:  # pragma: no cover - defensive
-                raise EsoFetchError(
+                raise DoiFetchError(
                     f"Unrecognised uncertainty unit '{bunit}' in {path}"
                 ) from exc
             uncertainty = err_quantity.to(u.erg / (u.s * u.cm**2 * u.nm)).value

@@ -36,6 +36,7 @@ from app.utils.local_ingest import (
     LocalIngestError,
     ingest_local_file,
 )
+from app.providers import ProviderQuery, search as provider_search
 
 st.set_page_config(page_title="Spectra App", layout="wide")
 
@@ -93,8 +94,9 @@ class OverlayTrace:
 class ExampleSpec:
     slug: str
     label: str
-    filename: str
     description: str
+    provider: str
+    query: ProviderQuery
 
 
 @dataclass
@@ -131,16 +133,32 @@ class DocCategory:
 
 EXAMPLE_LIBRARY: Tuple[ExampleSpec, ...] = (
     ExampleSpec(
-        slug="He",
-        label="Helium lamp (example)",
-        filename="He.csv",
-        description="Synthetic helium discharge lamp with broadened emission lines.",
+        slug="sirius-stis",
+        label="Sirius A • HST/STIS (CALSPEC)",
+        description="CALSPEC flux standard from Bohlin et al. 2014 (MAST).",
+        provider="MAST",
+        query=ProviderQuery(target="Sirius A", instrument="STIS", limit=1),
     ),
     ExampleSpec(
-        slug="Ne",
-        label="Neon lamp (example)",
-        filename="Ne.csv",
-        description="Synthetic neon lamp spectrum for testing overlay workflows.",
+        slug="sz71-uvb",
+        label="Sz 71 • VLT/X-Shooter UVB",
+        description="PENELLOPE UVB spectrum from Manara et al. 2023 (ESO Zenodo record 10024073).",
+        provider="ESO",
+        query=ProviderQuery(target="Sz 71", limit=1),
+    ),
+    ExampleSpec(
+        slug="sdss-6138-0934",
+        label="SDSS J234828.73+164429.3 • BOSS",
+        description="High S/N F-type spectrum from SDSS DR17 (Abdurro'uf et al. 2022).",
+        provider="SDSS",
+        query=ProviderQuery(target="6138-56598-0934", limit=1),
+    ),
+    ExampleSpec(
+        slug="vhs1256b",
+        label="VHS 1256-1257 b • X-Shooter",
+        description="Substellar companion spectrum via DOI 10.5281/zenodo.6829330 (Petrus et al. 2022).",
+        provider="DOI",
+        query=ProviderQuery(doi="10.5281/zenodo.6829330", limit=1),
     ),
 )
 
@@ -364,35 +382,34 @@ def _add_overlay_payload(payload: Dict[str, object]) -> Tuple[bool, str]:
 
 
 def _add_example_trace(spec: ExampleSpec) -> Tuple[bool, str]:
-    csv_path = Path("app/examples") / spec.filename
-    if not csv_path.exists():
-        return False, f"Missing example data: {spec.filename}."
     try:
-        df = pd.read_csv(csv_path)
+        hits = provider_search(spec.provider, spec.query)
     except Exception as exc:
-        return False, f"Failed to load example {spec.slug}: {exc}"
-    if "wavelength_nm" not in df or "intensity" not in df:
-        return False, f"Example {spec.slug} missing required columns."
-    metadata = {
-        "source": "example",
-        "path": str(csv_path),
-        "description": spec.description,
-        "slug": spec.slug,
-        "points": int(df.shape[0]),
-    }
-    provenance = {
-        "source": "example",
-        "file": str(csv_path),
-        "description": spec.description,
-        "slug": spec.slug,
-    }
-    summary = spec.description or "Built-in example trace"
+        return False, f"Failed to load {spec.label}: {exc}"
+
+    if not hits:
+        return False, f"No {spec.provider} results returned for {spec.label}."
+
+    hit = hits[0]
+    metadata = dict(hit.metadata)
+    metadata.setdefault("example_slug", spec.slug)
+    metadata.setdefault("example_description", spec.description)
+
+    provenance = dict(hit.provenance)
+    provenance.setdefault("example_slug", spec.slug)
+    provenance.setdefault("example_description", spec.description)
+
+    summary_parts = [hit.summary]
+    if spec.description and spec.description not in summary_parts:
+        summary_parts.append(spec.description)
+    summary = " • ".join(part for part in summary_parts if part)
+
     return _add_overlay(
-        spec.label,
-        df["wavelength_nm"].tolist(),
-        df["intensity"].tolist(),
-        provider="EXAMPLE",
-        summary=summary,
+        hit.label,
+        [float(value) for value in hit.wavelengths_nm],
+        [float(value) for value in hit.flux],
+        provider=hit.provider,
+        summary=summary or spec.description,
         metadata=metadata,
         provenance=provenance,
     )

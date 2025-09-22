@@ -1,0 +1,6 @@
+v1.1.6 — Live archive spectra (see PATCH_NOTES_v1.1.6.md for full details).
+- Added SDSS, ESO, and DOI fetchers that return real spectra with provenance.
+- Expanded CALSPEC target list so MAST exposes ~10 stellar standards.
+- Replaced synthetic provider outputs and added regression coverage.
+- Sidebar example overlays now fetch real archive spectra instead of loading synthetic CSV seeds.
+- Brains entry: docs/brains/brains_v1.1.6.md
