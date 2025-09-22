@@ -26,8 +26,9 @@ class ArchiveUI:
             "workspace. Responses stream real spectra with full provenance metadata."
         )
         labels = provider_labels()
-        tabs = st.tabs([labels[name] for name in ("MAST", "ESO", "SDSS", "DOI")])
-        for provider_name, tab in zip(("MAST", "ESO", "SDSS", "DOI"), tabs):
+        provider_order = ("ALL", "MAST", "ESO", "SDSS", "DOI")
+        tabs = st.tabs([labels.get(name, name.title()) for name in provider_order])
+        for provider_name, tab in zip(provider_order, tabs):
             with tab:
                 self._render_provider(provider_name)
 

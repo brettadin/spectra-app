@@ -1,0 +1,6 @@
+v1.1.7 — All Archives aggregation + continuity refresh (see PATCH_NOTES_v1.1.7.md for full details).
+- Added app/providers/combined.py so All Archives searches concatenate MAST, ESO and SDSS hits while logging provider failures.
+- Registered the ALL provider and surfaced the “All Archives” tab in the archive UI with the standard search form.
+- Introduced regression tests for the combined provider and Streamlit archive tabs.
+- Updated brains/patch notes/AI handoff bridge, PATCHLOG, and version.json to reference v1.1.7.
+- Brains entry: docs/brains/brains_v1.1.7.md

@@ -67,6 +67,24 @@ Architecture Decisions
 
     Future star resolver: The SIMBAD fetcher stub must be replaced with a real resolver that queries the CDS Sesame service for RA/DEC given a name and returns metadata. The combined provider will call this resolver when no curated matches exist.
 
+Implementation Summary (REF 1.1.7-A01)
+
+    Implemented `app/providers/combined.py` to iterate across MAST, ESO and SDSS providers, logging and skipping individual failures so aggregated searches continue.
+
+    Updated `app/providers/__init__.py` with a lazily imported `ALL` entry and surfaced the "All Archives" label for UI consumers.
+
+    Extended `app/archive_ui.py` to include the "All Archives" tab ahead of the individual archives, reuse the standard search form and dispatch `provider_search("ALL", query)`.
+
+    Added regression tests covering combined provider aggregation/error handling (`tests/providers/test_combined_provider.py`) and Streamlit tab/search wiring (`tests/ui/test_archive_ui.py`).
+
+    Refreshed continuity collateral: brains index, patch notes (Markdown + txt), AI handoff bridge, `PATCHLOG.txt`, and `app/version.json` now point to v1.1.7.
+
+Verification
+
+    Automated: `pytest` covers the new provider and UI behaviour (see `tests/providers/test_combined_provider.py` and `tests/ui/test_archive_ui.py`).
+
+    Manual: Streamlit smoke test recommended — load the Archive tab, ensure "All Archives" appears first, run a Vega search, and confirm hits from multiple providers appear with intact provenance and overlay actions.
+
 Data Model Impact
 
 The data model defined in v1.1.6 remains unchanged. ProviderHit and ProviderQuery classes continue to carry wavelength arrays, flux arrays, metadata and provenance. The combined provider simply yields more ProviderHit instances. Future work will extend the model to include RA/DEC metadata resolved via SIMBAD.
