@@ -771,25 +771,48 @@ def _convert_wavelength(series: pd.Series, unit: str) -> Tuple[pd.Series, str]:
     return values, "Wavelength (nm)"
 
 
-def _add_line_trace(fig: go.Figure, df: pd.DataFrame, label: str) -> None:
+def _normalize_hover_values(values: Optional[Sequence[object]]) -> Optional[List[Optional[str]]]:
+    if values is None:
+        return None
+    normalized: List[Optional[str]] = []
+    has_text = False
+    for value in values:
+        if pd.isna(value):
+            normalized.append(None)
+            continue
+        text = str(value)
+        normalized.append(text)
+        if text:
+            has_text = True
+    return normalized if has_text else None
+
+
+def _add_line_trace(
+    fig: go.Figure,
+    df: pd.DataFrame,
+    label: str,
+    hover_values: Optional[Sequence[Optional[str]]] = None,
+) -> None:
     xs: List[float | None] = []
     ys: List[float | None] = []
-    hover: List[Optional[str]] = []
-    for _, row in df.iterrows():
+    resolved_hover = _normalize_hover_values(hover_values) if hover_values is not None else _normalize_hover_values(df.get("hover"))
+    hover: Optional[List[Optional[str]]] = [] if resolved_hover is not None else None
+    for idx, (_, row) in enumerate(df.iterrows()):
         x = row.get("wavelength")
         y = float(row.get("flux", 0.0))
-        text = row.get("hover")
+        text = resolved_hover[idx] if resolved_hover is not None else None
         xs.extend([x, x, None])
         ys.extend([0.0, y, None])
-        hover.extend([text, text, None])
+        if hover is not None:
+            hover.extend([text, text, None])
     fig.add_trace(
         go.Scatter(
             x=xs,
             y=ys,
             mode="lines",
             name=label,
-            hovertext=hover if any(hover) else None,
-            hoverinfo="text",
+            hovertext=hover if hover is not None else None,
+            hoverinfo="text" if hover is not None else None,
         )
     )
     fig.add_trace(
@@ -799,8 +822,8 @@ def _add_line_trace(fig: go.Figure, df: pd.DataFrame, label: str) -> None:
             mode="markers",
             marker=dict(size=6, symbol="line-ns"),
             name=f"{label} markers",
-            hovertext=df.get("hover"),
-            hoverinfo="text",
+            hovertext=resolved_hover,
+            hoverinfo="text" if resolved_hover is not None else None,
             showlegend=False,
         )
     )
@@ -845,11 +868,11 @@ def _build_overlay_figure(
 
         converted, axis_title = _convert_wavelength(df["wavelength_nm"], display_units)
         df = df.assign(wavelength=converted, flux=df["flux"].astype(float))
-        if "hover" in df:
-            df["hover"] = df["hover"].astype(str)
         df = df.dropna(subset=["wavelength", "flux"])
         if df.empty:
             continue
+
+        hover_values = _normalize_hover_values(df.get("hover"))
 
         if display_mode != "Flux (raw)":
             df["flux"] = apply_normalization(df["flux"].to_numpy(dtype=float), "max")
@@ -857,7 +880,7 @@ def _build_overlay_figure(
             df["flux"] = apply_normalization(df["flux"].to_numpy(dtype=float), normalization_mode)
 
         if trace.kind == "lines":
-            _add_line_trace(fig, df, trace.label)
+            _add_line_trace(fig, df, trace.label, hover_values)
         else:
             fig.add_trace(
                 go.Scatter(
@@ -865,8 +888,8 @@ def _build_overlay_figure(
                     y=df["flux"],
                     mode="lines",
                     name=trace.label,
-                    hovertext=df.get("hover"),
-                    hoverinfo="text",
+                    hovertext=hover_values,
+                    hoverinfo="text" if hover_values is not None else None,
                 )
             )
 
