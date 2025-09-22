@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
-import math
 import unicodedata
 import re
 from pathlib import Path
@@ -17,6 +16,7 @@ from astropy.io import fits
 import requests
 
 from app._version import get_version_info
+from app.utils.flux import flux_percentile_range
 
 __all__ = ["fetch", "DoiFetchError", "available_spectra"]
 
@@ -157,7 +157,7 @@ def fetch(
         _download_file(spec.access_url, local_path)
 
     spectrum = _parse_zenodo_spectrum(local_path)
-    effective_range = _flux_percentile_range(
+    effective_range = flux_percentile_range(
         spectrum["wavelength_nm"], spectrum["flux"], coverage=0.985
     )
 
@@ -308,60 +308,6 @@ def _parse_zenodo_spectrum(path: Path) -> Dict[str, np.ndarray]:
                 "flux": bunit,
             },
         }
-
-
-def _flux_percentile_range(
-    wavelength_nm: np.ndarray,
-    flux: np.ndarray,
-    *,
-    coverage: float = 0.99,
-) -> Optional[Tuple[float, float]]:
-    if not 0.0 < coverage < 1.0:
-        coverage = 0.99
-
-    wavelengths = np.asarray(wavelength_nm, dtype=float)
-    flux_values = np.asarray(flux, dtype=float)
-    mask = np.isfinite(wavelengths) & np.isfinite(flux_values)
-    if mask.sum() < 2:
-        return None
-
-    wavelengths = wavelengths[mask]
-    flux_values = np.abs(flux_values[mask])
-    order = np.argsort(wavelengths)
-    wavelengths = wavelengths[order]
-    flux_values = flux_values[order]
-
-    wavelengths, unique_idx = np.unique(wavelengths, return_index=True)
-    flux_values = flux_values[unique_idx]
-    if wavelengths.size < 2:
-        return None
-
-    baseline = wavelengths[0]
-    shifted = wavelengths - baseline
-    span = shifted[-1]
-    if not math.isfinite(span) or span <= 0.0:
-        return None
-
-    scaled = shifted / span
-    segment_weights = 0.5 * (flux_values[:-1] + flux_values[1:]) * np.diff(scaled)
-    total_weight = float(segment_weights.sum())
-    if not math.isfinite(total_weight) or total_weight <= 0.0:
-        return None
-
-    cumulative = np.concatenate([[0.0], np.cumsum(segment_weights)])
-    lower_weight = max(0.0, (1.0 - coverage) / 2.0 * total_weight)
-    upper_weight = min(total_weight, total_weight - lower_weight)
-
-    lower_scaled = float(np.interp(lower_weight, cumulative, scaled))
-    upper_scaled = float(np.interp(upper_weight, cumulative, scaled))
-
-    low = baseline + lower_scaled * span
-    high = baseline + upper_scaled * span
-    if not (math.isfinite(low) and math.isfinite(high)):
-        return None
-    return (min(low, high), max(low, high))
-
-
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:

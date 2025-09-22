@@ -23,6 +23,7 @@ from astropy.io import fits
 import requests
 
 from app._version import get_version_info
+from app.utils.flux import flux_percentile_range
 
 __all__ = ["fetch", "MastFetchError", "available_targets"]
 
@@ -272,7 +273,7 @@ def fetch(
         _download_file(remote_url, local_path)
 
     spectrum = _parse_calspec_spectrum(local_path)
-    effective_range = _flux_percentile_range(
+    effective_range = flux_percentile_range(
         spectrum["wavelength_nm"],
         spectrum["flux"],
     )
@@ -487,71 +488,6 @@ def _parse_calspec_spectrum(path: Path) -> Dict[str, np.ndarray]:
             "stat_uncertainty": None if stat_converted is None else np.asarray(stat_converted, dtype=float),
             "sys_uncertainty": None if sys_converted is None else np.asarray(sys_converted, dtype=float),
         }
-
-
-def _flux_percentile_range(
-    wavelength_nm: np.ndarray,
-    flux: np.ndarray,
-    *,
-    coverage: float = 0.99,
-) -> Optional[Tuple[float, float]]:
-    """Return the flux-weighted wavelength interval capturing ``coverage`` of the flux.
-
-    The CALSPEC composites include long model tails that stretch the raw wavelength
-    range past ~300 µm, which collapses the UI view when plotted in nanometres.
-    Use a trapezoidal integral over the absolute flux to find the central interval
-    that contains ~99% of the total energy, falling back to ``None`` when the
-    data are degenerate or pathological (e.g., truncated FITS test samples).
-    """
-
-    if not 0.0 < coverage < 1.0:
-        coverage = 0.99
-
-    wavelengths = np.asarray(wavelength_nm, dtype=float)
-    flux_values = np.asarray(flux, dtype=float)
-    mask = np.isfinite(wavelengths) & np.isfinite(flux_values)
-    if mask.sum() < 2:
-        return None
-
-    wavelengths = wavelengths[mask]
-    flux_values = np.abs(flux_values[mask])
-    order = np.argsort(wavelengths)
-    wavelengths = wavelengths[order]
-    flux_values = flux_values[order]
-
-    # Collapse duplicate wavelength bins to avoid zero-width integrals.
-    wavelengths, unique_idx = np.unique(wavelengths, return_index=True)
-    flux_values = flux_values[unique_idx]
-    if wavelengths.size < 2:
-        return None
-
-    baseline = wavelengths[0]
-    shifted = wavelengths - baseline
-    span = shifted[-1]
-    if not np.isfinite(span) or span <= 0.0:
-        return None
-
-    scaled = shifted / span
-    segment_weights = 0.5 * (flux_values[:-1] + flux_values[1:]) * np.diff(scaled)
-    total_weight = float(segment_weights.sum())
-    if not np.isfinite(total_weight) or total_weight <= 0.0:
-        return None
-
-    cumulative = np.concatenate([[0.0], np.cumsum(segment_weights)])
-    lower_weight = max(0.0, (1.0 - coverage) / 2.0 * total_weight)
-    upper_weight = min(total_weight, total_weight - lower_weight)
-
-    lower_scaled = float(np.interp(lower_weight, cumulative, scaled))
-    upper_scaled = float(np.interp(upper_weight, cumulative, scaled))
-
-    low = baseline + lower_scaled * span
-    high = baseline + upper_scaled * span
-    if not (np.isfinite(low) and np.isfinite(high)):
-        return None
-
-    return min(low, high), max(low, high)
-
-
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:

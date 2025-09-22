@@ -30,6 +30,7 @@ from app.similarity import (
 )
 from app.similarity_panel import render_similarity_panel
 from app.utils.duplicate_ledger import DuplicateLedger
+from app.utils.flux import flux_percentile_range
 from app.utils.local_ingest import (
     SUPPORTED_ASCII_EXTENSIONS,
     SUPPORTED_FITS_EXTENSIONS,
@@ -510,25 +511,31 @@ def _render_display_section() -> None:
     mode_index = display_mode_options.index(current_mode) if current_mode in display_mode_options else 0
     st.session_state["display_mode"] = st.sidebar.selectbox("Flux scaling", display_mode_options, index=mode_index)
 
+    overlays = _get_overlays()
+    target_overlays = [trace for trace in overlays if trace.visible] or overlays
+    min_bound, max_bound = _infer_viewport_bounds(target_overlays)
+    if math.isclose(min_bound, max_bound):
+        max_bound = min_bound + 1.0
     auto = st.sidebar.checkbox("Auto viewport", value=bool(st.session_state.get("auto_viewport", True)))
     st.session_state["auto_viewport"] = auto
     if auto:
         st.session_state["viewport_nm"] = (None, None)
         return
 
-    min_bound, max_bound = _infer_viewport_bounds(_get_overlays())
-    if math.isclose(min_bound, max_bound):
-        max_bound = min_bound + 1.0
-    low, high = st.session_state.get("viewport_nm", (min_bound, max_bound))
-    if low is None or high is None:
-        low, high = min_bound, max_bound
-    low = max(min_bound, float(low))
-    high = min(max_bound, float(high))
+    stored_viewport = st.session_state.get("viewport_nm", (None, None))
+    default_low, default_high = _effective_viewport(target_overlays, stored_viewport)
+    if default_low is None or default_high is None:
+        default_low, default_high = float(min_bound), float(max_bound)
+    else:
+        default_low = max(float(min_bound), float(default_low))
+        default_high = min(float(max_bound), float(default_high))
+        if default_low >= default_high:
+            default_low, default_high = float(min_bound), float(max_bound)
     selection = st.sidebar.slider(
         "Viewport (nm)",
         min_value=float(min_bound),
         max_value=float(max_bound),
-        value=(low, high),
+        value=(float(default_low), float(default_high)),
         step=1.0,
     )
     st.session_state["viewport_nm"] = (float(selection[0]), float(selection[1]))
@@ -655,6 +662,79 @@ def _infer_viewport_bounds(overlays: Sequence[OverlayTrace]) -> Tuple[float, flo
     return float(arr.min()), float(arr.max())
 
 
+def _auto_viewport_range(
+    overlays: Sequence[OverlayTrace],
+    *,
+    coverage: float = 0.99,
+) -> Optional[Tuple[float, float]]:
+    visible = [trace for trace in overlays if trace.visible]
+    target = visible if visible else list(overlays)
+    if not target:
+        return None
+
+    ranges: List[Tuple[float, float]] = []
+    data_low = math.inf
+    data_high = -math.inf
+    for trace in target:
+        wavelengths = np.asarray(trace.wavelength_nm, dtype=float)
+        flux_values = np.asarray(trace.flux, dtype=float)
+        mask = np.isfinite(wavelengths) & np.isfinite(flux_values)
+        if mask.sum() < 2:
+            continue
+        wavelengths = wavelengths[mask]
+        flux_values = flux_values[mask]
+        if wavelengths.size < 2:
+            continue
+
+        data_low = min(data_low, float(np.min(wavelengths)))
+        data_high = max(data_high, float(np.max(wavelengths)))
+
+        interval = flux_percentile_range(wavelengths, flux_values, coverage=coverage)
+        if interval is not None:
+            ranges.append((float(interval[0]), float(interval[1])))
+
+    if not ranges:
+        return None
+
+    low = min(low for low, _ in ranges)
+    high = max(high for _, high in ranges)
+    if not (math.isfinite(low) and math.isfinite(high)) or low >= high:
+        return None
+
+    if math.isfinite(data_low) and math.isfinite(data_high) and data_high > data_low:
+        pad = 0.01 * (data_high - data_low)
+        if pad > 0.0:
+            low = max(low - pad, data_low)
+            high = min(high + pad, data_high)
+
+    return float(low), float(high)
+
+
+def _effective_viewport(
+    overlays: Sequence[OverlayTrace],
+    viewport: Tuple[float | None, float | None],
+) -> Tuple[float | None, float | None]:
+    if not overlays:
+        return (None, None)
+
+    low, high = viewport
+    if low is not None or high is not None:
+        return (
+            float(low) if low is not None else None,
+            float(high) if high is not None else None,
+        )
+
+    auto_range = _auto_viewport_range(overlays)
+    if auto_range is not None:
+        return float(auto_range[0]), float(auto_range[1])
+
+    if overlays:
+        fallback_low, fallback_high = _infer_viewport_bounds(overlays)
+        return float(fallback_low), float(fallback_high)
+
+    return (None, None)
+
+
 def _extract_metadata_range(metadata: Dict[str, object]) -> Optional[Tuple[float, float]]:
     for key in ("wavelength_effective_range_nm", "wavelength_range_nm"):
         value = metadata.get(key) if metadata else None
@@ -735,6 +815,7 @@ def _build_overlay_figure(
     reference: Optional[OverlayTrace],
     differential_mode: str,
     version_tag: str,
+    axis_viewport: Tuple[float | None, float | None] | None = None,
 ) -> Tuple[go.Figure, str]:
     fig = go.Figure()
     axis_title = "Wavelength (nm)"
@@ -796,6 +877,16 @@ def _build_overlay_figure(
         margin=dict(t=50, b=40, l=60, r=20),
         height=520,
     )
+    if axis_viewport is not None:
+        axis_low, axis_high = axis_viewport
+        if (
+            axis_low is not None
+            and axis_high is not None
+            and math.isfinite(axis_low)
+            and math.isfinite(axis_high)
+            and axis_high > axis_low
+        ):
+            fig.update_xaxes(range=[float(axis_low), float(axis_high)])
     fig.update_layout(
         annotations=[
             dict(
@@ -1261,10 +1352,23 @@ def _convert_nist_payload(data: Dict[str, object]) -> Optional[Dict[str, object]
 
 def _render_status_bar(version_info: Mapping[str, object]) -> None:
     overlays = _get_overlays()
-    viewport = st.session_state.get("viewport_nm", (None, None))
-    low, high = viewport
+    viewport_setting = st.session_state.get("viewport_nm", (None, None))
+    target_overlays = [trace for trace in overlays if trace.visible] or overlays
+    effective_viewport = _effective_viewport(target_overlays, viewport_setting)
+    low, high = effective_viewport
+    auto_enabled = bool(st.session_state.get("auto_viewport", True))
+    auto_active = (
+        auto_enabled
+        and viewport_setting[0] is None
+        and viewport_setting[1] is None
+        and low is not None
+        and high is not None
+    )
     low_str = f"{low:.1f} nm" if low is not None else "auto"
     high_str = f"{high:.1f} nm" if high is not None else "auto"
+    viewport_str = f"{low_str} – {high_str}"
+    if auto_active:
+        viewport_str += " (auto)"
     policy_map = {
         "allow": "duplicates allowed",
         "skip": "session dedupe",
@@ -1275,7 +1379,7 @@ def _render_status_bar(version_info: Mapping[str, object]) -> None:
     st.markdown(
         (
             "<div style='margin-top:1rem;padding:0.6rem 0.8rem;border-top:1px solid #333;font-size:0.85rem;opacity:0.85;'>"
-            f"<strong>{len(overlays)}</strong> overlays • viewport {low_str} – {high_str} • reference: {reference} • {policy}"
+            f"<strong>{len(overlays)}</strong> overlays • viewport {viewport_str} • reference: {reference} • {policy}"
             "</div>"
         ),
         unsafe_allow_html=True,
@@ -1298,7 +1402,19 @@ def _render_overlay_tab(version_info: Dict[str, str]) -> None:
     display_mode = st.session_state.get("display_mode", "Flux (raw)")
     normalization = st.session_state.get("normalization_mode", "unit")
     differential_mode = st.session_state.get("differential_mode", "Off")
-    viewport = st.session_state.get("viewport_nm", (None, None))
+    viewport_setting = st.session_state.get("viewport_nm", (None, None))
+    target_overlays = [trace for trace in overlays if trace.visible] or overlays
+    effective_viewport = _effective_viewport(target_overlays, viewport_setting)
+    auto_enabled = bool(st.session_state.get("auto_viewport", True))
+    filter_viewport: Tuple[float | None, float | None]
+    if auto_enabled and (viewport_setting[0] is None and viewport_setting[1] is None):
+        filter_viewport = (None, None)
+    else:
+        filter_viewport = (
+            float(effective_viewport[0]) if effective_viewport[0] is not None else None,
+            float(effective_viewport[1]) if effective_viewport[1] is not None else None,
+        )
+
     reference = next((trace for trace in overlays if trace.trace_id == st.session_state.get("reference_trace_id")), overlays[0])
 
     fig, axis_title = _build_overlay_figure(
@@ -1306,10 +1422,11 @@ def _render_overlay_tab(version_info: Dict[str, str]) -> None:
         display_units,
         display_mode,
         normalization,
-        viewport,
+        filter_viewport,
         reference,
         differential_mode,
         version_info.get("version", "v?"),
+        axis_viewport=effective_viewport,
     )
     st.plotly_chart(fig, width="stretch")
 
@@ -1318,7 +1435,7 @@ def _render_overlay_tab(version_info: Dict[str, str]) -> None:
         _render_overlay_table(overlays)
     with action_col:
         if st.button("Export view", key="export_view"):
-            _export_current_view(fig, overlays, display_units, display_mode, viewport)
+            _export_current_view(fig, overlays, display_units, display_mode, effective_viewport)
         st.caption(f"Axis: {axis_title}")
 
     cache: SimilarityCache = st.session_state["similarity_cache"]
@@ -1330,7 +1447,7 @@ def _render_overlay_tab(version_info: Dict[str, str]) -> None:
         primary_metric=st.session_state.get("similarity_primary_metric", "cosine"),
         reference_id=st.session_state.get("reference_trace_id"),
     )
-    render_similarity_panel(visible_vectors, viewport, options, cache)
+    render_similarity_panel(visible_vectors, effective_viewport, options, cache)
     _render_metadata_summary(overlays)
     _render_line_tables(overlays)
 
