@@ -2,6 +2,11 @@
 /.cache/
 logs/
 __pycache__/
-data/samples/
 /exports
-/data
+/data/*
+!/data/providers/
+!/data/providers/**
+!/data/vega_stub/
+!/data/vega_stub/**
+!/data/examples/
+!/data/examples/**
