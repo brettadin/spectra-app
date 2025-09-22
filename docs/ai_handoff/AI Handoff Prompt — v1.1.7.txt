@@ -1,0 +1,49 @@
+AI Handoff Prompt — v1.1.7
+
+Last updated: 2025-09-22
+
+This prompt records the remaining work and guardrails following the implementation of the All Archives search feature. Future AIs must adhere to the continuity contracts established in prior versions and ensure no regression in overlay, differential or export functionality.
+
+Do Not Break
+
+Overlay, Differential, Export flows; unit conversions remain idempotent from the canonical nm baseline. The combined provider must produce ProviderHit objects identical in shape to existing providers.
+
+Provenance payloads must include archive, access URL, DOI, citation text, fetch timestamp and SHA‑256 hash for each fetched trace. Aggregated searches should not lose per‑provider provenance.
+
+Duplicate guard, normalization and provider cache invariants introduced in previous versions remain intact. The ledger uses file hashes plus archive identifiers to avoid double ingestion.
+
+Continuity docs (brains, patch notes, AI handoff, PATCHLOG.txt) stay cross‑referenced. Update brains_INDEX.md after applying new patches.
+
+What to Ship in v1.1.7 (REF 1.1.7‑A01)
+
+Archive UI: Add an “All Archives” tab before MAST, ESO, SDSS and DOI. Reuse the existing target/instrument/limit form. On submission call provider_search('ALL', query) and render results just like other providers.
+
+Combined provider: Implement app/providers/combined.py with a search() function that iterates through MAST, ESO and SDSS providers. Catch and log exceptions but continue yielding hits from available providers.
+
+Provider registry: Register "ALL" in _PROVIDER_MAP and add a human‑readable label “All Archives” in provider_labels(). Use a lazy import in get_provider() to load combined only when needed.
+
+SIMBAD resolver groundwork: Prepare to expand app/server/fetchers/simbad.py to query the CDS Sesame service for arbitrary star names. This patch does not implement the resolver but ensures the combined provider can call it in the future when no curated matches are found.
+
+Documentation: Author docs/brains/brains_v1.1.7.md capturing the rationale, invariants and follow‑up tasks. Write docs/patch_notes/PATCH_NOTES_v1.1.7.md and docs/PATCH_NOTES/v1.1.7.txt. Update the brains index.
+
+Data & Provenance Requirements
+
+Each ProviderHit returned by the combined provider must carry the same metadata fields as hits from the underlying provider: archive name, target name, instrument label, program/obs ID, DOI, citation, access URL, fetch timestamp and file hash. The provider field should be set to the original archive ("MAST", "ESO", "SDSS").
+
+When the SIMBAD resolver is implemented, returned metadata should include RA/DEC coordinates and any alternative identifiers. Spectral data may remain empty.
+
+Verification
+
+Automated: Write unit tests for the combined provider to ensure aggregated results are returned when providers succeed and that exceptions from one provider do not propagate. Add tests to verify the Archive UI enumerates the “All Archives” tab and that the search form behaves as expected.
+
+Manual: Run Streamlit locally, navigate to the Archive tab and perform a search for a known target (e.g., “Vega”). Verify that results from multiple archives appear together and can be added to the overlay without duplication. Confirm that the DOI tab remains functional.
+
+Continuity Links
+
+Brains: docs/brains/brains_v1.1.7.md
+
+Patch notes: docs/patch_notes/PATCH_NOTES_v1.1.7.md
+
+Patch summary: docs/PATCH_NOTES/v1.1.7.txt
+
+REF: 1.1.7‑A01

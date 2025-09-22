@@ -1,5 +1,6 @@
+# MAKE NEW BRAINS EACH TIME YOU MAKE A CHANGE. DO NOT OVER WRITE PREVIOUS BRAINS
 All contributors must consult the Brains before making changes.
-- The canonical knowledge base is in `docs/brains/brains_<version>.md` (use the latest version); past versions are archived for reference.
+- The canonical knowledge base is in `docs/brains/brains_<version>.md` or <version>_brains.md (use the latest version); past versions are archived for reference.
 - Every change or new learning must be recorded there with a new **REF code**:
   - Format: `<PATCH>-<PART><SEQ>` (e.g., 1.1.5a-A01).
   - Each REF entry documents: What, Why, Where, How, Verification, and Provenance.
@@ -43,7 +44,7 @@ It is part of the mandated continuity template: Brains → AI Handoff → Patch 
 ## Expectations for v1.1.5a (legacy reference)
 - Do **not** regenerate the entire prompt—extend it incrementally.
 - Include guidance about the continuity manifest field and provider directory requirements.
-- Ensure every future prompt references `docs/brains/brains_v1.1.5a.md` until superseded.
+- Ensure every future prompt references `docs/brains/brains_v1.1.5a.md` until superseded. ## has been superseeded
 
 ## Checklist Before Shipping Changes
 1. Read the latest brains entry and confirm the scope still matches.

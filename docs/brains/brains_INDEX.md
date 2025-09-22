@@ -1,3 +1,4 @@
+# MAKE NEW BRAINS EACH TIME YOU MAKE A CHANGE. DO NOT OVER WRITE PREVIOUS BRAINS * unless needed 
 # Spectra App — Brains Index
 _Last updated: 2025-09-22T01:22:08Z_
 
