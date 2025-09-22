@@ -21,25 +21,32 @@ All contributors must consult the Brains before making changes.
 3. Cite the REF in `PATCHLOG.txt`, commit messages, and future handoffs.
 4. Prepare the AI handoff notes for the next iteration.
 
-
 # Spectra App — AI Handoff Bridge
-_Last updated: 2025-09-21T00:00:00Z_
+_Last updated: 2025-09-22T01:22:08Z_
 
 This bridge document ties the brains log to the operative AI handoff prompt.
 It is part of the mandated continuity template: Brains → AI Handoff → Patch Notes.
 
 ## Source of Truth
-- Current prompt: `docs/ai_handoff/AI_HANDOFF_PROMPT_v1.1.4.md`
+- Current prompt: `docs/ai_handoff/AI_HANDOFF_PROMPT_v1.1.6b.md`
+- Previous prompts remain under `docs/ai_handoff/` for historical context.
 - Next revisions must update both this bridge and `docs/brains/brains_INDEX.md`.
 - Keep handoff prompts UTF-8, versioned, and cross-linked from the paired brains + patch notes.
 
-## Expectations for v1.1.5a
+## Expectations for v1.1.6b
+- Execute REF **1.1.6b-A01**: collapse archive metadata/provenance behind closed expanders while keeping “Add to overlay” accessible.
+- Remove the redundant `Visible` checkbox column so the overlay multiselect governs visibility without desyncs.
+- Ingest a telescope-observed solar spectrum as the default example, serving smoothed data by default with raw toggles and wavelength-band filters.
+- Extend overlay traces with explicit unit semantics so emission/absorption render on dedicated, correctly labeled axes.
+- Cache processed solar datasets and memoize loads to protect performance while maintaining provenance for smoothed and raw variants.
+
+## Expectations for v1.1.5a (legacy reference)
 - Do **not** regenerate the entire prompt—extend it incrementally.
 - Include guidance about the continuity manifest field and provider directory requirements.
 - Ensure every future prompt references `docs/brains/brains_v1.1.5a.md` until superseded.
 
 ## Checklist Before Shipping Changes
 1. Read the latest brains entry and confirm the scope still matches.
-2. Verify `docs/PATCH_NOTES/v1.1.5a.txt` lists the same continuity obligations.
+2. Verify `docs/patch_notes/PATCH_NOTES_v1.1.6b.md` and `docs/PATCH_NOTES/v1.1.6b.txt` list the same continuity obligations.
 3. Run `RUN_CMDS/Verify-Project.ps1` to confirm reciprocal links and provider directories are intact.
 4. Prepare necessary AI handoff notes for the next iteration.

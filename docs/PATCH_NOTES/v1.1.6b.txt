@@ -1,0 +1,6 @@
+v1.1.6b — Archive UX + solar reference groundwork (see PATCH_NOTES_v1.1.6b.md for full details).
+- Collapse archive metadata/provenance into closed expanders so overlay actions stay visible.
+- Drop the redundant overlay visibility column and rely on the sidebar multiselect for display control.
+- Introduce a telescope-observed solar spectrum example with smoothed-default plotting, raw toggle, and band filters.
+- Extend overlay unit semantics so emission/absorption data use unit-aware, per-axis rendering.
+- Brains entry: docs/brains/brains_v1.1.6b.md
