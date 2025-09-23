@@ -1,12 +1,24 @@
 import gzip
 import io
+import zipfile
+from pathlib import Path
 from textwrap import dedent
 
 import numpy as np
 import pytest
 from astropy.io import fits
 
+import app.utils.local_ingest as local_ingest
+from app.server.ingest_ascii import parse_ascii_segments
 from app.utils.local_ingest import ingest_local_file
+
+
+@pytest.fixture(autouse=True)
+def temp_cache_dir(tmp_path, monkeypatch):
+    cache_dir = tmp_path / "spectra_cache"
+    cache_dir.mkdir()
+    monkeypatch.setenv("SPECTRA_CACHE_DIR", str(cache_dir))
+    yield cache_dir
 
 
 def test_ingest_local_ascii_populates_metadata():
@@ -50,6 +62,67 @@ def test_ingest_local_ascii_populates_metadata():
     assert "2 samples" in summary
     assert "500.00–500.50 nm" in summary
     assert "Flux: 10^-16 erg/s/cm^2/Å" in summary
+
+
+def test_parse_ascii_segments_handles_variable_whitespace():
+    segment = dedent(
+        """
+        # Source: Atlas
+        # Flux Unit: relative
+
+        380.0    0.5   1.0
+        380.5\t0.55\t0.9
+        381.0      0.6
+        """
+    ).encode("utf-8")
+
+    parsed = parse_ascii_segments([("segment.txt", segment)], root_filename="segment.txt", chunk_size=2)
+
+    assert parsed["wavelength_nm"] == pytest.approx([380.0, 380.5, 381.0])
+    assert parsed["flux"] == pytest.approx([0.5, 0.55, 0.6])
+    metadata = parsed["metadata"]
+    assert metadata["points"] == 3
+    assert metadata["flux_unit"] == "relative"
+    assert metadata["dense_chunk_size"] == 2
+    assert parsed["downsample"]
+    assert parsed["provenance"]["chunks"]
+
+
+def test_parse_ascii_segments_converts_angstrom_to_nm():
+    segment = dedent(
+        """
+        # Wavelength Unit: Angstrom
+        5000 1.0
+        5005 1.1
+        """
+    ).encode("utf-8")
+
+    parsed = parse_ascii_segments([("segment.txt", segment)], root_filename="segment.txt")
+
+    assert parsed["wavelength_nm"] == pytest.approx([500.0, 500.5])
+    metadata = parsed["metadata"]
+    assert metadata["original_wavelength_unit"] == "Å"
+    units = parsed["provenance"].get("units", {})
+    assert units.get("wavelength_input") == "Å"
+    assert units.get("wavelength_reported") == "Angstrom"
+    assert units.get("wavelength_converted_to") == "nm"
+
+
+def test_parse_ascii_segments_wavenumber_sorted_to_nm():
+    segment = dedent(
+        """
+        # Wavelength Unit: cm^-1
+        20000 1.0
+        10000 0.5
+        """
+    ).encode("utf-8")
+
+    parsed = parse_ascii_segments([("segment.txt", segment)], root_filename="segment.txt")
+
+    assert parsed["wavelength_nm"] == pytest.approx([500.0, 1000.0])
+    assert parsed["flux"] == pytest.approx([1.0, 0.5])
+    dense = parsed["provenance"].get("dense_parser", {})
+    assert dense.get("unique_samples") == 2
 
 
 def test_ingest_local_ascii_vertical_layout():
@@ -122,6 +195,52 @@ def test_ingest_local_ascii_gzip_round_trip():
     assert provenance["source_filename"] == "compressed.csv.gz"
     assert provenance["ingest"]["compression"]["algorithm"] == "gzip"
     assert metadata["compression"]["algorithm"] == "gzip"
+
+
+def test_ingest_local_zip_merges_segments():
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("chunk_a.txt", "380 0.5 1\n381 0.6 0.9\n")
+        archive.writestr("chunk_b.txt", "382 0.7 0.8\n")
+
+    payload = ingest_local_file("atlas.zip", buffer.getvalue())
+
+    assert payload["wavelength_nm"] == pytest.approx([380.0, 381.0, 382.0])
+    assert payload["flux"] == pytest.approx([0.5, 0.6, 0.7])
+    assert payload["downsample"]
+
+    metadata = payload["metadata"]
+    assert metadata["segments"] == ["chunk_a.txt", "chunk_b.txt"]
+    assert metadata["cache_dataset_id"]
+
+    provenance = payload["provenance"]
+    cache_info = provenance.get("cache")
+    assert cache_info is not None
+    cache_path = Path(cache_info["path"])
+    assert cache_path.exists()
+    chunks = list(cache_path.glob("chunk_*.npz"))
+    assert chunks
+
+
+def test_ingest_local_dense_ascii_uses_cache(monkeypatch):
+    monkeypatch.setattr(local_ingest, "_DENSE_SIZE_THRESHOLD", 0)
+    monkeypatch.setattr(local_ingest, "_DENSE_LINE_THRESHOLD", 0)
+    lines = "\n".join(
+        f"{380.0 + 0.1 * idx:.1f} {0.5 + 0.01 * idx:.3f} {1.0 - 0.001 * idx:.3f}"
+        for idx in range(20)
+    )
+    content = f"# Source: Dense\n{lines}\n".encode("utf-8")
+
+    payload = ingest_local_file("dense.txt", content)
+
+    assert payload["downsample"]
+    metadata = payload["metadata"]
+    assert metadata["cache_dataset_id"]
+
+    cache_info = payload["provenance"].get("cache")
+    assert cache_info is not None
+    cache_path = Path(cache_info["path"])
+    assert cache_path.exists()
 
 
 def test_ingest_local_fits_enriches_metadata():

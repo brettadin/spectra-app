@@ -14,6 +14,7 @@ It tracks the latest continuity documents and the required cross-links between t
 ## Continuity Table
 | Version | Brains Log | Patch Notes | AI Handoff |
 | --- | --- | --- | --- |
+| v1.1.9 | [docs/brains/brains_v1.1.9.md](brains_v1.1.9.md) | — | — |
 | v1.1.8 | [docs/brains/brains_v1.1.8.md](brains_v1.1.8.md) | [docs/patch_notes/PATCH_NOTES_v1.1.8.md](../patch_notes/PATCH_NOTES_v1.1.8.md) | [docs/ai_handoff/AI Handoff Prompt — v1.1.8.txt](../ai_handoff/AI%20Handoff%20Prompt%20—%20v1.1.8.txt) |
 | v1.1.7 | [docs/brains/brains_v1.1.7.md](brains_v1.1.7.md) | [docs/patch_notes/PATCH_NOTES_v1.1.7.md](../patch_notes/PATCH_NOTES_v1.1.7.md) | [docs/ai_handoff/AI Handoff Prompt — v1.1.7.txt](../ai_handoff/AI%20Handoff%20Prompt%20—%20v1.1.7.txt) |
 | v1.1.6b | [docs/brains/brains_v1.1.6b.md](brains_v1.1.6b.md) | [docs/patch_notes/PATCH_NOTES_v1.1.6b.md](../patch_notes/PATCH_NOTES_v1.1.6b.md) | [docs/ai_handoff/AI_HANDOFF_PROMPT_v1.1.6b.md](../ai_handoff/AI_HANDOFF_PROMPT_v1.1.6b.md) |
