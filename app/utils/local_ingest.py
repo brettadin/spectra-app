@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 import gzip
+import io
+import zipfile
 from pathlib import Path
-from typing import Dict, Mapping, Optional, Tuple
+from typing import Dict, List, Mapping, Optional, Sequence, Tuple
 
-from app.server.ingest_ascii import parse_ascii
+import numpy as np
+
+from app.server.ingest_ascii import parse_ascii, parse_ascii_segments
 from app.server.ingest_fits import parse_fits
 from app.utils.io_readers import read_table
+from app.utils.spectrum_cache import SpectrumCache
 
 
 SUPPORTED_ASCII_EXTENSIONS = {
@@ -32,6 +37,10 @@ SUPPORTED_ASCII_EXTENSIONS = {
 
 SUPPORTED_FITS_EXTENSIONS = {".fits", ".fit", ".fts"}
 
+_DENSE_SIZE_THRESHOLD = 12_000_000  # bytes
+_DENSE_LINE_THRESHOLD = 400_000
+_DENSE_CHUNK_SIZE = 500_000
+
 
 class LocalIngestError(RuntimeError):
     """Raised when local spectra ingestion fails."""
@@ -40,6 +49,8 @@ class LocalIngestError(RuntimeError):
 def _detect_format(name: str, content: bytes) -> str:
     path = Path(name.lower())
     suffixes = path.suffixes or [path.suffix]
+    if any(suffix == ".zip" for suffix in suffixes):
+        return "zip"
     if any(suffix in SUPPORTED_FITS_EXTENSIONS for suffix in suffixes):
         return "fits"
     signature = content[:6].upper()
@@ -124,6 +135,119 @@ def _maybe_decompress(name: str, content: bytes) -> Tuple[str, bytes, Optional[D
     return name, content, None
 
 
+def _should_use_dense_parser(name: str, payload: bytes) -> bool:
+    if len(payload) >= _DENSE_SIZE_THRESHOLD:
+        return True
+    line_count = payload.count(b"\n")
+    if line_count >= _DENSE_LINE_THRESHOLD:
+        return True
+    sample = payload[:4096]
+    if b"," not in sample and b"\t" not in sample and b";" not in sample:
+        # Likely whitespace-delimited; favour the dense parser for robustness.
+        return line_count > 0 and (len(sample.split()) // max(1, line_count or 1)) >= 3
+    return False
+
+
+def _read_zip_segments(name: str, content: bytes) -> List[Tuple[str, bytes]]:
+    try:
+        archive = zipfile.ZipFile(io.BytesIO(content))
+    except zipfile.BadZipFile as exc:
+        raise LocalIngestError(f"Failed to open archive {name}: {exc}") from exc
+
+    segments: List[Tuple[str, bytes]] = []
+    for info in archive.infolist():
+        if info.is_dir():
+            continue
+        filename = info.filename
+        if filename.startswith("__MACOSX"):
+            continue
+        suffix = Path(filename.lower()).suffix
+        if suffix and suffix not in SUPPORTED_ASCII_EXTENSIONS:
+            continue
+        with archive.open(info) as handle:
+            payload = handle.read()
+        if not payload:
+            continue
+        segments.append((filename, payload))
+    if not segments:
+        raise LocalIngestError(f"Archive {name} did not contain supported ASCII spectra.")
+    return segments
+
+
+def _persist_dense_cache(
+    parsed: Mapping[str, object],
+    metadata: Mapping[str, object],
+) -> Optional[Dict[str, object]]:
+    provenance = parsed.get("provenance") or {}
+    checksum = provenance.get("checksum")
+    if not checksum:
+        return None
+    dataset_id = str(checksum)
+    cache = SpectrumCache()
+    wavelengths = np.asarray(parsed.get("wavelength_nm") or [], dtype=np.float64)
+    flux = np.asarray(parsed.get("flux") or [], dtype=np.float64)
+    auxiliary_values = parsed.get("auxiliary")
+    aux = (
+        np.asarray(auxiliary_values, dtype=np.float64)
+        if isinstance(auxiliary_values, Sequence)
+        else None
+    )
+    chunk_ranges = parsed.get("chunk_ranges") or []
+    chunk_records = []
+    chunk_size = int(metadata.get("dense_chunk_size", len(wavelengths)))
+    if chunk_ranges:
+        for index, chunk in enumerate(chunk_ranges):
+            offset = int(chunk.get("offset", index * chunk_size))
+            samples = int(chunk.get("samples", 0))
+            if samples <= 0:
+                continue
+            end = min(offset + samples, wavelengths.size)
+            if end <= offset:
+                continue
+            chunk_records.append(
+                cache.write_chunk(
+                    dataset_id,
+                    index,
+                    wavelengths[offset:end],
+                    flux[offset:end],
+                    aux[offset:end] if aux is not None else None,
+                )
+            )
+    if not chunk_records and wavelengths.size:
+        chunk_records.append(
+            cache.write_chunk(dataset_id, 0, wavelengths, flux, aux)
+        )
+
+    tiers = []
+    for key, data in (parsed.get("downsample") or {}).items():
+        try:
+            tier = int(key)
+        except (TypeError, ValueError):
+            continue
+        wavelengths_tier = np.asarray(data.get("wavelength_nm") or [], dtype=np.float64)
+        flux_tier = np.asarray(data.get("flux") or [], dtype=np.float64)
+        if not wavelengths_tier.size:
+            continue
+        cache.write_tier(dataset_id, tier, wavelengths_tier, flux_tier)
+        tiers.append(tier)
+
+    cache.write_index(dataset_id, chunks=chunk_records, metadata=metadata, tiers=tiers)
+    return {
+        "dataset_id": dataset_id,
+        "path": str(cache.dataset_dir(dataset_id)),
+        "chunks": [
+            {
+                "path": record.path.name,
+                "start_nm": record.start_nm,
+                "end_nm": record.end_nm,
+                "samples": record.samples,
+            }
+            for record in chunk_records
+        ],
+        "tiers": sorted(tiers),
+    }
+
+
 def ingest_local_file(name: str, content: bytes) -> Dict[str, object]:
     """Parse a user-provided spectrum into an overlay payload."""
 
@@ -138,22 +262,48 @@ def ingest_local_file(name: str, content: bytes) -> Dict[str, object]:
     try:
         if detected_format == "fits":
             parsed = parse_fits(payload, filename=processed_name)
-        else:
-            table = read_table(payload, include_header=True)
-            parsed = parse_ascii(
-                table.dataframe,
-                content_bytes=payload,
-                header_lines=table.header_lines,
-                column_labels=table.column_labels,
-                delimiter=table.delimiter,
-                filename=processed_name,
-                orientation=getattr(table, "orientation", None),
+        elif detected_format == "zip":
+            segments = _read_zip_segments(processed_name, payload)
+            parsed = parse_ascii_segments(
+                segments,
+                root_filename=processed_name,
+                chunk_size=_DENSE_CHUNK_SIZE,
             )
+        else:
+            if _should_use_dense_parser(processed_name, payload):
+                parsed = parse_ascii_segments(
+                    [(processed_name, payload)],
+                    root_filename=processed_name,
+                    chunk_size=_DENSE_CHUNK_SIZE,
+                )
+            else:
+                table = read_table(payload, include_header=True)
+                parsed = parse_ascii(
+                    table.dataframe,
+                    content_bytes=payload,
+                    header_lines=table.header_lines,
+                    column_labels=table.column_labels,
+                    delimiter=table.delimiter,
+                    filename=processed_name,
+                    orientation=getattr(table, "orientation", None),
+                )
     except Exception as exc:
         raise LocalIngestError(f"Failed to ingest {original_name}: {exc}") from exc
 
     metadata = _clean_mapping(dict(parsed.get("metadata") or {}))
     provenance = dict(parsed.get("provenance") or {})
+
+    cache_info: Optional[Dict[str, object]] = None
+    if parsed.get("downsample"):
+        cache_info = _persist_dense_cache(parsed, metadata)
+        if cache_info:
+            provenance.setdefault("cache", cache_info)
+            metadata.setdefault("cache_dataset_id", cache_info.get("dataset_id"))
+            metadata.setdefault("cache_path", cache_info.get("path"))
+
+    parsed.pop("auxiliary", None)
+    parsed.pop("chunk_ranges", None)
+
     metadata.setdefault("source", "local upload")
     metadata.setdefault("filename", original_name)
     provenance.setdefault("filename", processed_name)
@@ -168,6 +318,8 @@ def ingest_local_file(name: str, content: bytes) -> Dict[str, object]:
     )
     if compression:
         ingest_info["compression"] = compression
+    if cache_info:
+        ingest_info["cache_dataset_id"] = cache_info.get("dataset_id")
 
     label = _choose_label(original_name, parsed)
     flux_unit = str(parsed.get("flux_unit") or "arb")
@@ -207,6 +359,8 @@ def ingest_local_file(name: str, content: bytes) -> Dict[str, object]:
         "provenance": provenance,
         "kind": parsed.get("kind", "spectrum"),
         "axis": parsed.get("axis", "emission"),
+        "downsample": parsed.get("downsample"),
+        "cache_dataset_id": metadata.get("cache_dataset_id"),
     }
 
     return payload

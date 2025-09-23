@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import math
 import re
+from array import array
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
+import numpy as np
 import pandas as pd
 
+from app.utils.downsample import build_downsample_tiers
 from .units import canonical_unit, to_nm
 
 
@@ -90,10 +94,32 @@ UNIT_PATTERN = re.compile(r"\(([^)]+)\)|\[([^\]]+)\]")
 RANGE_NUMERIC = re.compile(r"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?")
 
 
+LINEAR_SCALE_FACTORS = {
+    "Å": 0.1,
+    "µm": 1000.0,
+    "mm": 1_000_000.0,
+    "cm": 10_000_000.0,
+    "m": 1_000_000_000.0,
+    "pm": 0.001,
+    "in": 25_400_000.0,
+}
+
+
 def checksum_bytes(content: bytes) -> str:
     """Return a stable SHA-256 digest for the provided payload."""
 
     return hashlib.sha256(content).hexdigest()
+
+
+def _parse_numeric_token(token: str) -> Optional[float]:
+    cleaned = token.strip()
+    if not cleaned:
+        return None
+    cleaned = cleaned.replace("D", "E").replace("d", "E")
+    try:
+        return float(cleaned)
+    except ValueError:
+        return None
 
 
 def _normalise_header_key(key: str) -> str:
@@ -130,6 +156,7 @@ def _extract_unit_hint(text: Optional[str]) -> Optional[str]:
     candidates: List[str] = []
     for match in UNIT_PATTERN.findall(lowered):
         candidates.extend(filter(None, match))
+    candidates.append(lowered)
     pieces = re.split(r"[\s_\-\/]+", lowered)
     candidates.extend(pieces)
     for candidate in candidates:
@@ -167,6 +194,24 @@ def _parse_range_value(value: str, default_unit: str) -> Optional[Tuple[float, f
     if not math.isfinite(low_nm) or not math.isfinite(high_nm):
         return None
     return low_nm, high_nm
+
+
+def _convert_wavelengths_to_nm_array(values: np.ndarray, canonical_unit_name: str) -> np.ndarray:
+    if values.size == 0:
+        return np.asarray(values, dtype=float)
+    canonical = canonical_unit(canonical_unit_name) if canonical_unit_name else "nm"
+    base = np.asarray(values, dtype=float)
+    if canonical == "nm":
+        return base
+    if canonical == "cm^-1":
+        converted = np.full(base.shape, np.nan, dtype=float)
+        nonzero = base != 0
+        converted[nonzero] = 1.0e7 / base[nonzero]
+        return converted
+    factor = LINEAR_SCALE_FACTORS.get(canonical)
+    if factor is not None:
+        return base * factor
+    return np.asarray(to_nm(base.tolist(), canonical), dtype=float)
 
 
 def _collect_header_metadata(
@@ -465,3 +510,260 @@ def parse_ascii(
         "axis": axis,
         "kind": "spectrum",
     }
+
+
+def parse_ascii_segments(
+    segments: Sequence[Tuple[str, bytes]] | Iterable[Tuple[str, bytes]],
+    *,
+    root_filename: Optional[str] = None,
+    chunk_size: int = 500_000,
+    assumed_unit: str = "nm",
+) -> Dict[str, object]:
+    """Parse a collection of ASCII spectrum segments into a unified payload."""
+
+    if isinstance(segments, Sequence):
+        iterable = list(segments)
+    else:
+        iterable = list(segments)
+    if not iterable:
+        raise ValueError("No ASCII segments provided for parsing")
+
+    checksum = hashlib.sha256()
+    header_lines: List[str] = []
+    total_samples = 0
+    skipped_rows = 0
+    segment_summaries: List[Dict[str, object]] = []
+
+    wavelengths = array("d")
+    flux_values = array("d")
+    auxiliary = array("d")
+    auxiliary_used = False
+
+    for name, payload in iterable:
+        checksum.update(payload)
+        stream = io.BytesIO(payload)
+        reader = io.TextIOWrapper(stream, encoding="utf-8", errors="ignore")
+        segment_headers: List[str] = []
+        segment_samples = 0
+        data_started = False
+        for raw in reader:
+            stripped = raw.strip()
+            if not stripped:
+                continue
+            tokens = stripped.split()
+            if len(tokens) < 2:
+                if not data_started:
+                    segment_headers.append(raw.rstrip("\n"))
+                else:
+                    skipped_rows += 1
+                continue
+            first = _parse_numeric_token(tokens[0])
+            second = _parse_numeric_token(tokens[1])
+            if first is None or second is None:
+                if not data_started:
+                    segment_headers.append(raw.rstrip("\n"))
+                else:
+                    skipped_rows += 1
+                continue
+            data_started = True
+            wavelengths.append(float(first))
+            flux_values.append(float(second))
+            third_value: Optional[float] = None
+            if len(tokens) >= 3:
+                third_value = _parse_numeric_token(tokens[2])
+            if third_value is None:
+                auxiliary.append(float("nan"))
+            else:
+                auxiliary.append(float(third_value))
+                auxiliary_used = True
+            segment_samples += 1
+            total_samples += 1
+        header_lines.extend(segment_headers)
+        segment_summary = {
+            "name": name,
+            "samples": segment_samples,
+            "header_lines": segment_headers,
+        }
+        segment_summaries.append(segment_summary)
+
+    if not wavelengths:
+        raise ValueError("No numeric samples detected across ASCII segments")
+
+    wavelength_array = np.asarray(wavelengths, dtype=float)
+    flux_array = np.asarray(flux_values, dtype=float)
+    aux_array = np.asarray(auxiliary, dtype=float)
+
+    metadata, raw_headers, label_candidates, axis_hint, header_unit_hint, header_flux_hint = _collect_header_metadata(
+        header_lines
+    )
+
+    resolved_unit = header_unit_hint or assumed_unit
+    unit_inference: Dict[str, object] = {"header": header_unit_hint, "assumed": assumed_unit}
+    try:
+        canonical_wavelength_unit = canonical_unit(resolved_unit)
+    except ValueError:
+        resolved_unit = assumed_unit
+        canonical_wavelength_unit = canonical_unit(resolved_unit)
+        unit_inference["fallback"] = assumed_unit
+
+    if not metadata.get("reported_wavelength_unit"):
+        metadata["reported_wavelength_unit"] = resolved_unit
+    metadata.setdefault("original_wavelength_unit", canonical_wavelength_unit)
+
+    wavelength_nm = _convert_wavelengths_to_nm_array(wavelength_array, canonical_wavelength_unit)
+
+    finite_mask = np.isfinite(wavelength_nm) & np.isfinite(flux_array)
+    dropped_nonfinite = int(finite_mask.size - int(np.count_nonzero(finite_mask)))
+    if dropped_nonfinite:
+        wavelength_nm = wavelength_nm[finite_mask]
+        flux_array = flux_array[finite_mask]
+        aux_array = aux_array[finite_mask]
+    else:
+        wavelength_nm = np.asarray(wavelength_nm, dtype=float)
+        flux_array = np.asarray(flux_array, dtype=float)
+        aux_array = np.asarray(aux_array, dtype=float)
+
+    if wavelength_nm.size == 0:
+        raise ValueError("No numeric samples available after unit normalisation")
+
+    order = np.argsort(wavelength_nm, kind="mergesort")
+    wavelength_nm = wavelength_nm[order]
+    flux_array = flux_array[order]
+    aux_array = aux_array[order]
+
+    pre_unique_samples = int(wavelength_nm.size)
+    wavelength_nm, unique_idx = np.unique(wavelength_nm, return_index=True)
+    flux_array = flux_array[unique_idx]
+    aux_array = aux_array[unique_idx]
+    unique_samples = int(wavelength_nm.size)
+    deduplicated_samples = max(pre_unique_samples - unique_samples, 0)
+
+    auxiliary_used = bool(np.isfinite(aux_array).any())
+
+    flux_unit_label = header_flux_hint or metadata.get("flux_unit")
+    flux_unit, flux_kind = _normalise_flux_unit(flux_unit_label)
+    metadata["flux_unit"] = flux_unit
+    if flux_unit_label and not metadata.get("reported_flux_unit"):
+        metadata["reported_flux_unit"] = flux_unit_label
+
+    metadata["points"] = int(unique_samples)
+    min_nm = float(np.nanmin(wavelength_nm))
+    max_nm = float(np.nanmax(wavelength_nm))
+    metadata["wavelength_range_nm"] = [min_nm, max_nm]
+    metadata.setdefault("wavelength_effective_range_nm", [min_nm, max_nm])
+    metadata.setdefault("data_wavelength_range_nm", [min_nm, max_nm])
+    metadata.setdefault("dense_chunk_size", int(chunk_size))
+    if root_filename:
+        metadata.setdefault("filename", root_filename)
+    metadata.setdefault("segments", [summary["name"] for summary in segment_summaries])
+
+    provenance: Dict[str, object] = {
+        "format": "ascii",
+        "checksum": checksum.hexdigest(),
+        "samples": int(unique_samples),
+        "unit_inference": {**unit_inference, "resolved": resolved_unit},
+        "segments": segment_summaries,
+        "dense_parser": {
+            "chunk_size": int(chunk_size),
+            "segments": len(segment_summaries),
+            "skipped_rows": int(skipped_rows),
+            "total_rows": int(total_samples + skipped_rows),
+            "unique_samples": int(unique_samples),
+        },
+    }
+    dense_meta = provenance["dense_parser"]
+    if dropped_nonfinite:
+        dense_meta["dropped_nonfinite"] = int(dropped_nonfinite)
+    if deduplicated_samples:
+        dense_meta["deduplicated_samples"] = int(deduplicated_samples)
+    if root_filename:
+        provenance["filename"] = root_filename
+    if raw_headers:
+        provenance["header_fields"] = raw_headers
+    if header_lines:
+        provenance["header_lines"] = [line for line in header_lines if line.strip()]
+
+    chunk_ranges: List[Dict[str, object]] = []
+    if chunk_size > 0:
+        for offset in range(0, wavelength_nm.size, chunk_size):
+            end = min(offset + chunk_size, wavelength_nm.size)
+            segment = wavelength_nm[offset:end]
+            if segment.size == 0:
+                continue
+            chunk_ranges.append(
+                {
+                    "offset": int(offset),
+                    "start_nm": float(segment[0]),
+                    "end_nm": float(segment[-1]),
+                    "samples": int(segment.size),
+                }
+            )
+    provenance["chunks"] = list(chunk_ranges)
+
+    conversions: Dict[str, object] = {}
+    original_unit = metadata.get("original_wavelength_unit")
+    if original_unit and str(original_unit).lower() != "nm":
+        conversions["wavelength_unit"] = {"from": original_unit, "to": "nm"}
+    reported_flux = metadata.get("reported_flux_unit")
+    if reported_flux and str(reported_flux) != flux_unit:
+        conversions["flux_unit"] = {"from": reported_flux, "to": flux_unit}
+    if conversions:
+        provenance["conversions"] = conversions
+
+    provenance_units: Dict[str, object] = {"wavelength_converted_to": "nm", "flux_unit": flux_unit}
+    if resolved_unit:
+        provenance_units["wavelength_input"] = resolved_unit
+    reported_unit = metadata.get("reported_wavelength_unit")
+    if reported_unit:
+        provenance_units["wavelength_reported"] = reported_unit
+    original_unit = metadata.get("original_wavelength_unit")
+    if original_unit:
+        provenance_units["wavelength_original"] = original_unit
+    if flux_unit_label:
+        provenance_units["flux_input"] = flux_unit_label
+    provenance["units"] = provenance_units
+
+    axis = _normalise_axis(axis_hint) or "emission"
+    label_hint = next((candidate for candidate in label_candidates if candidate), None)
+
+    auxiliary_values: Optional[np.ndarray]
+    if auxiliary_used:
+        auxiliary_values = aux_array
+        finite_aux = auxiliary_values[np.isfinite(auxiliary_values)]
+        if finite_aux.size:
+            metadata.setdefault(
+                "auxiliary_statistics",
+                {
+                    "min": float(np.nanmin(finite_aux)),
+                    "max": float(np.nanmax(finite_aux)),
+                    "mean": float(np.nanmean(finite_aux)),
+                    "samples": int(finite_aux.size),
+                },
+            )
+    else:
+        auxiliary_values = None
+
+    tiers = build_downsample_tiers(wavelength_nm, flux_array)
+    provenance["downsample_tiers"] = sorted(int(key) for key in tiers)
+
+    payload = {
+        "label_hint": label_hint,
+        "wavelength_nm": [float(value) for value in wavelength_nm.tolist()],
+        "flux": [float(value) for value in flux_array.tolist()],
+        "auxiliary": [float(value) for value in auxiliary_values.tolist()] if auxiliary_values is not None else None,
+        "flux_unit": flux_unit,
+        "flux_kind": flux_kind,
+        "metadata": metadata,
+        "provenance": provenance,
+        "axis": axis,
+        "kind": "spectrum",
+        "chunk_ranges": chunk_ranges,
+        "downsample": {
+            int(level): {
+                "wavelength_nm": list(result.wavelength_nm),
+                "flux": list(result.flux),
+            }
+            for level, result in tiers.items()
+        },
+    }
+    return payload

@@ -29,6 +29,7 @@ from app.similarity import (
     viewport_alignment,
 )
 from app.similarity_panel import render_similarity_panel
+from app.utils.downsample import build_downsample_tiers
 from app.utils.duplicate_ledger import DuplicateLedger
 from app.utils.flux import flux_percentile_range
 from app.utils.local_ingest import (
@@ -62,6 +63,8 @@ class OverlayTrace:
     flux_unit: str = "arb"
     flux_kind: str = "relative"
     axis: str = "emission"
+    downsample: Dict[int, Tuple[Tuple[float, ...], Tuple[float, ...]]] = field(default_factory=dict)
+    cache_dataset_id: Optional[str] = None
 
     def to_dataframe(self) -> pd.DataFrame:
         data: Dict[str, Iterable[object]] = {
@@ -75,13 +78,74 @@ class OverlayTrace:
         df = df.dropna(subset=["wavelength_nm", "flux"])
         return df.sort_values("wavelength_nm")
 
-    def to_vectors(self) -> TraceVectors:
-        df = self.to_dataframe()
+    def sample(
+        self,
+        viewport: Tuple[float | None, float | None],
+        *,
+        max_points: int = 8000,
+        include_hover: bool = True,
+    ) -> Tuple[np.ndarray, np.ndarray, Optional[List[str]], bool]:
+        wavelengths = np.asarray(self.wavelength_nm, dtype=float)
+        flux_values = np.asarray(self.flux, dtype=float)
+        hover_values = list(self.hover) if include_hover and self.hover else None
+
+        low, high = viewport
+        if low is not None or high is not None:
+            mask = np.ones_like(wavelengths, dtype=bool)
+            if low is not None:
+                mask &= wavelengths >= float(low)
+            if high is not None:
+                mask &= wavelengths <= float(high)
+            wavelengths = wavelengths[mask]
+            flux_values = flux_values[mask]
+            if hover_values is not None:
+                hover_values = [hover for hover, keep in zip(hover_values, mask.tolist()) if keep]
+
+        if wavelengths.size <= max_points:
+            return wavelengths, flux_values, hover_values, True
+
+        for tier in sorted(self.downsample.keys()):
+            tier_data = self.downsample[tier]
+            tier_w = np.asarray(tier_data[0], dtype=float)
+            tier_f = np.asarray(tier_data[1], dtype=float)
+            if low is not None:
+                tier_w_mask = tier_w >= float(low)
+            else:
+                tier_w_mask = np.ones_like(tier_w, dtype=bool)
+            if high is not None:
+                tier_w_mask &= tier_w <= float(high)
+            tier_w = tier_w[tier_w_mask]
+            tier_f = tier_f[tier_w_mask]
+            if tier_w.size == 0:
+                continue
+            if tier_w.size <= max_points:
+                return tier_w, tier_f, None, False
+
+        step = max(1, int(math.ceil(wavelengths.size / max_points)))
+        return wavelengths[::step], flux_values[::step], None, False
+
+    def to_vectors(
+        self,
+        *,
+        max_points: Optional[int] = None,
+        viewport: Tuple[float | None, float | None] | None = None,
+    ) -> TraceVectors:
+        if max_points is None and viewport is None:
+            df = self.to_dataframe()
+            return TraceVectors(
+                trace_id=self.trace_id,
+                label=self.label,
+                wavelengths_nm=df["wavelength_nm"].to_numpy(dtype=float),
+                flux=df["flux"].to_numpy(dtype=float),
+                kind=self.kind,
+                fingerprint=self.fingerprint,
+            )
+        selected_w, selected_f, _, _ = self.sample(viewport or (None, None), max_points=max_points or len(self.wavelength_nm), include_hover=False)
         return TraceVectors(
             trace_id=self.trace_id,
             label=self.label,
-            wavelengths_nm=df["wavelength_nm"].to_numpy(dtype=float),
-            flux=df["flux"].to_numpy(dtype=float),
+            wavelengths_nm=selected_w,
+            flux=selected_f,
             kind=self.kind,
             fingerprint=self.fingerprint,
         )
@@ -244,7 +308,6 @@ def _ensure_session_state() -> None:
     st.session_state.setdefault("local_upload_registry", {})
     st.session_state.setdefault("differential_result", None)
     st.session_state.setdefault("differential_sample_points", 2000)
-    st.session_state.setdefault("overlay_visibility_selection", [])
     if "duplicate_ledger" not in st.session_state:
         st.session_state["duplicate_ledger"] = DuplicateLedger()
     if "similarity_cache" not in st.session_state:
@@ -282,12 +345,10 @@ def _trace_label(trace_id: Optional[str]) -> str:
 
 
 def _compute_fingerprint(wavelengths: Sequence[float], flux: Sequence[float]) -> str:
-    payload = {
-        "wavelength_nm": [round(float(w), 6) for w in wavelengths],
-        "flux": [round(float(f), 6) for f in flux],
-    }
-    encoded = json.dumps(payload, sort_keys=True).encode("utf-8")
-    return hashlib.sha1(encoded).hexdigest()
+    arr_w = np.asarray([float(w) for w in wavelengths], dtype=np.float64)
+    arr_f = np.asarray([float(f) for f in flux], dtype=np.float64)
+    combined = np.stack((np.round(arr_w, 6), np.round(arr_f, 6)), axis=1)
+    return hashlib.sha1(combined.tobytes()).hexdigest()
 
 
 def _add_overlay(
@@ -304,6 +365,8 @@ def _add_overlay(
     provenance: Optional[Dict[str, object]] = None,
     hover: Optional[Sequence[str]] = None,
     axis: Optional[str] = None,
+    downsample: Optional[Mapping[int, Mapping[str, Sequence[float]]]] = None,
+    cache_dataset_id: Optional[str] = None,
 ) -> Tuple[bool, str]:
     try:
         values_w = [float(v) for v in wavelengths]
@@ -312,6 +375,43 @@ def _add_overlay(
         return False, "Unable to coerce spectral data to floats."
     if not values_w or not values_f or len(values_w) != len(values_f):
         return False, "No spectral samples available."
+
+    if hover is not None and len(hover) == len(values_w):
+        paired = sorted(
+            zip(values_w, values_f, hover), key=lambda item: float(item[0])
+        )
+        values_w = [float(item[0]) for item in paired]
+        values_f = [float(item[1]) for item in paired]
+        hover_sorted = [item[2] for item in paired]
+    else:
+        paired = sorted(zip(values_w, values_f), key=lambda item: float(item[0]))
+        values_w = [float(item[0]) for item in paired]
+        values_f = [float(item[1]) for item in paired]
+        hover_sorted = list(hover) if hover is not None else None
+
+    downsample_map: Dict[int, Tuple[Tuple[float, ...], Tuple[float, ...]]] = {}
+    if downsample:
+        for tier, payload in downsample.items():
+            try:
+                tier_value = int(tier)
+            except (TypeError, ValueError):
+                continue
+            wavelengths_ds = payload.get("wavelength_nm") if isinstance(payload, Mapping) else None
+            flux_ds = payload.get("flux") if isinstance(payload, Mapping) else None
+            if not wavelengths_ds or not flux_ds:
+                continue
+            if len(wavelengths_ds) != len(flux_ds):
+                continue
+            downsample_map[tier_value] = (
+                tuple(float(value) for value in wavelengths_ds),
+                tuple(float(value) for value in flux_ds),
+            )
+    if not downsample_map:
+        generated = build_downsample_tiers(values_w, values_f)
+        downsample_map = {
+            tier: (tuple(result.wavelength_nm), tuple(result.flux))
+            for tier, result in generated.items()
+        }
 
     overlays = _get_overlays()
     fingerprint = _compute_fingerprint(values_w, values_f)
@@ -336,10 +436,12 @@ def _add_overlay(
         metadata=dict(metadata or {}),
         provenance=dict(provenance or {}),
         fingerprint=fingerprint,
-        hover=tuple(str(text) for text in (hover or [])) if hover else None,
+        hover=tuple(str(text) for text in (hover_sorted or [])) if hover_sorted else None,
         flux_unit=str(flux_unit or "arb"),
         flux_kind=str(flux_kind or "relative"),
         axis=str(axis or "emission"),
+        downsample=downsample_map,
+        cache_dataset_id=cache_dataset_id,
     )
     overlays.append(trace)
     _set_overlays(overlays)
@@ -379,6 +481,8 @@ def _add_overlay_payload(payload: Dict[str, object]) -> Tuple[bool, str]:
         provenance=payload.get("provenance"),
         hover=payload.get("hover"),
         axis=payload.get("axis"),
+        downsample=payload.get("downsample"),
+        cache_dataset_id=payload.get("cache_dataset_id"),
     )
 
 
@@ -842,56 +946,77 @@ def _build_overlay_figure(
 ) -> Tuple[go.Figure, str]:
     fig = go.Figure()
     axis_title = "Wavelength (nm)"
-    reference_vectors = reference.to_vectors() if reference else None
+    reference_vectors = (
+        reference.to_vectors(max_points=12000, viewport=viewport) if reference else None
+    )
 
     for trace in overlays:
         if not trace.visible:
             continue
-        df = trace.to_dataframe()
-        df = _filter_viewport(df, viewport)
-        if df.empty:
+
+        if trace.kind == "lines":
+            df = trace.to_dataframe()
+            df = _filter_viewport(df, viewport)
+            if df.empty:
+                continue
+            converted, axis_title = _convert_wavelength(df["wavelength_nm"], display_units)
+            df = df.assign(wavelength=converted, flux=df["flux"].astype(float))
+            hover_values = _normalize_hover_values(df.get("hover"))
+            _add_line_trace(fig, df, trace.label, hover_values)
+            continue
+
+        sample_w, sample_flux, sample_hover, _ = trace.sample(
+            viewport,
+            max_points=12000,
+            include_hover=True,
+        )
+        if sample_w.size == 0:
             continue
 
         if (
             differential_mode == "Relative to reference"
             and reference_vectors is not None
             and trace.trace_id != reference_vectors.trace_id
-            and trace.kind != "lines"
         ):
-            axis, values_trace, values_ref = viewport_alignment(trace.to_vectors(), reference_vectors, viewport)
+            trace_vectors = TraceVectors(
+                trace_id=trace.trace_id,
+                label=trace.label,
+                wavelengths_nm=sample_w,
+                flux=sample_flux,
+                kind=trace.kind,
+                fingerprint=trace.fingerprint,
+            )
+            axis, values_trace, values_ref = viewport_alignment(
+                trace_vectors,
+                reference_vectors,
+                viewport,
+            )
             if axis is None or values_trace is None or values_ref is None:
                 continue
-            df = pd.DataFrame({"wavelength_nm": axis, "flux": values_trace - values_ref})
-        if "wavelength_nm" not in df.columns:
-            st.warning(f"{trace.label}: missing wavelength data; trace skipped.")
-            continue
+            sample_w = np.asarray(axis, dtype=float)
+            sample_flux = np.asarray(values_trace - values_ref, dtype=float)
+            sample_hover = None
 
-        converted, axis_title = _convert_wavelength(df["wavelength_nm"], display_units)
-        df = df.assign(wavelength=converted, flux=df["flux"].astype(float))
-        df = df.dropna(subset=["wavelength", "flux"])
-        if df.empty:
-            continue
-
-        hover_values = _normalize_hover_values(df.get("hover"))
+        converted, axis_title = _convert_wavelength(pd.Series(sample_w), display_units)
+        flux_array = np.asarray(sample_flux, dtype=float)
 
         if display_mode != "Flux (raw)":
-            df["flux"] = apply_normalization(df["flux"].to_numpy(dtype=float), "max")
-        elif normalization_mode and normalization_mode != "none" and trace.kind != "lines":
-            df["flux"] = apply_normalization(df["flux"].to_numpy(dtype=float), normalization_mode)
+            flux_array = apply_normalization(flux_array, "max")
+        elif normalization_mode and normalization_mode != "none":
+            flux_array = apply_normalization(flux_array, normalization_mode)
 
-        if trace.kind == "lines":
-            _add_line_trace(fig, df, trace.label, hover_values)
-        else:
-            fig.add_trace(
-                go.Scatter(
-                    x=df["wavelength"],
-                    y=df["flux"],
-                    mode="lines",
-                    name=trace.label,
-                    hovertext=hover_values,
-                    hoverinfo="text" if hover_values is not None else None,
-                )
+        hover_values = _normalize_hover_values(sample_hover) if sample_hover is not None else None
+
+        fig.add_trace(
+            go.Scatter(
+                x=converted.tolist(),
+                y=flux_array.tolist(),
+                mode="lines",
+                name=trace.label,
+                hovertext=hover_values if hover_values is not None else None,
+                hoverinfo="text" if hover_values is not None else None,
             )
+        )
 
     fig.update_layout(
         xaxis_title=axis_title,
@@ -931,6 +1056,24 @@ def _build_overlay_figure(
 def _render_overlay_table(overlays: Sequence[OverlayTrace]) -> None:
     if not overlays:
         return
+    col_show, col_hide = st.columns(2)
+    with col_show:
+        show_all = st.button("Show all", key="overlay_show_all")
+    with col_hide:
+        hide_all = st.button("Hide all", key="overlay_hide_all")
+
+    if show_all or hide_all:
+        desired_state = bool(show_all)
+        mutated = False
+        for trace in overlays:
+            if trace.visible != desired_state:
+                trace.visible = desired_state
+                mutated = True
+        if mutated:
+            _set_overlays(overlays)
+
+    options = [trace.trace_id for trace in overlays]
+
     table = pd.DataFrame(
         {
             "Label": [trace.label for trace in overlays],
@@ -938,63 +1081,33 @@ def _render_overlay_table(overlays: Sequence[OverlayTrace]) -> None:
             "Kind": [trace.kind for trace in overlays],
             "Points": [trace.points for trace in overlays],
             "Visible": [trace.visible for trace in overlays],
-        }
+        },
+        index=[trace.trace_id for trace in overlays],
     )
-    st.dataframe(table, hide_index=True, width="stretch")
 
-    options = [trace.trace_id for trace in overlays]
-    stored_selection = [
-        trace_id
-        for trace_id in st.session_state.get("overlay_visibility_selection", [])
-        if trace_id in options
-    ]
-    default_visible = [trace.trace_id for trace in overlays if trace.visible]
-    for trace_id in default_visible:
-        if trace_id not in stored_selection:
-            stored_selection.append(trace_id)
-    st.session_state["overlay_visibility_selection"] = stored_selection
+    editor = st.data_editor(
+        table,
+        hide_index=True,
+        use_container_width=True,
+        column_config={
+            "Visible": st.column_config.CheckboxColumn(
+                "Visible", help="Toggle overlay visibility", default=True
+            ),
+        },
+        disabled=["Label", "Provider", "Kind", "Points"],
+        key="overlay_visibility_editor",
+    )
 
-    with st.form("overlay_visibility_form"):
-        selection = st.multiselect(
-            "Visible overlays",
-            options,
-            default=stored_selection,
-            format_func=_trace_label,
-        )
-        col_apply, col_all, col_none = st.columns(3)
-        apply = col_apply.form_submit_button("Apply visibility")
-        show_all = col_all.form_submit_button("Show all")
-        hide_all = col_none.form_submit_button("Hide all")
-
-    if show_all:
-        selection = options
-        apply = True
-    elif hide_all:
-        selection = []
-        apply = True
-
-    if apply:
-        st.session_state["overlay_visibility_selection"] = selection
-        mutated = False
+    mutated = False
+    desired_visibility = editor["Visible"] if isinstance(editor, pd.DataFrame) else None
+    if desired_visibility is not None:
         for trace in overlays:
-            desired = trace.trace_id in selection
+            desired = bool(desired_visibility.get(trace.trace_id, trace.visible))
             if trace.visible != desired:
                 trace.visible = desired
                 mutated = True
-        if mutated:
-            _set_overlays(overlays)
-        st.success("Updated overlay visibility.")
-    else:
-        # Keep the underlying traces in sync with stored selection to avoid UI drift.
-        selection_set = set(st.session_state.get("overlay_visibility_selection", []))
-        mutated = False
-        for trace in overlays:
-            desired = trace.trace_id in selection_set
-            if trace.visible != desired:
-                trace.visible = desired
-                mutated = True
-        if mutated:
-            _set_overlays(overlays)
+    if mutated:
+        _set_overlays(overlays)
 
     selected = st.multiselect(
         "Remove overlays",
@@ -1176,7 +1289,6 @@ def _clear_overlays() -> None:
     cache: SimilarityCache = st.session_state["similarity_cache"]
     cache.reset()
     st.session_state["local_upload_registry"] = {}
-    st.session_state["overlay_visibility_selection"] = []
     st.session_state["differential_result"] = None
 
 
@@ -1462,7 +1574,11 @@ def _render_overlay_tab(version_info: Dict[str, str]) -> None:
         st.caption(f"Axis: {axis_title}")
 
     cache: SimilarityCache = st.session_state["similarity_cache"]
-    visible_vectors = [trace.to_vectors() for trace in overlays if trace.visible]
+    visible_vectors = [
+        trace.to_vectors(max_points=15000, viewport=effective_viewport)
+        for trace in overlays
+        if trace.visible
+    ]
     options = SimilarityOptions(
         metrics=tuple(st.session_state.get("similarity_metrics", ["cosine"])),
         normalization=st.session_state.get("similarity_normalization", normalization),
