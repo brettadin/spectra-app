@@ -23,18 +23,24 @@ All contributors must consult the Brains before making changes.
 4. Prepare the AI handoff notes for the next iteration.
 
 # Spectra App — AI Handoff Bridge
-_Last updated: 2025-09-22T12:00:00Z_
+_Last updated: 2025-09-23T00:00:00Z_
 
 This bridge document ties the brains log to the operative AI handoff prompt.
 It is part of the mandated continuity template: Brains → AI Handoff → Patch Notes.
 
 ## Source of Truth
-- Current prompt: `docs/ai_handoff/AI Handoff Prompt — v1.1.7.txt`
+- Current prompt: `docs/ai_handoff/AI Handoff Prompt — v1.1.8.txt`
 - Previous prompts remain under `docs/ai_handoff/` for historical context.
 - Next revisions must update both this bridge and `docs/brains/brains_INDEX.md`.
 - Keep handoff prompts UTF-8, versioned, and cross-linked from the paired brains + patch notes.
 
-## Expectations for v1.1.7
+## Expectations for v1.1.8
+- Execute REF **1.1.8-A01**: eliminate `datetime.utcfromtimestamp()` usage in the UI by switching to `datetime.fromtimestamp(..., tz=timezone.utc)` while preserving existing ISO/UTC string formats.
+- Harden ESO/DOI FITS ingest by introducing `_resolve_flux_unit()` helpers that normalise fallback labels, suppress `UnitsWarning`, and still raise when encountering unknown units.
+- Keep the combined provider, overlay/differential flows, and provenance manifests untouched aside from the timestamp formatting change.
+- Refresh continuity artefacts for v1.1.8: brains, patch notes (md + txt), AI prompts, brains index, PATCHLOG.txt, and `app/version.json`.
+
+## Expectations for v1.1.7 (historical reference)
 - Execute REF **1.1.7-A01**: deliver the aggregated **All Archives** workflow without regressing overlay, differential, or export behaviour.
 - Implement `app/providers/combined.py` so a single `ProviderQuery` returns concatenated hits from MAST, ESO, and SDSS even when one provider fails.
 - Register the `ALL` provider in `app/providers/__init__.py` with lazy imports and expose the "All Archives" label to the UI.
@@ -55,6 +61,6 @@ It is part of the mandated continuity template: Brains → AI Handoff → Patch 
 
 ## Checklist Before Shipping Changes
 1. Read the latest brains entry and confirm the scope still matches.
-2. Verify `docs/patch_notes/PATCH_NOTES_v1.1.7.md` and `docs/PATCH_NOTES/v1.1.7.txt` list the same continuity obligations.
+2. Verify `docs/patch_notes/PATCH_NOTES_v1.1.8.md` and `docs/PATCH_NOTES/v1.1.8.txt` list the same continuity obligations.
 3. Run `RUN_CMDS/Verify-Project.ps1` to confirm reciprocal links and provider directories are intact.
 4. Prepare necessary AI handoff notes for the next iteration.

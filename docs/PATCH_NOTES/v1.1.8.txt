@@ -1,0 +1,5 @@
+v1.1.8 — UTC hygiene & FITS unit warning suppression.
+- UI timestamps now use timezone-aware `datetime.fromtimestamp(..., tz=timezone.utc)` while keeping the same rendered strings.
+- ESO/DOI ingest filters `astropy.units.UnitsWarning` and records a canonical fallback label when `BUNIT` is missing.
+- Continuity artefacts updated: brains_v1.1.8.md, PATCH_NOTES_v1.1.8.md, AI Handoff Prompt — v1.1.8.txt, PATCHLOG.txt, app/version.json.
+- Brains entry: docs/brains/brains_v1.1.8.md

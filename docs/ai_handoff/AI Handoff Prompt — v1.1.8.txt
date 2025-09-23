@@ -1,0 +1,47 @@
+AI Handoff Prompt — v1.1.8
+
+Last updated: 2025-09-23
+
+This prompt records the guardrails following the UTC + FITS warning hardening work. Future AIs must keep the combined-provider release stable while ensuring no new warnings leak into the console.
+
+Do Not Break
+
+Overlay, Differential, Export flows; unit conversions must remain idempotent from the canonical nm baseline. The combined provider still needs to emit ProviderHit objects that match existing structure and provenance metadata.
+
+Provenance payloads continue to require archive, access URL, DOI, citation text, fetch timestamp and SHA-256 hashes. Aggregated searches must retain per-provider provenance.
+
+Duplicate guard, normalization modes, and provider caches introduced in previous versions stay intact. The ledger relies on file hash plus archive identifier.
+
+Continuity docs (brains, patch notes, AI handoff, PATCHLOG.txt) stay cross-referenced. Update `brains_INDEX.md` after applying new patches.
+
+What to Ship in v1.1.8 (REF 1.1.8-A01)
+
+UI timestamps: Replace any residual `datetime.utcfromtimestamp()` usage with `datetime.fromtimestamp(..., tz=timezone.utc)` and preserve the existing human-facing string formats (`...Z` in ISO, `%Y-%m-%d %H:%M UTC`).
+
+FITS ingest: Add a `_resolve_flux_unit()` helper in ESO/DOI fetchers that (a) returns a canonical fallback label (`erg s^-1 cm^-2 Angstrom^-1`), (b) suppresses `astropy.units.UnitsWarning`, and (c) continues to raise `EsoFetchError` / `DoiFetchError` on unknown units. Reuse the parsed unit when converting flux and uncertainty arrays.
+
+Continuity: Bump `app/version.json` to v1.1.8, append to PATCHLOG, publish brains_v1.1.8.md + patch notes (md/txt), refresh AI handoff bridge, and update `brains_INDEX.md`.
+
+Outstanding from earlier patches: SIMBAD resolver groundwork remains pending; do not delete stubs or references.
+
+Data & Provenance Requirements
+
+ProviderHit instances must continue to expose archive name, target, instrument, program/obs ID, DOI, citation, access URL, fetch timestamp, and SHA-256 hash. When fallback units are used, record the canonical label in `units_original` but leave numerical data untouched.
+
+When the SIMBAD resolver lands, ensure metadata includes RA/DEC and alternate identifiers while keeping spectral arrays optional.
+
+Verification
+
+Automated: Execute `pytest` (full suite) to confirm ingest conversions and UI wiring remain healthy. Keep lint/static checks in CI green.
+
+Manual: Launch Streamlit, ingest an ESO/DOI spectrum lacking `BUNIT`, and confirm the console stays quiet. Load the Docs tab and provenance expanders to verify no `DeprecationWarning` or `UnitsWarning` messages appear. Spot-check All Archives search + overlaying to ensure provenance remains intact.
+
+Continuity Links
+
+Brains: docs/brains/brains_v1.1.8.md
+
+Patch notes: docs/patch_notes/PATCH_NOTES_v1.1.8.md
+
+Patch summary: docs/PATCH_NOTES/v1.1.8.txt
+
+REF: 1.1.8-A01

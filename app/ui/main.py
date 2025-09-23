@@ -6,7 +6,7 @@ import math
 import time
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
@@ -1620,7 +1620,11 @@ def _build_differential_summary(result: DifferentialResult) -> pd.DataFrame:
 
 
 def _add_differential_overlay(result: DifferentialResult) -> Tuple[bool, str]:
-    timestamp = datetime.utcfromtimestamp(result.computed_at).isoformat() + "Z"
+    timestamp = (
+        datetime.fromtimestamp(result.computed_at, tz=timezone.utc)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
     metadata = {
         "source": "differential",
         "operation": result.operation_code,
@@ -1793,7 +1797,9 @@ def _render_docs_tab() -> None:
                 mime="text/markdown",
             )
             try:
-                modified = datetime.utcfromtimestamp(entry.path.stat().st_mtime).strftime("%Y-%m-%d %H:%M UTC")
+                modified = datetime.fromtimestamp(
+                    entry.path.stat().st_mtime, tz=timezone.utc
+                ).strftime("%Y-%m-%d %H:%M UTC")
             except OSError:
                 modified = ""
             if modified:
