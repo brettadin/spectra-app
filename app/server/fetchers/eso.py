@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
+import warnings
 import unicodedata
 import re
 from pathlib import Path
@@ -13,6 +14,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 import numpy as np
 from astropy import units as u
 from astropy.io import fits
+from astropy.units import UnitsWarning
 import requests
 
 from app._version import get_version_info
@@ -25,6 +27,8 @@ REQUEST_TIMEOUT = 30  # seconds
 ARCHIVE_LABEL = "ESO"
 CANONICAL_WAVELENGTH_UNIT = "nm"
 CANONICAL_FLUX_UNIT = "erg s^-1 cm^-2 nm^-1"
+_FALLBACK_FLUX_UNIT_LABEL = "erg s^-1 cm^-2 Angstrom^-1"
+_FALLBACK_FLUX_UNIT = u.erg / (u.s * u.cm**2 * u.AA)
 
 
 class EsoFetchError(RuntimeError):
@@ -278,6 +282,19 @@ def _download_file(url: str, destination: Path) -> None:
                     handle.write(chunk)
 
 
+def _resolve_flux_unit(raw_unit: Optional[str], path: Path) -> Tuple[str, u.Unit]:
+    label = (raw_unit or "").strip()
+    if not label:
+        return _FALLBACK_FLUX_UNIT_LABEL, _FALLBACK_FLUX_UNIT
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UnitsWarning)
+        try:
+            unit = u.Unit(label)
+        except ValueError as exc:  # pragma: no cover - defensive
+            raise EsoFetchError(f"Unrecognised flux unit '{label}' in {path}") from exc
+    return label, unit
+
+
 def _parse_xshooter_spectrum(path: Path) -> Dict[str, np.ndarray]:
     with fits.open(path) as hdul:
         primary = hdul[0]
@@ -314,21 +331,18 @@ def _parse_xshooter_spectrum(path: Path) -> Dict[str, np.ndarray]:
         wavelength = crval + (pixels + 1 - crpix) * cdelt
         wave_unit = u.Unit(cunit) if cunit else u.nm
         wavelength_quantity = wavelength * wave_unit
-        bunit = header.get("BUNIT", "erg/s/cm2/Angstrom")
-        try:
-            flux_quantity = flux * u.Unit(bunit)
-        except ValueError as exc:  # pragma: no cover - defensive
-            raise EsoFetchError(f"Unrecognised flux unit '{bunit}' in {path}") from exc
+        bunit_label, flux_unit = _resolve_flux_unit(header.get("BUNIT"), path)
+        flux_quantity = flux * flux_unit
         flux_converted = flux_quantity.to(u.erg / (u.s * u.cm**2 * u.nm)).value
 
         uncertainty = None
         if len(hdul) > 1 and hdul[1].data is not None:
             err_data = np.asarray(hdul[1].data, dtype=float)
             try:
-                err_quantity = err_data * u.Unit(bunit)
+                err_quantity = err_data * flux_unit
             except ValueError as exc:  # pragma: no cover - defensive
                 raise EsoFetchError(
-                    f"Unrecognised uncertainty unit '{bunit}' in {path}"
+                    f"Unrecognised uncertainty unit '{bunit_label}' in {path}"
                 ) from exc
             uncertainty = err_quantity.to(u.erg / (u.s * u.cm**2 * u.nm)).value
 
@@ -338,7 +352,7 @@ def _parse_xshooter_spectrum(path: Path) -> Dict[str, np.ndarray]:
             "uncertainty": None if uncertainty is None else uncertainty.astype(float),
             "units_original": {
                 "wavelength": cunit,
-                "flux": bunit,
+                "flux": bunit_label,
             },
         }
 def _sha256(path: Path) -> str:
