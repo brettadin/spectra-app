@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os, json, time, argparse, yaml, re
+import numbers
 from pathlib import Path
 import pandas as pd
 from astropy.table import Table, vstack
@@ -96,6 +97,78 @@ def _get_first_value(table, *names):
     return None
 
 
+def _get_first_value_with_column(table, *names):
+    if table is None:
+        return None, None
+
+    col_lookup = {col.lower(): col for col in table.colnames}
+    for name in names:
+        lookup = name.lower()
+        column = col_lookup.get(lookup)
+        if column is None:
+            continue
+        value = table[column][0]
+        if value is None:
+            continue
+        if getattr(value, "mask", False):
+            continue
+        return value, column
+    return None, None
+
+
+RA_COLUMN_ALIASES = ("RA", "ra", "RA_ICRS", "RAJ2000", "RA_d")
+DEC_COLUMN_ALIASES = ("DEC", "dec", "DEC_ICRS", "DEJ2000", "DEC_d")
+
+
+def _coerce_degree_value(value, column_name):
+    if value is None:
+        return None, False
+
+    value = _decode_if_bytes(value)
+    column_key = column_name.upper() if column_name else ""
+    column_suggests_deg = column_key.endswith("_D") or column_key.endswith("_DEG") or column_key.endswith("_DEGREES")
+
+    if hasattr(value, "to"):
+        try:
+            return value.to_value(u.deg), True
+        except Exception:
+            pass
+
+    if isinstance(value, numbers.Number):
+        return float(value), True
+
+    if column_suggests_deg:
+        try:
+            return float(value), True
+        except (TypeError, ValueError):
+            stripped = value.strip() if isinstance(value, str) else value
+            try:
+                return float(stripped), True
+            except (TypeError, ValueError):
+                return value, False
+
+    return value, False
+
+
+def _resolve_coordinates(table):
+    ra_value, ra_column = _get_first_value_with_column(table, *RA_COLUMN_ALIASES)
+    dec_value, dec_column = _get_first_value_with_column(table, *DEC_COLUMN_ALIASES)
+
+    if ra_value is None or dec_value is None:
+        return None, None, None
+
+    ra_value, ra_is_degree = _coerce_degree_value(ra_value, ra_column)
+    dec_value, dec_is_degree = _coerce_degree_value(dec_value, dec_column)
+
+    if isinstance(ra_value, str):
+        ra_value = ra_value.strip()
+    if isinstance(dec_value, str):
+        dec_value = dec_value.strip()
+
+    unit = (u.deg, u.deg) if ra_is_degree and dec_is_degree else (u.hourangle, u.deg)
+    return ra_value, dec_value, unit
+
+
 def _attempt_simbad_fallback(exc):
     if SimbadDALQueryError is None or not isinstance(exc, SimbadDALQueryError):
         return False
@@ -129,8 +202,10 @@ def resolve_target(name):
 
     if r is None or len(r) == 0:
         return None
-    ra, dec = r["RA"][0], r["DEC"][0]
-    c = SkyCoord(ra, dec, unit=(u.hourangle, u.deg))
+    ra, dec, unit = _resolve_coordinates(r)
+    if ra is None or dec is None:
+        return None
+    c = SkyCoord(ra, dec, unit=unit)
 
     canonical = _decode_if_bytes(r["MAIN_ID"][0])
     otype = _decode_if_bytes(_get_first_value(r, "otypes"))

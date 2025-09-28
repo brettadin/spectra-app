@@ -38,3 +38,21 @@ def test_resolve_target_vega_has_astrometry(monkeypatch):
 
     assert meta["parallax_mas"] == 130.23
     assert meta["rv_kms"] == -13.5
+
+
+def test_resolve_target_handles_decimal_degree_columns(monkeypatch):
+    def fake_query_object(name: str):
+        if name != "HIP 123":
+            return None
+        return Table(
+            names=("MAIN_ID", "RA_d", "DEC_d", "OTYPES"),
+            rows=[("HIP 123", 123.456, -54.321, "Star")],
+        )
+
+    monkeypatch.setattr(build_registry.SIMBAD, "query_object", fake_query_object)
+
+    meta = build_registry.resolve_target("HIP 123")
+
+    assert meta["canonical_name"] == "HIP 123"
+    assert meta["ra_deg"] == 123.456
+    assert meta["dec_deg"] == -54.321
