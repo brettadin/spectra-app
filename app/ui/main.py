@@ -29,6 +29,7 @@ from app.similarity import (
     viewport_alignment,
 )
 from app.similarity_panel import render_similarity_panel
+from app.ui.example_browser import ExamplePreview, render_example_browser_sheet
 from app.utils.downsample import build_downsample_tiers
 from app.utils.duplicate_ledger import DuplicateLedger
 from app.utils.flux import flux_percentile_range
@@ -227,6 +228,8 @@ EXAMPLE_LIBRARY: Tuple[ExampleSpec, ...] = (
     ),
 )
 
+EXAMPLE_MAP: Dict[str, ExampleSpec] = {spec.slug: spec for spec in EXAMPLE_LIBRARY}
+
 
 DOC_LIBRARY: Tuple[DocCategory, ...] = (
     DocCategory(
@@ -304,10 +307,22 @@ def _ensure_session_state() -> None:
     st.session_state.setdefault("similarity_primary_metric", "cosine")
     st.session_state.setdefault("similarity_line_peaks", 8)
     st.session_state.setdefault("similarity_normalization", st.session_state.get("normalization_mode", "unit"))
-    st.session_state.setdefault("duplicate_policy", "allow")
+    st.session_state.setdefault("duplicate_policy", "skip")
     st.session_state.setdefault("local_upload_registry", {})
     st.session_state.setdefault("differential_result", None)
     st.session_state.setdefault("differential_sample_points", 2000)
+    st.session_state.setdefault("network_available", True)
+    st.session_state.setdefault("example_browser_visible", False)
+    st.session_state.setdefault("example_browser_search", "")
+    st.session_state.setdefault("example_favourites", [])
+    st.session_state.setdefault("example_recent", [])
+    st.session_state.setdefault("example_preview_cache", {})
+    st.session_state.setdefault("duplicate_base_policy", "skip")
+    st.session_state.setdefault("duplicate_ledger_lock", False)
+    st.session_state.setdefault("duplicate_ledger_pending_action", None)
+    st.session_state.setdefault(
+        "duplicate_ledger_lock_checkbox", st.session_state.get("duplicate_ledger_lock", False)
+    )
     if "duplicate_ledger" not in st.session_state:
         st.session_state["duplicate_ledger"] = DuplicateLedger()
     if "similarity_cache" not in st.session_state:
@@ -321,6 +336,34 @@ def _get_overlays() -> List[OverlayTrace]:
 def _set_overlays(overlays: Sequence[OverlayTrace]) -> None:
     st.session_state["overlay_traces"] = list(overlays)
     _ensure_reference_consistency()
+
+
+def _get_example_spec(slug: str) -> Optional[ExampleSpec]:
+    return EXAMPLE_MAP.get(slug)
+
+
+def _register_example_usage(spec: ExampleSpec, *, success: bool) -> None:
+    if not success:
+        return
+    recents = list(st.session_state.get("example_recent", []))
+    if spec.slug in recents:
+        recents.remove(spec.slug)
+    recents.insert(0, spec.slug)
+    st.session_state["example_recent"] = recents[:5]
+
+
+def _toggle_example_favourite(slug: str, desired: bool) -> None:
+    favourites = list(st.session_state.get("example_favourites", []))
+    if desired:
+        if slug not in favourites:
+            favourites.insert(0, slug)
+    else:
+        favourites = [item for item in favourites if item != slug]
+    st.session_state["example_favourites"] = favourites[:10]
+
+
+def _resolve_examples(slugs: Sequence[str]) -> List[ExampleSpec]:
+    return [spec for slug in slugs if (spec := EXAMPLE_MAP.get(slug))]
 
 
 def _ensure_reference_consistency() -> None:
@@ -520,50 +563,131 @@ def _add_example_trace(spec: ExampleSpec) -> Tuple[bool, str]:
     )
 
 
-def _render_example_loader() -> None:
-    if not EXAMPLE_LIBRARY:
-        return
-    st.sidebar.markdown("#### Example overlays")
-    selection = st.sidebar.selectbox(
-        "Add a built-in spectrum",
-        EXAMPLE_LIBRARY,
-        format_func=lambda spec: spec.label,
-    )
-    st.sidebar.caption(selection.description)
-    if st.sidebar.button("Add example overlay", key="example_loader_add"):
-        added, message = _add_example_trace(selection)
-        (st.sidebar.success if added else st.sidebar.info)(message)
+def _load_example(spec: ExampleSpec) -> Tuple[bool, str]:
+    added, message = _add_example_trace(spec)
+    _register_example_usage(spec, success=added)
+    return added, message
 
-# ---------------------------------------------------------------------------
-# Sidebar rendering
 
-def _render_reference_section() -> None:
-    st.sidebar.markdown("### Reference spectra")
-    _render_example_loader()
-    st.sidebar.divider()
-    st.sidebar.markdown("#### NIST ASD lines")
-    _render_nist_form()
-    st.sidebar.divider()
+def _load_example_preview(spec: ExampleSpec, *, allow_network: bool) -> Optional[ExamplePreview]:
+    cache: Dict[str, Dict[str, Tuple[float, ...]]] = st.session_state.setdefault("example_preview_cache", {})
+    cached = cache.get(spec.slug)
+    if cached:
+        return ExamplePreview(tuple(cached["wavelengths"]), tuple(cached["flux"]))
+    if not allow_network:
+        return None
+    try:
+        hits = provider_search(spec.provider, spec.query)
+    except Exception:
+        return None
+    if not hits:
+        return None
+    hit = hits[0]
+    wavelengths = [float(value) for value in hit.wavelengths_nm]
+    flux = [float(value) for value in hit.flux]
+    if not wavelengths or not flux:
+        return None
+    if len(wavelengths) != len(flux):
+        size = min(len(wavelengths), len(flux))
+        wavelengths = wavelengths[:size]
+        flux = flux[:size]
+    max_samples = 200
+    if len(wavelengths) > max_samples:
+        step = max(1, len(wavelengths) // max_samples)
+        wavelengths = wavelengths[::step]
+        flux = flux[::step]
+    preview = ExamplePreview(tuple(wavelengths), tuple(flux))
+    cache[spec.slug] = {"wavelengths": preview.wavelengths, "flux": preview.flux}
+    return preview
 
-    overlays = _get_overlays()
-    if overlays:
-        options = [trace.trace_id for trace in overlays]
-        current = st.session_state.get("reference_trace_id")
-        try:
-            index = options.index(current) if current in options else 0
-        except ValueError:
-            index = 0
-        st.session_state["reference_trace_id"] = st.sidebar.selectbox(
-            "Reference trace",
-            options,
-            index=index,
-            format_func=_trace_label,
+
+def _render_examples_group() -> None:
+    with st.sidebar.expander("Examples", expanded=True):
+        if not EXAMPLE_LIBRARY:
+            st.caption("Example library unavailable.")
+            return
+
+        st.button(
+            "Browse example library",
+            key="example_browser_open",
+            help="Open the example browser to search curated spectra.",
+            on_click=lambda: st.session_state.__setitem__("example_browser_visible", True),
         )
-        if st.sidebar.button("Clear overlays"):
-            _clear_overlays()
-            st.sidebar.warning("Cleared all overlays.")
-    else:
-        st.sidebar.caption("Load an example or fetch from an archive to begin.")
+
+        with st.form("example_quick_add_form"):
+            selection = st.selectbox(
+                "Quick add",
+                EXAMPLE_LIBRARY,
+                format_func=lambda spec: spec.label,
+                key="example_quick_add_select",
+            )
+            st.caption(selection.description)
+            submitted = st.form_submit_button("Load example")
+        if submitted:
+            added, message = _load_example(selection)
+            (st.success if added else st.info)(message)
+
+        favourites = _resolve_examples(st.session_state.get("example_favourites", []))
+        if favourites:
+            with st.form("example_favourites_form"):
+                favourite = st.selectbox(
+                    "Favourites",
+                    favourites,
+                    format_func=lambda spec: spec.label,
+                    key="example_favourite_select",
+                )
+                fav_submit = st.form_submit_button("Load favourite")
+            if fav_submit:
+                added, message = _load_example(favourite)
+                (st.success if added else st.info)(message)
+        else:
+            st.caption("Mark favourites in the browser to pin them here.")
+
+        recents = _resolve_examples(st.session_state.get("example_recent", []))
+        if recents:
+            with st.form("example_recent_form"):
+                recent = st.selectbox(
+                    "Recent",
+                    recents,
+                    format_func=lambda spec: spec.label,
+                    key="example_recent_select",
+                )
+                recent_submit = st.form_submit_button("Reload recent")
+            if recent_submit:
+                added, message = _load_example(recent)
+                (st.success if added else st.info)(message)
+
+        overlays = _get_overlays()
+        if overlays:
+            options = [trace.trace_id for trace in overlays]
+            current = st.session_state.get("reference_trace_id")
+            try:
+                index = options.index(current) if current in options else 0
+            except ValueError:
+                index = 0
+            st.session_state["reference_trace_id"] = st.selectbox(
+                "Reference trace",
+                options,
+                index=index,
+                format_func=_trace_label,
+                key="reference_trace_select",
+            )
+            if st.button("Clear overlays", key="clear_overlays_button"):
+                _clear_overlays()
+                st.warning("Cleared all overlays.")
+        else:
+            st.caption("Load an example or fetch from an archive to begin.")
+
+
+def _render_line_catalog_group() -> None:
+    with st.sidebar.expander("Line catalogs", expanded=False):
+        online = bool(st.session_state.get("network_available", True))
+        if not online:
+            st.caption("Using local cache")
+            st.info("NIST lookups are unavailable while offline.")
+            return
+        st.markdown("#### NIST ASD lines")
+        _render_nist_form()
 
 
 def _render_nist_form() -> None:
@@ -603,7 +727,7 @@ def _render_nist_form() -> None:
 
 
 def _render_display_section() -> None:
-    st.sidebar.markdown("### Display & viewport")
+    st.sidebar.markdown("#### Display & viewport")
     units = st.sidebar.selectbox(
         "Wavelength units",
         ["nm", "Å", "µm", "cm^-1"],
@@ -646,7 +770,7 @@ def _render_display_section() -> None:
 
 
 def _render_differential_section() -> None:
-    st.sidebar.markdown("### Differential & normalization")
+    st.sidebar.markdown("#### Differential & normalization")
     norm_map = {
         "Unit vector (L2)": "unit",
         "Peak normalised": "max",
@@ -671,7 +795,7 @@ def _render_differential_section() -> None:
 
 
 def _render_similarity_sidebar() -> None:
-    st.sidebar.markdown("### Similarity settings")
+    st.sidebar.markdown("#### Similarity settings")
     metric_options = ["cosine", "rmse", "xcorr", "line_match"]
     current_metrics = st.session_state.get("similarity_metrics", metric_options)
     metrics = st.sidebar.multiselect(
@@ -711,30 +835,124 @@ def _render_similarity_sidebar() -> None:
     st.session_state["similarity_normalization"] = norm_codes[selection]
 
 
-def _render_duplicate_sidebar() -> None:
-    st.sidebar.markdown("### Duplicate handling")
-    policies = [
-        ("Allow duplicates", "allow"),
-        ("Skip duplicates (session)", "skip"),
-        ("Ledger lock (persistent)", "ledger"),
-    ]
-    codes = [code for _, code in policies]
-    labels = [label for label, _ in policies]
-    current = st.session_state.get("duplicate_policy", "allow")
-    try:
-        index = codes.index(current)
-    except ValueError:
-        index = 0
-    choice = st.sidebar.radio("Policy", labels, index=index)
-    st.session_state["duplicate_policy"] = dict(policies)[choice]
+def _render_settings_group() -> None:
+    with st.sidebar.expander("Settings", expanded=False):
+        online = st.checkbox(
+            "Network available",
+            value=bool(st.session_state.get("network_available", True)),
+            key="network_available_toggle",
+            help="Disable to work offline using cached data only.",
+        )
+        st.session_state["network_available"] = bool(online)
+        if not online:
+            st.caption("Using local cache for remote fetches.")
+        st.divider()
+        _render_display_section()
+        st.divider()
+        _render_differential_section()
+        st.divider()
+        _render_similarity_sidebar()
 
-    if st.session_state["duplicate_policy"] == "ledger":
-        if st.sidebar.button("Clear this session's ledger entries"):
-            ledger: DuplicateLedger = st.session_state["duplicate_ledger"]
-            ledger.purge_session(st.session_state.get("session_id"))
-            st.sidebar.success("Session ledger entries cleared.")
-    else:
-        st.sidebar.caption("Ledger disabled for the current policy.")
+
+def _render_example_browser() -> None:
+    network_available = bool(st.session_state.get("network_available", True))
+    render_example_browser_sheet(
+        examples=EXAMPLE_LIBRARY,
+        visible=bool(st.session_state.get("example_browser_visible", False)),
+        favourites=list(st.session_state.get("example_favourites", [])),
+        recents=list(st.session_state.get("example_recent", [])),
+        load_callback=_load_example,
+        toggle_favourite=_toggle_example_favourite,
+        preview_loader=lambda spec: _load_example_preview(spec, allow_network=network_available),
+        resolve_spec=_get_example_spec,
+        network_available=network_available,
+    )
+
+
+def _render_uploads_group() -> None:
+    with st.sidebar.expander("Uploads", expanded=False):
+        st.markdown("#### Duplicate handling")
+        base_options = {"skip": "Skip duplicates (session)", "allow": "Allow duplicates"}
+        base_code = st.session_state.get("duplicate_base_policy", "skip")
+        base_labels = list(base_options.values())
+        try:
+            base_index = [code for code in base_options.keys()].index(base_code)
+        except ValueError:
+            base_index = 0
+        base_selection = st.radio(
+            "Session policy",
+            base_labels,
+            index=base_index,
+            key="duplicate_base_policy_radio",
+        )
+        resolved_base = next(
+            code for code, label in base_options.items() if label == base_selection
+        )
+        st.session_state["duplicate_base_policy"] = resolved_base
+        if not st.session_state.get("duplicate_ledger_lock", False):
+            st.session_state["duplicate_policy"] = resolved_base
+
+        lock_state = bool(st.session_state.get("duplicate_ledger_lock", False))
+        pending = st.session_state.get("duplicate_ledger_pending_action")
+        checkbox_value = st.checkbox(
+            "Enforce ledger lock",
+            value=lock_state if pending is None else (pending == "enable"),
+            key="duplicate_ledger_lock_checkbox",
+            help="Persist duplicate fingerprints across sessions using the ledger.",
+        )
+
+        if pending is None and checkbox_value != lock_state:
+            st.session_state["duplicate_ledger_pending_action"] = (
+                "enable" if checkbox_value else "disable"
+            )
+            pending = st.session_state["duplicate_ledger_pending_action"]
+
+        pending = st.session_state.get("duplicate_ledger_pending_action")
+        if pending == "enable":
+            st.warning(
+                "Enable ledger lock to enforce duplicate detection against the persistent ledger."
+            )
+            confirm_col, cancel_col = st.columns(2)
+            if confirm_col.button("Confirm lock", key="confirm_ledger_enable"):
+                st.session_state["duplicate_ledger_lock"] = True
+                st.session_state["duplicate_policy"] = "ledger"
+                st.session_state["duplicate_ledger_pending_action"] = None
+                st.session_state["duplicate_ledger_lock_checkbox"] = True
+                st.success("Ledger lock enabled.")
+            if cancel_col.button("Cancel", key="cancel_ledger_enable"):
+                st.session_state["duplicate_ledger_pending_action"] = None
+                st.session_state["duplicate_ledger_lock_checkbox"] = False
+        elif pending == "disable":
+            st.warning(
+                "Disable ledger lock? New duplicates will follow the session policy."
+            )
+            confirm_col, cancel_col = st.columns(2)
+            if confirm_col.button("Disable lock", key="confirm_ledger_disable"):
+                st.session_state["duplicate_ledger_lock"] = False
+                st.session_state["duplicate_policy"] = st.session_state.get(
+                    "duplicate_base_policy", "skip"
+                )
+                st.session_state["duplicate_ledger_pending_action"] = None
+                st.session_state["duplicate_ledger_lock_checkbox"] = False
+                st.info("Ledger lock disabled.")
+            if cancel_col.button("Keep lock", key="cancel_ledger_disable"):
+                st.session_state["duplicate_ledger_pending_action"] = None
+                st.session_state["duplicate_ledger_lock_checkbox"] = True
+        else:
+            if st.session_state.get("duplicate_ledger_lock", False):
+                st.caption(
+                    "Ledger lock is active; duplicates are validated against the persistent ledger."
+                )
+                if st.button(
+                    "Undo session ledger entries", key="purge_session_ledger"
+                ):
+                    ledger: DuplicateLedger = st.session_state["duplicate_ledger"]
+                    ledger.purge_session(st.session_state.get("session_id"))
+                    st.success("Session ledger entries cleared.")
+            else:
+                st.caption(
+                    "Duplicates will follow the selected session policy."
+                )
 
 # ---------------------------------------------------------------------------
 # Overlay rendering helpers
@@ -1870,6 +2088,9 @@ def _render_differential_tab() -> None:
 
 
 def _render_archive_tab() -> None:
+    if not st.session_state.get("network_available", True):
+        st.info("Archive fetchers are unavailable while offline. Using local cache.")
+        return
     controller = ArchiveUI(add_overlay=_add_overlay_payload)
     controller.render()
 
@@ -1955,15 +2176,11 @@ def render() -> None:
         caption_parts.append(str(patch_summary))
     st.caption(" • ".join(part for part in caption_parts if part))
 
-    _render_reference_section()
-    st.sidebar.divider()
-    _render_display_section()
-    st.sidebar.divider()
-    _render_differential_section()
-    st.sidebar.divider()
-    _render_similarity_sidebar()
-    st.sidebar.divider()
-    _render_duplicate_sidebar()
+    _render_example_browser()
+    _render_examples_group()
+    _render_line_catalog_group()
+    _render_uploads_group()
+    _render_settings_group()
 
     overlay_tab, diff_tab, archive_tab, docs_tab = st.tabs(["Overlay", "Differential", "Archive", "Docs & Provenance"])
     with overlay_tab:
