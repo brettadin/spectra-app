@@ -22,7 +22,7 @@ except ImportError:
     HAS_PYVO = False
 
 
-BASE_SIMBAD_FIELDS = ["otypes", "flux(V)", "flux(B)", "pmra", "pmdec"]
+BASE_SIMBAD_FIELDS = ["otypes", "v", "b", "pmra", "pmdec"]
 SIMBAD_RENAMED_FIELDS = {
     "sp_type": ("sp_type", "sptype"),
     "rvz_radvel": ("rvz_radvel", "rv_value"),
