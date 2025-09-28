@@ -606,7 +606,7 @@ def _load_example_preview(spec: ExampleSpec, *, allow_network: bool) -> Optional
 
 
 def _render_examples_group() -> None:
-    with st.sidebar.expander("Examples", expanded=True):
+    with st.sidebar.expander("Examples", expanded=False):
         if not EXAMPLE_LIBRARY:
             st.caption("Example library unavailable.")
             return
