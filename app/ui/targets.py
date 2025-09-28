@@ -2,7 +2,7 @@
 import json, pandas as pd, streamlit as st
 from pathlib import Path
 
-def render_targets_panel(registry_dir="data_registry"):
+def render_targets_panel(registry_dir="data_registry", *, expanded: bool = False):
     p = Path(registry_dir)
     if not p.exists():
         st.warning("No registry at data_registry/. Run build_registry.py first.")
@@ -12,7 +12,7 @@ def render_targets_panel(registry_dir="data_registry"):
         st.warning("No registry at data_registry/. Run build_registry.py first.")
         return
     cat = pd.read_csv(catalog_path)
-    with st.expander("Target catalog", expanded=True):
+    with st.expander("Target catalog", expanded=expanded):
         st.dataframe(cat[["name","sptype","n_planets","has_mast","has_eso","summary"]])
 
     name = st.selectbox("Pick a target", sorted(cat["name"].tolist()))
