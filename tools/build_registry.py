@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import os, json, time, argparse, yaml, re
 import numbers
+import numpy as np
 from pathlib import Path
 import pandas as pd
 from astropy.table import Table, vstack
@@ -245,11 +246,28 @@ def mast_products(obs_table):
     for obsid in obs_table["obsid"]:
         prods = Observations.get_product_list(obsid)
         # spectra only
-        pkeep = prods[(prods["dataproduct_type"] == "spectrum") |
-                      (prods["productType"] == "SCIENCE")]
+        has_dataproduct = "dataproduct_type" in prods.colnames
+        has_product_type = "productType" in prods.colnames
+
+        mask_spectrum = (
+            prods["dataproduct_type"] == "spectrum"
+            if has_dataproduct
+            else np.zeros(len(prods), dtype=bool)
+        )
+        mask_science = (
+            prods["productType"] == "SCIENCE"
+            if has_product_type
+            else np.zeros(len(prods), dtype=bool)
+        )
+
+        pkeep = prods[mask_spectrum | mask_science]
         if len(pkeep):
             # strip previews/calibration junk
-            pkeep = pkeep[~pkeep["productFilename"].astype(str).str.contains("_preview|_thumb|jpg|png", regex=True)]
+            if "productFilename" in pkeep.colnames:
+                mask_preview = pkeep["productFilename"].astype(str).str.contains(
+                    "_preview|_thumb|jpg|png", regex=True
+                )
+                pkeep = pkeep[~mask_preview]
             all_prod.append(pkeep)
     if not all_prod:
         return Table()
