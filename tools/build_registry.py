@@ -208,7 +208,8 @@ def resolve_target(name):
         return None
     c = SkyCoord(ra, dec, unit=unit)
 
-    canonical = _decode_if_bytes(r["MAIN_ID"][0])
+    canonical_value = _get_first_value(r, "main_id")
+    canonical = _decode_if_bytes(canonical_value) if canonical_value is not None else name
     otype = _decode_if_bytes(_get_first_value(r, "otypes"))
     sptype = _decode_if_bytes(_get_first_value(r, "sp_type", "sptype"))
     parallax = _get_first_value(r, "plx_value", "plx")
