@@ -10,3 +10,4 @@ __pycache__/
 !/data/vega_stub/**
 !/data/examples/
 !/data/examples/**
+/data/providers

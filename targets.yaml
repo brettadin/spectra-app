@@ -1,0 +1,94 @@
+# Minimal schema: name + tags. instrument_hints narrows downloads.
+version: "2025-09-28"
+targets:
+  - name: Vega
+    tags: [calibrator, A0V, nearby, HLSP, CALSPEC, ASTRAL]
+    instrument_hints: [STIS, IUE]
+  - name: Sirius A
+    tags: [calibrator, A1V, nearby, HLSP, CALSPEC]
+    instrument_hints: [STIS, IUE]
+  - name: G191-B2B
+    tags: [calibrator, DA white dwarf, HLSP, CALSPEC]
+    instrument_hints: [STIS]
+  - name: GD 71
+    tags: [calibrator, DA white dwarf, HLSP, CALSPEC]
+    instrument_hints: [STIS]
+  - name: GD 153
+    tags: [calibrator, DA white dwarf, HLSP, CALSPEC]
+    instrument_hints: [STIS]
+  - name: Arcturus
+    tags: [atlas, K1.5III, UVES-POP, nearby]
+    instrument_hints: [UVES]
+  - name: Aldebaran
+    tags: [giant, K5III, UVES-POP]
+    instrument_hints: [UVES]
+  - name: Procyon
+    tags: [F5IV-V, UV, ASTRAL]
+    instrument_hints: [STIS, UVES]
+  - name: 18 Sco
+    tags: [solar-twin, G2V]
+    instrument_hints: [HARPS, UVES]
+  - name: Proxima Centauri
+    tags: [M5.5V, flare, nearby]
+    instrument_hints: [HARPS, CARMENES]
+  - name: Barnard's Star
+    tags: [M4V, quiet, nearby]
+    instrument_hints: [CARMENES]
+  - name: HD 122563
+    tags: [metal-poor, giant]
+    instrument_hints: [UVES, ESPRESSO]
+  - name: HD 140283
+    tags: [metal-poor, subgiant]
+    instrument_hints: [UVES, HARPS]
+  - name: HD 93521
+    tags: [O9V, hot]
+    instrument_hints: [IUE, STIS]
+  - name: Gamma Cassiopeiae
+    tags: [Be, emission]
+    instrument_hints: [IUE, STIS]
+  - name: WR 134
+    tags: [Wolf-Rayet, extreme]
+    instrument_hints: [IUE, SpeX]
+  # Exoplanet hosts (fat coverage)
+  - name: HD 209458
+    tags: [host, hot-jupiter]
+    instrument_hints: [STIS, COS, NIRSpec, NIRISS]
+  - name: HD 189733
+    tags: [host, hot-jupiter, hazes]
+    instrument_hints: [STIS, WFC3, NIRCam, MIRI]
+  - name: WASP-39
+    tags: [host, JWST-ERS, chemistry]
+    instrument_hints: [NIRSpec, NIRISS, MIRI]
+  - name: WASP-96
+    tags: [host, JWST, NIRISS]
+    instrument_hints: [NIRISS]
+  - name: WASP-121
+    tags: [host, ultra-hot]
+    instrument_hints: [STIS, WFC3, NIRSpec, MIRI, ESPRESSO]
+  - name: WASP-18
+    tags: [host, ultra-hot]
+    instrument_hints: [NIRSpec, MIRI]
+  - name: WASP-76
+    tags: [host, ESPRESSO, iron]
+    instrument_hints: [ESPRESSO]
+  - name: KELT-9
+    tags: [host, extreme-T]
+    instrument_hints: [HARPS-N]
+  - name: HAT-P-26
+    tags: [host, warm-neptune]
+    instrument_hints: [STIS, WFC3]
+  - name: HAT-P-11
+    tags: [host, helium-10830]
+    instrument_hints: [CARMENES, STIS]
+  - name: GJ 1214
+    tags: [host, sub-neptune, flat-spectrum, JWST]
+    instrument_hints: [NIRSpec, MIRI]
+  - name: K2-18
+    tags: [host, Hycean-debate, JWST]
+    instrument_hints: [NIRSpec, NIRISS, MIRI]
+  - name: GJ 3470
+    tags: [host, helium-escape]
+    instrument_hints: [CARMENES, STIS]
+  - name: HD 97658
+    tags: [host, sub-neptune, flat]
+    instrument_hints: [WFC3]

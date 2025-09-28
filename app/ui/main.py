@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
-
+from app.ui.targets import render_targets_panel
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -40,7 +40,11 @@ from app.utils.local_ingest import (
     ingest_local_file,
 )
 from app.providers import ProviderQuery, search as provider_search
-
+for url in st.session_state.get("ingest_queue", []):
+    # call your existing ingestion path; example:
+    # add_trace_from_url(url, label=os.path.basename(url))
+    pass
+st.session_state["ingest_queue"] = []
 st.set_page_config(page_title="Spectra App", layout="wide")
 
 EXPORT_DIR = Path("exports")
@@ -2198,6 +2202,8 @@ def render() -> None:
 def main() -> None:
     render()
 
+# Sidebar: Catalog
+render_targets_panel("data_registry")
 
 if __name__ == "__main__":
     main()

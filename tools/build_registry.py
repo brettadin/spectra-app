@@ -1,0 +1,231 @@
+#!/usr/bin/env python3
+import os, json, time, argparse, yaml, re
+from pathlib import Path
+import pandas as pd
+from astropy.table import Table, vstack
+from astroquery.simbad import Simbad
+from astroquery.mast import Observations
+from astroquery.ipac.nexsci.nasa_exoplanet_archive import NasaExoplanetArchive
+from astropy.coordinates import SkyCoord
+import astropy.units as u
+
+# Optional VO for CARMENES DR1
+try:
+    import pyvo
+    HAS_PYVO = True
+except ImportError:
+    HAS_PYVO = False
+
+SIMBAD = Simbad()
+SIMBAD.TIMEOUT = 60
+# add useful SIMBAD fields
+for col in ["otypes", "sptype", "flux(V)", "flux(B)", "rv_value", "pmra", "pmdec", "plx", "z_value"]:
+    try:
+        SIMBAD.add_votable_fields(col)
+    except Exception:
+        pass
+
+MAST_INSTR_HINTS = set(["STIS","COS","IUE","NIRSpec","NIRISS","NIRCam","MIRI","WFC3"])
+MAST_COLLECTIONS = set(["HST","JWST","IUE","HLSP"])  # HLSP includes CALSPEC, MUSCLES, ASTRAL
+ESO_INSTR_HINTS = set(["UVES","HARPS","ESPRESSO","XSHOOTER","HARPS-N"])  # subset via ESO; HN via TNG not ESO, kept for tag
+
+def resolve_target(name):
+    r = SIMBAD.query_object(name)
+    if r is None:
+        return None
+    ra, dec = r["RA"][0], r["DEC"][0]
+    c = SkyCoord(ra, dec, unit=(u.hourangle, u.deg))
+    out = {
+        "canonical_name": r["MAIN_ID"][0].decode() if isinstance(r["MAIN_ID"][0], bytes) else r["MAIN_ID"][0],
+        "ra_deg": float(c.ra.deg), "dec_deg": float(c.dec.deg),
+        "otype": r["OTYPES"][0].decode() if r.colnames.count("OTYPES") else None,
+        "sptype": r["SP_TYPE"][0].decode() if r.colnames.count("SP_TYPE") else None,
+        "parallax_mas": float(r["PLX_VALUE"][0]) if r.colnames.count("PLX_VALUE") and r["PLX_VALUE"][0] is not None else None,
+        "rv_kms": float(r["RV_VALUE"][0]) if r.colnames.count("RV_VALUE") and r["RV_VALUE"][0] is not None else None,
+    }
+    return out
+
+def mast_observations(name, instr_hints):
+    try:
+        tbl = Observations.query_object(name)
+    except Exception:
+        tbl = Table()
+    if tbl is None or len(tbl) == 0:
+        return Table()
+    # keep relevant missions/instruments
+    keep = []
+    for row in tbl:
+        coll = row.get("obs_collection", None)
+        inst = row.get("instrument_name", None)
+        if coll in MAST_COLLECTIONS and (not instr_hints or (inst and any(h in inst for h in instr_hints))):
+            keep.append(row)
+    return Table(rows=keep, names=tbl.colnames) if keep else Table()
+
+def mast_products(obs_table):
+    all_prod = []
+    for obsid in obs_table["obsid"]:
+        prods = Observations.get_product_list(obsid)
+        # spectra only
+        pkeep = prods[(prods["dataproduct_type"] == "spectrum") |
+                      (prods["productType"] == "SCIENCE")]
+        if len(pkeep):
+            # strip previews/calibration junk
+            pkeep = pkeep[~pkeep["productFilename"].astype(str).str.contains("_preview|_thumb|jpg|png", regex=True)]
+            all_prod.append(pkeep)
+    if not all_prod:
+        return Table()
+    return vstack(all_prod, metadata_conflicts="silent")
+
+def eso_phase3_query(name, ra_deg, dec_deg, radius_arcsec=5):
+    # We avoid login-only raw. Phase 3 reduced products only.
+    try:
+        from astroquery.eso import Eso
+        eso = Eso()
+        eso.ROW_LIMIT = 10000
+        # search Phase 3 around coordinates
+        # Note: API uses strings for RA/DEC or SkyCoord
+        r = eso.query_surveys("phase3_main", coord=SkyCoord(ra_deg*u.deg, dec_deg*u.deg),
+                              radius=f"{radius_arcsec}s")
+        if r is None or len(r) == 0:
+            return Table()
+        # spectra only
+        r = r[r["DP.TYPE"] == "SPECTRUM"]
+        return r
+    except Exception:
+        return Table()
+
+def carmenes_dr1(coord):
+    if not HAS_PYVO:
+        return None
+    # CARMENES DR1 via VO service (if reachable)
+    try:
+        svc = pyvo.dal.SCSService("https://dc.g-vo.org/carmenes/q/scs/scs.xml")
+        res = svc.search(pos=coord, radius=5/3600)  # 5 arcsec
+        return res.to_table()
+    except Exception:
+        return None
+
+def exoplanets_for_host(hostname):
+    try:
+        tab = NasaExoplanetArchive.query_aliastable(hostname)
+        host = None
+        if tab is None or len(tab) == 0:
+            # direct planet table join on default_name
+            host = hostname
+        else:
+            # pick the default identifier for cross-match
+            host = tab[tab['default_name'] == 1]['hostname'][0] if 'default_name' in tab.colnames else hostname
+        pl = NasaExoplanetArchive.query_planetary_systems(hostname=host)
+        return pl.to_pandas() if pl is not None else pd.DataFrame()
+    except Exception:
+        return pd.DataFrame()
+
+def summarize_star(meta, planets_df, tags):
+    parts = []
+    st = meta.get("sptype") or "unknown type"
+    parts.append(f"{meta['canonical_name']}: {st}")
+    if meta.get("parallax_mas"):
+        try:
+            dist_pc = 1000.0 / meta["parallax_mas"]
+            parts.append(f"~{dist_pc:.1f} pc")
+        except Exception:
+            pass
+    if planets_df is not None and len(planets_df):
+        n = planets_df["pl_name"].nunique()
+        meth = ", ".join(sorted({m for m in planets_df["discoverymethod"].dropna().unique()})) or "various methods"
+        parts.append(f"{n} planet(s) known ({meth})")
+    if tags:
+        parts.append(f"tags: {', '.join(tags)}")
+    return " | ".join(parts)
+
+def write_manifest(outdir, name, star_meta, mast_meta, mast_products_tbl, eso_tbl, carm_tbl, planets_df, tags):
+    outdir = Path(outdir) / name.replace(" ", "_")
+    outdir.mkdir(parents=True, exist_ok=True)
+    manifest = {
+        "name": name,
+        "canonical_name": star_meta.get("canonical_name"),
+        "coordinates": {"ra_deg": star_meta.get("ra_deg"), "dec_deg": star_meta.get("dec_deg")},
+        "star": {
+            "otype": star_meta.get("otype"),
+            "sptype": star_meta.get("sptype"),
+            "parallax_mas": star_meta.get("parallax_mas"),
+            "rv_kms": star_meta.get("rv_kms"),
+        },
+        "planets": planets_df.to_dict(orient="records") if planets_df is not None else [],
+        "summaries": {"auto": summarize_star(star_meta, planets_df, tags)},
+        "provenance": {"generated_by": "build_registry.py", "date": pd.Timestamp.utcnow().isoformat()},
+        "datasets": {"mast": [], "eso_phase3": [], "carmenes_dr1": []}
+    }
+    # MAST observations and products
+    if mast_meta is not None and len(mast_meta):
+        manifold = mast_meta.to_pandas()[["obsid","obs_collection","instrument_name","target_name","filters","t_min","t_max"]].fillna("").to_dict(orient="records")
+        manifest["datasets"]["mast"] = manifold
+    if mast_products_tbl is not None and len(mast_products_tbl):
+        prods = mast_products_tbl.to_pandas()[["obsid","productFilename","productType","dataproduct_type","productURL","description"]]
+        manifest["datasets"]["mast_products"] = prods.to_dict(orient="records")
+    # ESO Phase 3
+    if eso_tbl is not None and len(eso_tbl):
+        cols = [c for c in ["DP.ID","INSTRUME","TARGET","DP.DATATYPE","DP.TYPE","MJD-OBS","DP.DID"] if c in eso_tbl.colnames]
+        manifest["datasets"]["eso_phase3"] = eso_tbl[cols].to_pandas().to_dict(orient="records")
+    # CARMENES
+    if carm_tbl is not None and len(carm_tbl):
+        manifest["datasets"]["carmenes_dr1"] = Table(carm_tbl).to_pandas().to_dict(orient="records")
+
+    (outdir / "manifest.json").write_text(json.dumps(manifest, indent=2))
+    return manifest
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--roster", required=True)
+    ap.add_argument("--out", default="data_registry")
+    ap.add_argument("--download", action="store_true", help="Also download spectra files where possible")
+    ap.add_argument("--sleep", type=float, default=0.6, help="Delay between queries to avoid rate limits")
+    args = ap.parse_args()
+
+    roster = yaml.safe_load(Path(args.roster).read_text())
+    rows = []
+    Path(args.out).mkdir(parents=True, exist_ok=True)
+
+    for t in roster["targets"]:
+        name = t["name"]
+        tags = t.get("tags", [])
+        hints = set(t.get("instrument_hints", []))
+        print(f"[build] {name}")
+        meta = resolve_target(name)
+        if not meta:
+            print(f"  ! SIMBAD failed for {name}")
+            continue
+
+        # planets
+        planets_df = exoplanets_for_host(meta["canonical_name"])
+        # MAST obs/products
+        mast_obs = mast_observations(meta["canonical_name"], hints & MAST_INSTR_HINTS)
+        mast_prod = mast_products(mast_obs) if len(mast_obs) else Table()
+        # ESO Phase 3 (reduced spectra around coords)
+        eso_tbl = eso_phase3_query(meta["canonical_name"], meta["ra_deg"], meta["dec_deg"])
+        # CARMENES DR1 (optional)
+        coord = SkyCoord(meta["ra_deg"]*u.deg, meta["dec_deg"]*u.deg)
+        carm_tbl = carmenes_dr1(coord) if HAS_PYVO else None
+
+        manifest = write_manifest(args.out, name, meta, mast_obs, mast_prod, eso_tbl, carm_tbl, planets_df, tags)
+
+        rows.append({
+            "name": name,
+            "canonical_name": meta["canonical_name"],
+            "ra_deg": meta["ra_deg"], "dec_deg": meta["dec_deg"],
+            "sptype": meta.get("sptype"),
+            "n_planets": int(planets_df["pl_name"].nunique()) if len(planets_df) else 0,
+            "has_mast": bool(len(mast_obs)),
+            "has_eso": bool(len(eso_tbl)),
+            "has_carmenes": bool(carm_tbl is not None and len(carm_tbl)),
+            "summary": manifest["summaries"]["auto"]
+        })
+
+        time.sleep(args.sleep)
+
+    catalog = pd.DataFrame(rows)
+    catalog.to_csv(Path(args.out) / "catalog.csv", index=False)
+    print(f"[done] wrote {len(rows)} targets to {args.out}/catalog.csv")
+
+if __name__ == "__main__":
+    main()

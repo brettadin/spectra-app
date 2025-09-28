@@ -5,3 +5,6 @@ pandas>=2.2
 astropy>=6.0
 astroquery>=0.4.7
 requests>=2.32
+pyvo
+pyyaml
+rich
