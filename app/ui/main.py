@@ -2183,6 +2183,7 @@ def render() -> None:
     _render_example_browser()
     _render_examples_group()
     _render_line_catalog_group()
+    render_targets_panel(expanded=False)
     _render_uploads_group()
     _render_settings_group()
 
@@ -2201,9 +2202,6 @@ def render() -> None:
 
 def main() -> None:
     render()
-
-# Sidebar: Catalog
-render_targets_panel("data_registry")
 
 if __name__ == "__main__":
     main()
