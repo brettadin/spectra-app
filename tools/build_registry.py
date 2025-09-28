@@ -81,6 +81,7 @@ _reset_simbad_instance()
 MAST_INSTR_HINTS = set(["STIS","COS","IUE","NIRSpec","NIRISS","NIRCam","MIRI","WFC3"])
 MAST_COLLECTIONS = set(["HST","JWST","IUE","HLSP"])  # HLSP includes CALSPEC, MUSCLES, ASTRAL
 ESO_INSTR_HINTS = set(["UVES","HARPS","ESPRESSO","XSHOOTER","HARPS-N"])  # subset via ESO; HN via TNG not ESO, kept for tag
+MAST_PRODUCT_PREVIEW_PATTERN = re.compile(r"(_preview|_thumb|jpg|png)", re.IGNORECASE)
 
 def _decode_if_bytes(val):
     if isinstance(val, bytes):
@@ -265,9 +266,10 @@ def mast_products(obs_table):
         if len(pkeep):
             # strip previews/calibration junk
             if "productFilename" in pkeep.colnames:
-                mask_preview = pkeep["productFilename"].astype(str).str.contains(
-                    "_preview|_thumb|jpg|png", regex=True
-                )
+                filenames = pkeep["productFilename"].filled("")
+                mask_preview = np.array([
+                    bool(MAST_PRODUCT_PREVIEW_PATTERN.search(str(name))) for name in filenames
+                ])
                 pkeep = pkeep[~mask_preview]
             all_prod.append(pkeep)
     if not all_prod:
