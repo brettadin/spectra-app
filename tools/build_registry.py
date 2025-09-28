@@ -12,36 +12,140 @@ import astropy.units as u
 # Optional VO for CARMENES DR1
 try:
     import pyvo
+    from pyvo.dal.exceptions import DALQueryError as SimbadDALQueryError
     HAS_PYVO = True
 except ImportError:
+    pyvo = None
+    SimbadDALQueryError = None
     HAS_PYVO = False
 
-SIMBAD = Simbad()
-SIMBAD.TIMEOUT = 60
-# add useful SIMBAD fields
-for col in ["otypes", "sptype", "flux(V)", "flux(B)", "rv_value", "pmra", "pmdec", "plx", "z_value"]:
-    try:
-        SIMBAD.add_votable_fields(col)
-    except Exception:
-        pass
+
+BASE_SIMBAD_FIELDS = ["otypes", "flux(V)", "flux(B)", "pmra", "pmdec"]
+SIMBAD_RENAMED_FIELDS = {
+    "sp_type": ("sp_type", "sptype"),
+    "rvz_radvel": ("rvz_radvel", "rv_value"),
+    "plx_value": ("plx_value", "plx"),
+    "rvz_redshift": ("rvz_redshift", "z_value"),
+}
+
+SIMBAD_ACTIVE_FIELDS = {}
+
+
+def _reset_simbad_instance():
+    global SIMBAD
+
+    simbad = Simbad()
+    simbad.TIMEOUT = 60
+
+    for field in BASE_SIMBAD_FIELDS:
+        try:
+            simbad.add_votable_fields(field)
+        except Exception:
+            continue
+
+    for key, options in SIMBAD_RENAMED_FIELDS.items():
+        preferred = SIMBAD_ACTIVE_FIELDS.get(key)
+        ordered = options
+        if preferred in options:
+            idx = options.index(preferred)
+            ordered = options[idx:]
+
+        selected = None
+        for col in ordered:
+            try:
+                simbad.add_votable_fields(col)
+            except Exception:
+                continue
+            selected = col
+            break
+
+        if selected is None:
+            for col in options:
+                try:
+                    simbad.add_votable_fields(col)
+                except Exception:
+                    continue
+                selected = col
+                break
+
+        if selected is not None:
+            SIMBAD_ACTIVE_FIELDS[key] = selected
+
+    SIMBAD = simbad
+
+
+_reset_simbad_instance()
 
 MAST_INSTR_HINTS = set(["STIS","COS","IUE","NIRSpec","NIRISS","NIRCam","MIRI","WFC3"])
 MAST_COLLECTIONS = set(["HST","JWST","IUE","HLSP"])  # HLSP includes CALSPEC, MUSCLES, ASTRAL
 ESO_INSTR_HINTS = set(["UVES","HARPS","ESPRESSO","XSHOOTER","HARPS-N"])  # subset via ESO; HN via TNG not ESO, kept for tag
 
+def _decode_if_bytes(val):
+    if isinstance(val, bytes):
+        return val.decode()
+    return val
+
+
+def _get_first_value(table, *names):
+    for name in names:
+        key = name.upper()
+        if key in table.colnames:
+            value = table[key][0]
+            if value is not None:
+                return value
+    return None
+
+
+def _attempt_simbad_fallback(exc):
+    if SimbadDALQueryError is None or not isinstance(exc, SimbadDALQueryError):
+        return False
+    message = str(exc).lower()
+    updated = False
+    for key, options in SIMBAD_RENAMED_FIELDS.items():
+        active = SIMBAD_ACTIVE_FIELDS.get(key)
+        if not active or active == options[-1]:
+            continue
+        if active.lower() not in message:
+            continue
+        idx = options.index(active)
+        for candidate in options[idx + 1 :]:
+            SIMBAD_ACTIVE_FIELDS[key] = candidate
+            updated = True
+            break
+    if updated:
+        _reset_simbad_instance()
+    return updated
+
+
 def resolve_target(name):
-    r = SIMBAD.query_object(name)
-    if r is None:
+    while True:
+        try:
+            r = SIMBAD.query_object(name)
+        except Exception as exc:
+            if not _attempt_simbad_fallback(exc):
+                raise
+            continue
+        break
+
+    if r is None or len(r) == 0:
         return None
     ra, dec = r["RA"][0], r["DEC"][0]
     c = SkyCoord(ra, dec, unit=(u.hourangle, u.deg))
+
+    canonical = _decode_if_bytes(r["MAIN_ID"][0])
+    otype = _decode_if_bytes(_get_first_value(r, "otypes"))
+    sptype = _decode_if_bytes(_get_first_value(r, "sp_type", "sptype"))
+    parallax = _get_first_value(r, "plx_value", "plx")
+    radial_velocity = _get_first_value(r, "rvz_radvel", "rvz_value", "rv_value")
+
     out = {
-        "canonical_name": r["MAIN_ID"][0].decode() if isinstance(r["MAIN_ID"][0], bytes) else r["MAIN_ID"][0],
-        "ra_deg": float(c.ra.deg), "dec_deg": float(c.dec.deg),
-        "otype": r["OTYPES"][0].decode() if r.colnames.count("OTYPES") else None,
-        "sptype": r["SP_TYPE"][0].decode() if r.colnames.count("SP_TYPE") else None,
-        "parallax_mas": float(r["PLX_VALUE"][0]) if r.colnames.count("PLX_VALUE") and r["PLX_VALUE"][0] is not None else None,
-        "rv_kms": float(r["RV_VALUE"][0]) if r.colnames.count("RV_VALUE") and r["RV_VALUE"][0] is not None else None,
+        "canonical_name": canonical,
+        "ra_deg": float(c.ra.deg),
+        "dec_deg": float(c.dec.deg),
+        "otype": otype,
+        "sptype": sptype,
+        "parallax_mas": float(parallax) if parallax is not None else None,
+        "rv_kms": float(radial_velocity) if radial_velocity is not None else None,
     }
     return out
 

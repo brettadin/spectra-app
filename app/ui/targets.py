@@ -7,7 +7,11 @@ def render_targets_panel(registry_dir="data_registry"):
     if not p.exists():
         st.warning("No registry at data_registry/. Run build_registry.py first.")
         return
-    cat = pd.read_csv(p/"catalog.csv")
+    catalog_path = p / "catalog.csv"
+    if not catalog_path.exists():
+        st.warning("No registry at data_registry/. Run build_registry.py first.")
+        return
+    cat = pd.read_csv(catalog_path)
     with st.expander("Target catalog", expanded=True):
         st.dataframe(cat[["name","sptype","n_planets","has_mast","has_eso","summary"]])
 
