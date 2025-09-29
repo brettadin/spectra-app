@@ -1,0 +1,324 @@
+{
+  "name": "WASP-76",
+  "canonical_name": "WASP-76",
+  "coordinates": {
+    "ra_deg": 26.632739973940005,
+    "dec_deg": 2.7005639071000003
+  },
+  "star": {
+    "otype": null,
+    "sptype": null,
+    "parallax_mas": null,
+    "rv_kms": null
+  },
+  "planets": [],
+  "summaries": {
+    "auto": "WASP-76: unknown type | tags: host, ESPRESSO, iron"
+  },
+  "provenance": {
+    "generated_by": "build_registry.py",
+    "date": "2025-09-29T01:59:44.660853+00:00"
+  },
+  "datasets": {
+    "mast": [
+      {
+        "obsid": "350783717",
+        "obs_collection": "HLSP",
+        "instrument_name": "Photometer",
+        "target_name": "TICA FFI",
+        "filters": "TESS",
+        "t_min": 60933.15314257611,
+        "t_max": 60940.21795405913
+      },
+      {
+        "obsid": "309421085",
+        "obs_collection": "JWST",
+        "instrument_name": "NIRCAM/IMAGE",
+        "target_name": "WASP-76",
+        "filters": "F212N",
+        "t_min": 60909.127789074075,
+        "t_max": 60909.128659699076
+      },
+      {
+        "obsid": "309421092",
+        "obs_collection": "JWST",
+        "instrument_name": "NIRCAM/IMAGE",
+        "target_name": "WASP-76",
+        "filters": "F444W;F466N",
+        "t_min": 60909.127789074075,
+        "t_max": 60909.128659699076
+      },
+      {
+        "obsid": "309421110",
+        "obs_collection": "JWST",
+        "instrument_name": "NIRISS/SOSS",
+        "target_name": "WASP-76",
+        "filters": "CLEAR;GR700XD",
+        "t_min": 60909.10583017361,
+        "t_max": 60909.10711379629
+      },
+      {
+        "obsid": "323188171",
+        "obs_collection": "JWST",
+        "instrument_name": "NIRISS/SOSS",
+        "target_name": "WASP-76",
+        "filters": "CLEAR;GR700XD",
+        "t_min": 60908.77832996528,
+        "t_max": 60909.10441898148
+      },
+      {
+        "obsid": "298787763",
+        "obs_collection": "JWST",
+        "instrument_name": "MIRI/SLITLESS",
+        "target_name": "Background",
+        "filters": "P750L",
+        "t_min": 60878.354179814814,
+        "t_max": 60878.35513516203
+      },
+      {
+        "obsid": "298810486",
+        "obs_collection": "JWST",
+        "instrument_name": "MIRI/SLITLESS",
+        "target_name": "BD+01-316",
+        "filters": "P750L",
+        "t_min": 60878.01302369213,
+        "t_max": 60878.3471077662
+      },
+      {
+        "obsid": "236577170",
+        "obs_collection": "JWST",
+        "instrument_name": "NIRSPEC/SLIT",
+        "target_name": "BD+01-316",
+        "filters": "F290LP;G395H",
+        "t_min": 60678.042487453706,
+        "t_max": 60680.15249173611
+      },
+      {
+        "obsid": "229540716",
+        "obs_collection": "HLSP",
+        "instrument_name": "Photometer",
+        "target_name": "293456562",
+        "filters": "TESS",
+        "t_min": 60207.858116435185,
+        "t_max": 60233.324025532405
+      },
+      {
+        "obsid": "145201944",
+        "obs_collection": "HST",
+        "instrument_name": "WFC3/UVIS",
+        "target_name": "WASP-76",
+        "filters": "G280",
+        "t_min": 60107.33230676,
+        "t_max": 60107.33271174
+      },
+      {
+        "obsid": "144910999",
+        "obs_collection": "HST",
+        "instrument_name": "WFC3/UVIS",
+        "target_name": "WASP-76",
+        "filters": "G280",
+        "t_min": 60107.30378822917,
+        "t_max": 60107.332711724535
+      },
+      {
+        "obsid": "144833906",
+        "obs_collection": "HST",
+        "instrument_name": "ACS/WFC",
+        "target_name": "DARK",
+        "filters": "F502N",
+        "t_min": 60107.25337017361,
+        "t_max": 60107.26496230324
+      }
+    ],
+    "eso_phase3": [],
+    "carmenes_dr1": [],
+    "mast_summary": {
+      "total_count": 733,
+      "returned_count": 12,
+      "truncated": true
+    },
+    "mast_products": {
+      "items": [
+        {
+          "obsid": "350610073",
+          "productFilename": "hlsp_tica_tess_ffi_s0097-o1-01169081-cam1-ccd3_tess_v01_img.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "image",
+          "productURL": "mast:HLSP/tica/s0097/cam1-ccd3/hlsp_tica_tess_ffi_s0097-o1-01169081-cam1-ccd3_tess_v01_img.fits",
+          "description": "FITS"
+        },
+        {
+          "obsid": "350610079",
+          "productFilename": "hlsp_tica_tess_ffi_s0097-o1-01169077-cam1-ccd3_tess_v01_img.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "image",
+          "productURL": "mast:HLSP/tica/s0097/cam1-ccd3/hlsp_tica_tess_ffi_s0097-o1-01169077-cam1-ccd3_tess_v01_img.fits",
+          "description": "FITS"
+        },
+        {
+          "obsid": "309421073",
+          "productFilename": "jw05924015001_02106_00002_nrcb1_o015_crf.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "image",
+          "productURL": "mast:JWST/product/jw05924015001_02106_00002_nrcb1_o015_crf.fits",
+          "description": "exposure (L2c): 2D Calibrated data averaged over integrations"
+        },
+        {
+          "obsid": "309421073",
+          "productFilename": "jw05924015001_02106_00002_nrcb1_cal.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "image",
+          "productURL": "mast:JWST/product/jw05924015001_02106_00002_nrcb1_cal.fits",
+          "description": "exposure (L2b): 2D calibrated exposure average over integrations"
+        },
+        {
+          "obsid": "309421081",
+          "productFilename": "jw05924015001_02106_00001_nrcblong_o015_crf.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "image",
+          "productURL": "mast:JWST/product/jw05924015001_02106_00001_nrcblong_o015_crf.fits",
+          "description": "exposure (L2c): 2D Calibrated data averaged over integrations"
+        },
+        {
+          "obsid": "309421081",
+          "productFilename": "jw05924015001_02106_00001_nrcblong_cal.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "image",
+          "productURL": "mast:JWST/product/jw05924015001_02106_00001_nrcblong_cal.fits",
+          "description": "exposure (L2b): 2D calibrated exposure average over integrations"
+        },
+        {
+          "obsid": "309421110",
+          "productFilename": "jw05924014001_04103_00001-seg001_nis_rate.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "timeseries",
+          "productURL": "mast:JWST/product/jw05924014001_04103_00001-seg001_nis_rate.fits",
+          "description": "exposure (L2a): 2D count rate averaged over integrations"
+        },
+        {
+          "obsid": "309421110",
+          "productFilename": "jw05924014001_04103_00001-seg001_nis_rateints.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "timeseries",
+          "productURL": "mast:JWST/product/jw05924014001_04103_00001-seg001_nis_rateints.fits",
+          "description": "exposure (L2a): 3D countrate per integration"
+        },
+        {
+          "obsid": "309421106",
+          "productFilename": "jw05924014001_02101_00004-seg001_nis_cal.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "timeseries",
+          "productURL": "mast:JWST/product/jw05924014001_02101_00004-seg001_nis_cal.fits",
+          "description": "exposure (L2b): 2D calibrated exposure average over integrations"
+        },
+        {
+          "obsid": "309421106",
+          "productFilename": "jw05924014001_02101_00004-seg001_nis_rate.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "timeseries",
+          "productURL": "mast:JWST/product/jw05924014001_02101_00004-seg001_nis_rate.fits",
+          "description": "exposure (L2a): 2D count rate averaged over integrations"
+        },
+        {
+          "obsid": "298787763",
+          "productFilename": "jw06045002001_02101_00001-seg001_mirimage_calints.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "timeseries",
+          "productURL": "mast:JWST/product/jw06045002001_02101_00001-seg001_mirimage_calints.fits",
+          "description": "exposure (L2b): 3D calibrated exposure"
+        },
+        {
+          "obsid": "298787763",
+          "productFilename": "jw06045002001_02101_00001-seg001_mirimage_rate.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "timeseries",
+          "productURL": "mast:JWST/product/jw06045002001_02101_00001-seg001_mirimage_rate.fits",
+          "description": "exposure (L2a): 2D count rate averaged over integrations"
+        },
+        {
+          "obsid": "298737296",
+          "productFilename": "jw06045001001_04102_00001-seg001_mirimage_cal.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "timeseries",
+          "productURL": "mast:JWST/product/jw06045001001_04102_00001-seg001_mirimage_cal.fits",
+          "description": "exposure (L2b): 2D calibrated exposure average over integrations"
+        },
+        {
+          "obsid": "298737296",
+          "productFilename": "jw06045001001_04102_00001-seg001_mirimage_rate.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "timeseries",
+          "productURL": "mast:JWST/product/jw06045001001_04102_00001-seg001_mirimage_rate.fits",
+          "description": "exposure (L2a): 2D count rate averaged over integrations"
+        },
+        {
+          "obsid": "234686755",
+          "productFilename": "jw05268001001_04102_00001-seg004_nrs2_o001_crfints.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "timeseries",
+          "productURL": "mast:JWST/product/jw05268001001_04102_00001-seg004_nrs2_o001_crfints.fits",
+          "description": "exposure (L2c): 3D Calibrated data per integration"
+        },
+        {
+          "obsid": "234686755",
+          "productFilename": "jw05268001001_04102_00001-seg004_nrs2_calints.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "timeseries",
+          "productURL": "mast:JWST/product/jw05268001001_04102_00001-seg004_nrs2_calints.fits",
+          "description": "exposure (L2b): 3D calibrated exposure"
+        },
+        {
+          "obsid": "229540716",
+          "productFilename": "hlsp_tess-spoc_tess_phot_0000000293456562-s0070_tess_v1_lc.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "timeseries",
+          "productURL": "mast:HLSP/tess-spoc/s0070/target/0000/0002/9345/6562/hlsp_tess-spoc_tess_phot_0000000293456562-s0070_tess_v1_lc.fits",
+          "description": "FITS"
+        },
+        {
+          "obsid": "229540716",
+          "productFilename": "hlsp_tess-spoc_tess_phot_0000000293456562-s0070_tess_v1_tp.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "timeseries",
+          "productURL": "mast:HLSP/tess-spoc/s0070/target/0000/0002/9345/6562/hlsp_tess-spoc_tess_phot_0000000293456562-s0070_tess_v1_tp.fits",
+          "description": "FITS"
+        },
+        {
+          "obsid": "145201944",
+          "productFilename": "hst_17183_21_wfc3_uvis_g280_iexr21ei_flt.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "image",
+          "productURL": "mast:HST/product/hst_17183_21_wfc3_uvis_g280_iexr21ei_flt.fits",
+          "description": "HAP flat-field product"
+        },
+        {
+          "obsid": "144861280",
+          "productFilename": "iexr21e7q_flt_hlet.fits",
+          "productType": "AUXILIARY",
+          "dataproduct_type": "spectrum",
+          "productURL": "mast:HST/product/iexr21e7q_flt_hlet.fits",
+          "description": "DADS FLT_HLET"
+        },
+        {
+          "obsid": "144861280",
+          "productFilename": "iexr21e7q_spt.fits",
+          "productType": "AUXILIARY",
+          "dataproduct_type": "spectrum",
+          "productURL": "mast:HST/product/iexr21e7q_spt.fits",
+          "description": "DADS SPT file - Engineering telemetry ACS/WFC3/NICMOS/COS/STIS"
+        },
+        {
+          "obsid": "144833906",
+          "productFilename": "jeykf0dsq_raw.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "image",
+          "productURL": "mast:HST/product/jeykf0dsq_raw.fits",
+          "description": "DADS RAW file - Raw exposure COS/NICMOS/STIS/WFC3/ACS"
+        }
+      ],
+      "total_count": 3629,
+      "returned_count": 22,
+      "truncated": true
+    }
+  }
+}

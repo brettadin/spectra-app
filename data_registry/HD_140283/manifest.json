@@ -1,0 +1,324 @@
+{
+  "name": "HD 140283",
+  "canonical_name": "HD 140283",
+  "coordinates": {
+    "ra_deg": 235.76290466259124,
+    "dec_deg": -10.933498803663333
+  },
+  "star": {
+    "otype": null,
+    "sptype": null,
+    "parallax_mas": null,
+    "rv_kms": null
+  },
+  "planets": [],
+  "summaries": {
+    "auto": "HD 140283: unknown type | tags: metal-poor, subgiant"
+  },
+  "provenance": {
+    "generated_by": "build_registry.py",
+    "date": "2025-09-29T01:46:58.760565+00:00"
+  },
+  "datasets": {
+    "mast": [
+      {
+        "obsid": "25870576",
+        "obs_collection": "HST",
+        "instrument_name": "COS/FUV",
+        "target_name": "WAVE",
+        "filters": "G130M",
+        "t_min": 57988.416504594905,
+        "t_max": 57988.41893515046
+      },
+      {
+        "obsid": "25870705",
+        "obs_collection": "HST",
+        "instrument_name": "COS/FUV",
+        "target_name": "WAVE",
+        "filters": "G130M",
+        "t_min": 57988.39936840278,
+        "t_max": 57988.411521145834
+      },
+      {
+        "obsid": "25869919",
+        "obs_collection": "HST",
+        "instrument_name": "ACS/WFC",
+        "target_name": "DARK",
+        "filters": "F502N",
+        "t_min": 57981.37947936342,
+        "t_max": 57981.379497835645
+      },
+      {
+        "obsid": "25869918",
+        "obs_collection": "HST",
+        "instrument_name": "ACS/WFC",
+        "target_name": "DARK",
+        "filters": "F502N",
+        "t_min": 57981.351379050924,
+        "t_max": 57981.362971180555
+      },
+      {
+        "obsid": "25869053",
+        "obs_collection": "HST",
+        "instrument_name": "WFC3/IR",
+        "target_name": "DARK-EARTH-CALIB",
+        "filters": "F153M",
+        "t_min": 57978.420726041666,
+        "t_max": 57978.42191751157
+      },
+      {
+        "obsid": "25869074",
+        "obs_collection": "HST",
+        "instrument_name": "WFC3/UVIS",
+        "target_name": "TUNGSTEN",
+        "filters": "F645N",
+        "t_min": 57978.36617179398,
+        "t_max": 57978.36686605324
+      },
+      {
+        "obsid": "25868884",
+        "obs_collection": "HST",
+        "instrument_name": "WFC3/IR",
+        "target_name": "DARK-EARTH-CALIB",
+        "filters": "F153M",
+        "t_min": 57975.50319123843,
+        "t_max": 57975.504382719904
+      },
+      {
+        "obsid": "25038269",
+        "obs_collection": "HST",
+        "instrument_name": "STIS/CCD",
+        "target_name": "DARK",
+        "filters": "MIRVIS",
+        "t_min": 57579.05019583333,
+        "t_max": 57579.062927314815
+      },
+      {
+        "obsid": "25038268",
+        "obs_collection": "HST",
+        "instrument_name": "STIS/CCD",
+        "target_name": "DARK",
+        "filters": "MIRVIS",
+        "t_min": 57579.04482546297,
+        "t_max": 57579.045519907406
+      },
+      {
+        "obsid": "90695451",
+        "obs_collection": "HST",
+        "instrument_name": "WFC3/UVIS",
+        "target_name": "ANY",
+        "filters": "F814W",
+        "t_min": 57578.8676966,
+        "t_max": 57578.88802046
+      },
+      {
+        "obsid": "25130524",
+        "obs_collection": "HST",
+        "instrument_name": "FGS",
+        "target_name": "HD140283",
+        "filters": "F5ND",
+        "t_min": 55628.70694487268,
+        "t_max": 55628.738020833334
+      },
+      {
+        "obsid": "25130525",
+        "obs_collection": "HST",
+        "instrument_name": "FGS",
+        "target_name": "HD140283-REF1",
+        "filters": "F583W",
+        "t_min": 55628.708194872685,
+        "t_max": 55628.738020833334
+      }
+    ],
+    "eso_phase3": [],
+    "carmenes_dr1": [],
+    "mast_summary": {
+      "total_count": 963,
+      "returned_count": 12,
+      "truncated": true
+    },
+    "mast_products": {
+      "items": [
+        {
+          "obsid": "25870576",
+          "productFilename": "ldlu02lhq_corrtag_a.fits",
+          "productType": "AUXILIARY",
+          "dataproduct_type": "spectrum",
+          "productURL": "mast:HST/product/ldlu02lhq_corrtag_a.fits",
+          "description": "DADS CTA file - Corrected events COS segment A"
+        },
+        {
+          "obsid": "25870576",
+          "productFilename": "ldlu02lhq_corrtag_b.fits",
+          "productType": "AUXILIARY",
+          "dataproduct_type": "spectrum",
+          "productURL": "mast:HST/product/ldlu02lhq_corrtag_b.fits",
+          "description": "DADS CTB file - Corrected events COS segment B"
+        },
+        {
+          "obsid": "25870705",
+          "productFilename": "ldlu02lfq_corrtag_a.fits",
+          "productType": "AUXILIARY",
+          "dataproduct_type": "spectrum",
+          "productURL": "mast:HST/product/ldlu02lfq_corrtag_a.fits",
+          "description": "DADS CTA file - Corrected events COS segment A"
+        },
+        {
+          "obsid": "25870705",
+          "productFilename": "ldlu02lfq_corrtag_b.fits",
+          "productType": "AUXILIARY",
+          "dataproduct_type": "spectrum",
+          "productURL": "mast:HST/product/ldlu02lfq_corrtag_b.fits",
+          "description": "DADS CTB file - Corrected events COS segment B"
+        },
+        {
+          "obsid": "25869919",
+          "productFilename": "jd4zc7osq_raw.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "image",
+          "productURL": "mast:HST/product/jd4zc7osq_raw.fits",
+          "description": "DADS RAW file - Raw exposure COS/NICMOS/STIS/WFC3/ACS"
+        },
+        {
+          "obsid": "25869918",
+          "productFilename": "jd4zc6ojq_raw.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "image",
+          "productURL": "mast:HST/product/jd4zc6ojq_raw.fits",
+          "description": "DADS RAW file - Raw exposure COS/NICMOS/STIS/WFC3/ACS"
+        },
+        {
+          "obsid": "25869053",
+          "productFilename": "idc83wefq_raw.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "image",
+          "productURL": "mast:HST/product/idc83wefq_raw.fits",
+          "description": "DADS RAW file - Raw exposure COS/NICMOS/STIS/WFC3/ACS"
+        },
+        {
+          "obsid": "25869053",
+          "productFilename": "idc83wefq_drz.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "image",
+          "productURL": "mast:HST/product/idc83wefq_drz.fits",
+          "description": "DADS DRZ file - Calibrated combined image ACS/WFC3/WFPC2/STIS"
+        },
+        {
+          "obsid": "25869074",
+          "productFilename": "idci32dxq_raw.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "image",
+          "productURL": "mast:HST/product/idci32dxq_raw.fits",
+          "description": "DADS RAW file - Raw exposure COS/NICMOS/STIS/WFC3/ACS"
+        },
+        {
+          "obsid": "25869074",
+          "productFilename": "idci32dxq_flt.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "image",
+          "productURL": "mast:HST/product/idci32dxq_flt.fits",
+          "description": "DADS FLT file - Calibrated exposure ACS/WFC3/STIS/COS"
+        },
+        {
+          "obsid": "25868884",
+          "productFilename": "idc83urtq_raw.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "image",
+          "productURL": "mast:HST/product/idc83urtq_raw.fits",
+          "description": "DADS RAW file - Raw exposure COS/NICMOS/STIS/WFC3/ACS"
+        },
+        {
+          "obsid": "25868884",
+          "productFilename": "idc83urtq_drz.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "image",
+          "productURL": "mast:HST/product/idc83urtq_drz.fits",
+          "description": "DADS DRZ file - Calibrated combined image ACS/WFC3/WFPC2/STIS"
+        },
+        {
+          "obsid": "25038269",
+          "productFilename": "od0u1ompq_raw.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "image",
+          "productURL": "mast:HST/product/od0u1ompq_raw.fits",
+          "description": "DADS RAW file - Raw exposure COS/NICMOS/STIS/WFC3/ACS"
+        },
+        {
+          "obsid": "25038269",
+          "productFilename": "od0u1ompq_flt.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "image",
+          "productURL": "mast:HST/product/od0u1ompq_flt.fits",
+          "description": "DADS FLT file - Calibrated exposure ACS/WFC3/STIS/COS"
+        },
+        {
+          "obsid": "25038268",
+          "productFilename": "od0u1nmiq_raw.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "image",
+          "productURL": "mast:HST/product/od0u1nmiq_raw.fits",
+          "description": "DADS RAW file - Raw exposure COS/NICMOS/STIS/WFC3/ACS"
+        },
+        {
+          "obsid": "25038268",
+          "productFilename": "od0u1nmiq_flt.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "image",
+          "productURL": "mast:HST/product/od0u1nmiq_flt.fits",
+          "description": "DADS FLT file - Calibrated exposure ACS/WFC3/STIS/COS"
+        },
+        {
+          "obsid": "26651115",
+          "productFilename": "hst_14178_65_wfc3_uvis_f814w_id1k65ll_drc.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "image",
+          "productURL": "mast:HST/product/hst_14178_65_wfc3_uvis_f814w_id1k65ll_drc.fits",
+          "description": "HAP fits science image"
+        },
+        {
+          "obsid": "26651115",
+          "productFilename": "hst_14178_65_wfc3_uvis_f814w_id1k65ll_flc.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "image",
+          "productURL": "mast:HST/product/hst_14178_65_wfc3_uvis_f814w_id1k65ll_flc.fits",
+          "description": "HAP flat-field product"
+        },
+        {
+          "obsid": "25130524",
+          "productFilename": "fbob0401m_a1f.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "timeseries",
+          "productURL": "mast:HST/product/fbob0401m_a1f.fits",
+          "description": "DADS A1F file - FGS1 data"
+        },
+        {
+          "obsid": "25130524",
+          "productFilename": "fbob0401m_a2f.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "timeseries",
+          "productURL": "mast:HST/product/fbob0401m_a2f.fits",
+          "description": "DADS A2F file - FGS2 data"
+        },
+        {
+          "obsid": "25130525",
+          "productFilename": "fbob0402m_a1f.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "timeseries",
+          "productURL": "mast:HST/product/fbob0402m_a1f.fits",
+          "description": "DADS A1F file - FGS1 data"
+        },
+        {
+          "obsid": "25130525",
+          "productFilename": "fbob0402m_a2f.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "timeseries",
+          "productURL": "mast:HST/product/fbob0402m_a2f.fits",
+          "description": "DADS A2F file - FGS2 data"
+        }
+      ],
+      "total_count": 63,
+      "returned_count": 22,
+      "truncated": true
+    }
+  }
+}

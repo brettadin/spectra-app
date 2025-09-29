@@ -1,0 +1,165 @@
+{
+  "name": "WASP-39",
+  "canonical_name": "WASP-39",
+  "coordinates": {
+    "ra_deg": 217.32672987069,
+    "dec_deg": -3.4445012445499996
+  },
+  "star": {
+    "otype": null,
+    "sptype": null,
+    "parallax_mas": null,
+    "rv_kms": null
+  },
+  "planets": [],
+  "summaries": {
+    "auto": "WASP-39: unknown type | tags: host, JWST-ERS, chemistry"
+  },
+  "provenance": {
+    "generated_by": "build_registry.py",
+    "date": "2025-09-29T01:54:44.816411+00:00"
+  },
+  "datasets": {
+    "mast": [
+      {
+        "obsid": "233595060",
+        "obs_collection": "JWST",
+        "instrument_name": "MIRI/SLITLESS",
+        "target_name": "WASP-39",
+        "filters": "P750L",
+        "t_min": 59989.97425061343,
+        "t_max": 59989.976107916664
+      },
+      {
+        "obsid": "116644217",
+        "obs_collection": "JWST",
+        "instrument_name": "MIRI/SLITLESS",
+        "target_name": "WASP-39",
+        "filters": "F1000W",
+        "t_min": 59989.97282726852,
+        "t_max": 59989.97284199074
+      },
+      {
+        "obsid": "116645432",
+        "obs_collection": "JWST",
+        "instrument_name": "MIRI/TARGACQ",
+        "target_name": "WASP-39",
+        "filters": "F1000W",
+        "t_min": 59989.969602083336,
+        "t_max": 59989.96961680555
+      },
+      {
+        "obsid": "87742159",
+        "obs_collection": "JWST",
+        "instrument_name": "NIRISS/SOSS",
+        "target_name": "WASP-39",
+        "filters": "CLEAR;GR700XD",
+        "t_min": 59787.207502997684,
+        "t_max": 59787.21386416667
+      },
+      {
+        "obsid": "87742481",
+        "obs_collection": "JWST",
+        "instrument_name": "NIRISS/SOSS",
+        "target_name": "WASP-39",
+        "filters": "CLEAR;GR700XD",
+        "t_min": 59786.85676445602,
+        "t_max": 59787.206306388885
+      }
+    ],
+    "eso_phase3": [],
+    "carmenes_dr1": [],
+    "mast_summary": {
+      "total_count": 6,
+      "returned_count": 5,
+      "truncated": true
+    },
+    "mast_products": {
+      "items": [
+        {
+          "obsid": "233595060",
+          "productFilename": "jw02783002001_03103_00001-seg001_mirimage_calints.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "timeseries",
+          "productURL": "mast:JWST/product/jw02783002001_03103_00001-seg001_mirimage_calints.fits",
+          "description": "exposure (L2b): 3D calibrated exposure"
+        },
+        {
+          "obsid": "233595060",
+          "productFilename": "jw02783002001_03103_00001-seg001_mirimage_rate.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "timeseries",
+          "productURL": "mast:JWST/product/jw02783002001_03103_00001-seg001_mirimage_rate.fits",
+          "description": "exposure (L2a): 2D count rate averaged over integrations"
+        },
+        {
+          "obsid": "116644217",
+          "productFilename": "jw02783002001_03102_00001-seg001_mirimage_cal.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "timeseries",
+          "productURL": "mast:JWST/product/jw02783002001_03102_00001-seg001_mirimage_cal.fits",
+          "description": "exposure (L2b): 2D calibrated exposure average over integrations"
+        },
+        {
+          "obsid": "116644217",
+          "productFilename": "jw02783002001_03102_00001-seg001_mirimage_rate.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "timeseries",
+          "productURL": "mast:JWST/product/jw02783002001_03102_00001-seg001_mirimage_rate.fits",
+          "description": "exposure (L2a): 2D count rate averaged over integrations"
+        },
+        {
+          "obsid": "116645432",
+          "productFilename": "jw02783002001_02101_00001-seg001_mirimage_cal.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "timeseries",
+          "productURL": "mast:JWST/product/jw02783002001_02101_00001-seg001_mirimage_cal.fits",
+          "description": "exposure (L2b): 2D calibrated exposure average over integrations"
+        },
+        {
+          "obsid": "116645432",
+          "productFilename": "jw02783002001_02101_00001-seg001_mirimage_rate.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "timeseries",
+          "productURL": "mast:JWST/product/jw02783002001_02101_00001-seg001_mirimage_rate.fits",
+          "description": "exposure (L2a): 2D count rate averaged over integrations"
+        },
+        {
+          "obsid": "87742159",
+          "productFilename": "jw01366001001_04102_00001-seg001_nis_rate.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "timeseries",
+          "productURL": "mast:JWST/product/jw01366001001_04102_00001-seg001_nis_rate.fits",
+          "description": "exposure (L2a): 2D count rate averaged over integrations"
+        },
+        {
+          "obsid": "87742159",
+          "productFilename": "jw01366001001_04102_00001-seg001_nis_rateints.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "timeseries",
+          "productURL": "mast:JWST/product/jw01366001001_04102_00001-seg001_nis_rateints.fits",
+          "description": "exposure (L2a): 3D countrate per integration"
+        },
+        {
+          "obsid": "87742158",
+          "productFilename": "jw01366001001_02101_00004-seg001_nis_cal.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "timeseries",
+          "productURL": "mast:JWST/product/jw01366001001_02101_00004-seg001_nis_cal.fits",
+          "description": "exposure (L2b): 2D calibrated exposure average over integrations"
+        },
+        {
+          "obsid": "87742158",
+          "productFilename": "jw01366001001_02101_00004-seg001_nis_rate.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "timeseries",
+          "productURL": "mast:JWST/product/jw01366001001_02101_00004-seg001_nis_rate.fits",
+          "description": "exposure (L2a): 2D count rate averaged over integrations"
+        }
+      ],
+      "total_count": 58,
+      "returned_count": 10,
+      "truncated": true
+    }
+  }
+}

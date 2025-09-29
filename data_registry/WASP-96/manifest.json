@@ -1,0 +1,90 @@
+{
+  "name": "WASP-96",
+  "canonical_name": "WASP-96",
+  "coordinates": {
+    "ra_deg": 1.0464069851,
+    "dec_deg": -47.36064467548
+  },
+  "star": {
+    "otype": null,
+    "sptype": null,
+    "parallax_mas": null,
+    "rv_kms": null
+  },
+  "planets": [],
+  "summaries": {
+    "auto": "WASP-96: unknown type | tags: host, JWST, NIRISS"
+  },
+  "provenance": {
+    "generated_by": "build_registry.py",
+    "date": "2025-09-29T01:55:58.161257+00:00"
+  },
+  "datasets": {
+    "mast": [
+      {
+        "obsid": "87599541",
+        "obs_collection": "JWST",
+        "instrument_name": "NIRISS/SOSS",
+        "target_name": "WASP-96",
+        "filters": "CLEAR;GR700XD",
+        "t_min": 59751.43943215278,
+        "t_max": 59751.44992677083
+      },
+      {
+        "obsid": "118972907",
+        "obs_collection": "JWST",
+        "instrument_name": "NIRISS/SOSS",
+        "target_name": "WASP-96",
+        "filters": "CLEAR;GR700XD",
+        "t_min": 59751.15883224537,
+        "t_max": 59751.438179375
+      }
+    ],
+    "eso_phase3": [],
+    "carmenes_dr1": [],
+    "mast_summary": {
+      "total_count": 2,
+      "returned_count": 2,
+      "truncated": false
+    },
+    "mast_products": {
+      "items": [
+        {
+          "obsid": "87599541",
+          "productFilename": "jw02734002001_04102_00001-seg001_nis_rate.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "timeseries",
+          "productURL": "mast:JWST/product/jw02734002001_04102_00001-seg001_nis_rate.fits",
+          "description": "exposure (L2a): 2D count rate averaged over integrations"
+        },
+        {
+          "obsid": "87599541",
+          "productFilename": "jw02734002001_04102_00001-seg001_nis_rateints.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "timeseries",
+          "productURL": "mast:JWST/product/jw02734002001_04102_00001-seg001_nis_rateints.fits",
+          "description": "exposure (L2a): 3D countrate per integration"
+        },
+        {
+          "obsid": "87599537",
+          "productFilename": "jw02734002001_04101_00001-seg003_nis_o002_crfints.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "timeseries",
+          "productURL": "mast:JWST/product/jw02734002001_04101_00001-seg003_nis_o002_crfints.fits",
+          "description": "exposure (L2c): 3D Calibrated data per integration"
+        },
+        {
+          "obsid": "87599537",
+          "productFilename": "jw02734002001_04101_00001-seg003_nis_calints.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "timeseries",
+          "productURL": "mast:JWST/product/jw02734002001_04101_00001-seg003_nis_calints.fits",
+          "description": "exposure (L2b): 3D calibrated exposure"
+        }
+      ],
+      "total_count": 39,
+      "returned_count": 4,
+      "truncated": true
+    }
+  }
+}

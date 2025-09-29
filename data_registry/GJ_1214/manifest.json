@@ -1,0 +1,90 @@
+{
+  "name": "GJ 1214",
+  "canonical_name": "GJ 1214",
+  "coordinates": {
+    "ra_deg": 258.82889160451873,
+    "dec_deg": 4.963907392315556
+  },
+  "star": {
+    "otype": null,
+    "sptype": null,
+    "parallax_mas": null,
+    "rv_kms": null
+  },
+  "planets": [],
+  "summaries": {
+    "auto": "GJ 1214: unknown type | tags: host, sub-neptune, flat-spectrum, JWST"
+  },
+  "provenance": {
+    "generated_by": "build_registry.py",
+    "date": "2025-09-29T02:04:41.578344+00:00"
+  },
+  "datasets": {
+    "mast": [
+      {
+        "obsid": "87680987",
+        "obs_collection": "JWST",
+        "instrument_name": "MIRI/IMAGE",
+        "target_name": "UNKNOWN",
+        "filters": "F560W",
+        "t_min": 59782.349533796296,
+        "t_max": 59782.34959803241
+      },
+      {
+        "obsid": "87682029",
+        "obs_collection": "JWST",
+        "instrument_name": "MIRI/SLITLESS",
+        "target_name": "GJ1214",
+        "filters": "P750L",
+        "t_min": 59780.61943254629,
+        "t_max": 59782.347708402776
+      }
+    ],
+    "eso_phase3": [],
+    "carmenes_dr1": [],
+    "mast_summary": {
+      "total_count": 2,
+      "returned_count": 2,
+      "truncated": false
+    },
+    "mast_products": {
+      "items": [
+        {
+          "obsid": "87680987",
+          "productFilename": "jw02741014001_02101_00001_mirimage_cal.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "image",
+          "productURL": "mast:JWST/product/jw02741014001_02101_00001_mirimage_cal.fits",
+          "description": "exposure (L2b): 2D calibrated exposure average over integrations"
+        },
+        {
+          "obsid": "87680987",
+          "productFilename": "jw02741014001_02101_00001_mirimage_i2d.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "image",
+          "productURL": "mast:JWST/product/jw02741014001_02101_00001_mirimage_i2d.fits",
+          "description": "exposure/target (L2b/L3): rectified 2D image"
+        },
+        {
+          "obsid": "87680970",
+          "productFilename": "jw01803001001_02101_00001-seg001_mirimage_cal.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "timeseries",
+          "productURL": "mast:JWST/product/jw01803001001_02101_00001-seg001_mirimage_cal.fits",
+          "description": "exposure (L2b): 2D calibrated exposure average over integrations"
+        },
+        {
+          "obsid": "87680970",
+          "productFilename": "jw01803001001_02101_00001-seg001_mirimage_rate.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "timeseries",
+          "productURL": "mast:JWST/product/jw01803001001_02101_00001-seg001_mirimage_rate.fits",
+          "description": "exposure (L2a): 2D count rate averaged over integrations"
+        }
+      ],
+      "total_count": 315,
+      "returned_count": 4,
+      "truncated": true
+    }
+  }
+}

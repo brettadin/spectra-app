@@ -1,0 +1,324 @@
+{
+  "name": "HD 122563",
+  "canonical_name": "HD 122563",
+  "coordinates": {
+    "ra_deg": 210.63268961872998,
+    "dec_deg": 9.68609566441
+  },
+  "star": {
+    "otype": null,
+    "sptype": null,
+    "parallax_mas": null,
+    "rv_kms": null
+  },
+  "planets": [],
+  "summaries": {
+    "auto": "HD 122563: unknown type | tags: metal-poor, giant"
+  },
+  "provenance": {
+    "generated_by": "build_registry.py",
+    "date": "2025-09-29T01:45:39.869800+00:00"
+  },
+  "datasets": {
+    "mast": [
+      {
+        "obsid": "24521492",
+        "obs_collection": "HST",
+        "instrument_name": "STIS/CCD",
+        "target_name": "HD122563",
+        "filters": "MIRVIS",
+        "t_min": 55779.45454568287,
+        "t_max": 55779.45659649306
+      },
+      {
+        "obsid": "24521487",
+        "obs_collection": "HST",
+        "instrument_name": "STIS/CCD",
+        "target_name": "HD122563",
+        "filters": "MIRVIS",
+        "t_min": 55766.74358533565,
+        "t_max": 55766.74563572917
+      },
+      {
+        "obsid": "24922296",
+        "obs_collection": "HST",
+        "instrument_name": "STIS/NUV-MAMA",
+        "target_name": "HD122563",
+        "filters": "E230M",
+        "t_min": 51388.90183136574,
+        "t_max": 51388.935025810184
+      },
+      {
+        "obsid": "199207562",
+        "obs_collection": "HST",
+        "instrument_name": "STIS",
+        "target_name": "HD122563",
+        "filters": "E230M",
+        "t_min": 51388.713912037034,
+        "t_max": 51388.93502314815
+      },
+      {
+        "obsid": "24922295",
+        "obs_collection": "HST",
+        "instrument_name": "STIS/NUV-MAMA",
+        "target_name": "HD122563",
+        "filters": "E230M",
+        "t_min": 51388.834678391206,
+        "t_max": 51388.867872835646
+      },
+      {
+        "obsid": "24789066",
+        "obs_collection": "HST",
+        "instrument_name": "HRS",
+        "target_name": "HD122563",
+        "filters": "MIRROR-N2",
+        "t_min": "",
+        "t_max": ""
+      },
+      {
+        "obsid": "24789079",
+        "obs_collection": "HST",
+        "instrument_name": "HRS/2",
+        "target_name": "HD122563",
+        "filters": "G270M",
+        "t_min": 50103.26317662037,
+        "t_max": 50103.291954085646
+      },
+      {
+        "obsid": "24789078",
+        "obs_collection": "HST",
+        "instrument_name": "HRS/2",
+        "target_name": "SPYBAL",
+        "filters": "G270M",
+        "t_min": 50103.262745486114,
+        "t_max": 50103.26282503472
+      },
+      {
+        "obsid": "350058",
+        "obs_collection": "IUE",
+        "instrument_name": "LWP",
+        "target_name": "HD 122563",
+        "filters": "HIGH DISP",
+        "t_min": 46479.4899421,
+        "t_max": 46479.7607697
+      },
+      {
+        "obsid": "360106",
+        "obs_collection": "IUE",
+        "instrument_name": "LWR",
+        "target_name": "HD 122563",
+        "filters": "HIGH DISP",
+        "t_min": 44096.10875,
+        "t_max": 44096.1920813
+      },
+      {
+        "obsid": "308645",
+        "obs_collection": "IUE",
+        "instrument_name": "SWP",
+        "target_name": "HD 122563",
+        "filters": "LOW DISP",
+        "t_min": 44058.29729,
+        "t_max": 44058.30423
+      },
+      {
+        "obsid": "297302",
+        "obs_collection": "IUE",
+        "instrument_name": "LWR",
+        "target_name": "HD 122563",
+        "filters": "LOW DISP",
+        "t_min": 44058.28274,
+        "t_max": 44058.28784
+      }
+    ],
+    "eso_phase3": [],
+    "carmenes_dr1": [],
+    "mast_summary": {
+      "total_count": 239,
+      "returned_count": 12,
+      "truncated": true
+    },
+    "mast_products": {
+      "items": [
+        {
+          "obsid": "24521492",
+          "productFilename": "objq10jiq_raw.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "image",
+          "productURL": "mast:HST/product/objq10jiq_raw.fits",
+          "description": "DADS RAW file - Raw exposure COS/NICMOS/STIS/WFC3/ACS"
+        },
+        {
+          "obsid": "24521487",
+          "productFilename": "objq09s9q_raw.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "image",
+          "productURL": "mast:HST/product/objq09s9q_raw.fits",
+          "description": "DADS RAW file - Raw exposure COS/NICMOS/STIS/WFC3/ACS"
+        },
+        {
+          "obsid": "24922296",
+          "productFilename": "o5el01040_jif.fits",
+          "productType": "AUXILIARY",
+          "dataproduct_type": "spectrum",
+          "productURL": "mast:HST/product/o5el01040_jif.fits",
+          "description": "DADS JIF file"
+        },
+        {
+          "obsid": "24922296",
+          "productFilename": "o5el01040_jit.fits",
+          "productType": "AUXILIARY",
+          "dataproduct_type": "spectrum",
+          "productURL": "mast:HST/product/o5el01040_jit.fits",
+          "description": "DADS JIT file"
+        },
+        {
+          "obsid": "24922293",
+          "productFilename": "o5el01010_asn.fits",
+          "productType": "AUXILIARY",
+          "dataproduct_type": "spectrum",
+          "productURL": "mast:HST/product/o5el01010_asn.fits",
+          "description": "DADS ASN file - Association ACS/WFC3/STIS"
+        },
+        {
+          "obsid": "24922293",
+          "productFilename": "o5el01010_jif.fits",
+          "productType": "AUXILIARY",
+          "dataproduct_type": "spectrum",
+          "productURL": "mast:HST/product/o5el01010_jif.fits",
+          "description": "DADS JIF file"
+        },
+        {
+          "obsid": "24922295",
+          "productFilename": "o5el01030_jif.fits",
+          "productType": "AUXILIARY",
+          "dataproduct_type": "spectrum",
+          "productURL": "mast:HST/product/o5el01030_jif.fits",
+          "description": "DADS JIF file"
+        },
+        {
+          "obsid": "24922295",
+          "productFilename": "o5el01030_jit.fits",
+          "productType": "AUXILIARY",
+          "dataproduct_type": "spectrum",
+          "productURL": "mast:HST/product/o5el01030_jit.fits",
+          "description": "DADS JIT file"
+        },
+        {
+          "obsid": "24789066",
+          "productFilename": "z2xl0401j_jif.fits",
+          "productType": "AUXILIARY",
+          "dataproduct_type": "spectrum",
+          "productURL": "mast:HST/product/z2xl0401j_jif.fits",
+          "description": "DADS JIF file"
+        },
+        {
+          "obsid": "24789066",
+          "productFilename": "z2xl0401j_jit.fits",
+          "productType": "AUXILIARY",
+          "dataproduct_type": "spectrum",
+          "productURL": "mast:HST/product/z2xl0401j_jit.fits",
+          "description": "DADS JIT file"
+        },
+        {
+          "obsid": "24789079",
+          "productFilename": "z2xl040et_cqf.fits",
+          "productType": "AUXILIARY",
+          "dataproduct_type": "spectrum",
+          "productURL": "mast:HST/product/z2xl040et_cqf.fits",
+          "description": "DADS CQF file - Data quality GHRS/FOS"
+        },
+        {
+          "obsid": "24789079",
+          "productFilename": "z2xl040ej_jif.fits",
+          "productType": "AUXILIARY",
+          "dataproduct_type": "spectrum",
+          "productURL": "mast:HST/product/z2xl040ej_jif.fits",
+          "description": "DADS JIF file"
+        },
+        {
+          "obsid": "24789078",
+          "productFilename": "z2xl040dt_cqf.fits",
+          "productType": "AUXILIARY",
+          "dataproduct_type": "spectrum",
+          "productURL": "mast:HST/product/z2xl040dt_cqf.fits",
+          "description": "DADS CQF file - Data quality GHRS/FOS"
+        },
+        {
+          "obsid": "24789078",
+          "productFilename": "z2xl040dj_jif.fits",
+          "productType": "AUXILIARY",
+          "dataproduct_type": "spectrum",
+          "productURL": "mast:HST/product/z2xl040dj_jif.fits",
+          "description": "DADS JIF file"
+        },
+        {
+          "obsid": "350058",
+          "productFilename": "lwp07677.lihi.gz",
+          "productType": "AUXILIARY",
+          "dataproduct_type": "spectrum",
+          "productURL": "mast:IUE/url//pub/iue/data/lwp/07000/lwp07677.lihi.gz",
+          "description": "LIHI"
+        },
+        {
+          "obsid": "350058",
+          "productFilename": "lwp07677.mehil.gz",
+          "productType": "AUXILIARY",
+          "dataproduct_type": "spectrum",
+          "productURL": "mast:IUE/url//pub/iue/data/lwp/07000/lwp07677.mehil.gz",
+          "description": "MEHIL"
+        },
+        {
+          "obsid": "360106",
+          "productFilename": "lwr05314.lihi.gz",
+          "productType": "AUXILIARY",
+          "dataproduct_type": "spectrum",
+          "productURL": "mast:IUE/url//pub/iue/data/lwr/05000/lwr05314.lihi.gz",
+          "description": "LIHI"
+        },
+        {
+          "obsid": "360106",
+          "productFilename": "lwr05314.mehil.gz",
+          "productType": "AUXILIARY",
+          "dataproduct_type": "spectrum",
+          "productURL": "mast:IUE/url//pub/iue/data/lwr/05000/lwr05314.mehil.gz",
+          "description": "MEHIL"
+        },
+        {
+          "obsid": "308645",
+          "productFilename": "swp05709.lilo.gz",
+          "productType": "AUXILIARY",
+          "dataproduct_type": "spectrum",
+          "productURL": "mast:IUE/url/pub/iue/data/swp/05000/swp05709.lilo.gz",
+          "description": "LILO"
+        },
+        {
+          "obsid": "308645",
+          "productFilename": "swp05709.raw.gz",
+          "productType": "AUXILIARY",
+          "dataproduct_type": "spectrum",
+          "productURL": "mast:IUE/url/pub/iue/data/swp/05000/swp05709.raw.gz",
+          "description": "RAW"
+        },
+        {
+          "obsid": "297302",
+          "productFilename": "lwr04938.elbll.gz",
+          "productType": "AUXILIARY",
+          "dataproduct_type": "spectrum",
+          "productURL": "mast:IUE/url/pub/iue/data/lwr/04000/lwr04938.elbll.gz",
+          "description": "ELBLL"
+        },
+        {
+          "obsid": "297302",
+          "productFilename": "lwr04938.lilo.gz",
+          "productType": "AUXILIARY",
+          "dataproduct_type": "spectrum",
+          "productURL": "mast:IUE/url/pub/iue/data/lwr/04000/lwr04938.lilo.gz",
+          "description": "LILO"
+        }
+      ],
+      "total_count": 172,
+      "returned_count": 22,
+      "truncated": true
+    }
+  }
+}

@@ -1,0 +1,208 @@
+{
+  "name": "HAT-P-11",
+  "canonical_name": "HAT-P-11",
+  "coordinates": {
+    "ra_deg": 297.70936374039,
+    "dec_deg": 48.08086149735999
+  },
+  "star": {
+    "otype": null,
+    "sptype": null,
+    "parallax_mas": null,
+    "rv_kms": null
+  },
+  "planets": [],
+  "summaries": {
+    "auto": "HAT-P-11: unknown type | tags: host, helium-10830"
+  },
+  "provenance": {
+    "generated_by": "build_registry.py",
+    "date": "2025-09-29T02:03:43.775733+00:00"
+  },
+  "datasets": {
+    "mast": [
+      {
+        "obsid": "25861556",
+        "obs_collection": "HST",
+        "instrument_name": "STIS/CCD",
+        "target_name": "HAT-P-11",
+        "filters": "G430L",
+        "t_min": 57899.842360104165,
+        "t_max": 57899.87379528935
+      },
+      {
+        "obsid": "25861555",
+        "obs_collection": "HST",
+        "instrument_name": "STIS/CCD",
+        "target_name": "HAT-P-11",
+        "filters": "G430L",
+        "t_min": 57899.84211716435,
+        "t_max": 57899.842128738426
+      },
+      {
+        "obsid": "25061187",
+        "obs_collection": "HST",
+        "instrument_name": "STIS/NUV-MAMA",
+        "target_name": "DARK",
+        "filters": "MIRVIS",
+        "t_min": 57748.29110628472,
+        "t_max": 57748.3061525463
+      },
+      {
+        "obsid": "25061186",
+        "obs_collection": "HST",
+        "instrument_name": "STIS/NUV-MAMA",
+        "target_name": "DARK",
+        "filters": "MIRVIS",
+        "t_min": 57748.09249517361,
+        "t_max": 57748.10754143519
+      },
+      {
+        "obsid": "25061185",
+        "obs_collection": "HST",
+        "instrument_name": "STIS/FUV-MAMA",
+        "target_name": "DARK",
+        "filters": "MIRVIS",
+        "t_min": 57743.44570146991,
+        "t_max": 57743.46074776621
+      },
+      {
+        "obsid": "25061184",
+        "obs_collection": "HST",
+        "instrument_name": "STIS/FUV-MAMA",
+        "target_name": "DARK",
+        "filters": "MIRVIS",
+        "t_min": 57743.395701469904,
+        "t_max": 57743.410747766204
+      },
+      {
+        "obsid": "199014733",
+        "obs_collection": "HST",
+        "instrument_name": "STIS",
+        "target_name": "BD+47-2936",
+        "filters": "G140M",
+        "t_min": 57704.076828703706,
+        "t_max": 57704.36335648148
+      },
+      {
+        "obsid": "199015804",
+        "obs_collection": "HST",
+        "instrument_name": "STIS",
+        "target_name": "HAT-P-11",
+        "filters": "G140M",
+        "t_min": 57684.5275,
+        "t_max": 57684.81451388889
+      }
+    ],
+    "eso_phase3": [],
+    "carmenes_dr1": [],
+    "mast_summary": {
+      "total_count": 112,
+      "returned_count": 8,
+      "truncated": true
+    },
+    "mast_products": {
+      "items": [
+        {
+          "obsid": "25861556",
+          "productFilename": "od9m200a0_crj.fits",
+          "productType": "AUXILIARY",
+          "dataproduct_type": "spectrum",
+          "productURL": "mast:HST/product/od9m200a0_crj.fits",
+          "description": "DADS CRJ file - CR-rejected image ACS/WFC3/STIS-CCD"
+        },
+        {
+          "obsid": "25861556",
+          "productFilename": "od9m20d9j_epc.fits",
+          "productType": "AUXILIARY",
+          "dataproduct_type": "spectrum",
+          "productURL": "mast:HST/product/od9m20d9j_epc.fits",
+          "description": "Exposure processing"
+        },
+        {
+          "obsid": "25861555",
+          "productFilename": "od9m20d8j_epc.fits",
+          "productType": "AUXILIARY",
+          "dataproduct_type": "spectrum",
+          "productURL": "mast:HST/product/od9m20d8j_epc.fits",
+          "description": "Exposure processing"
+        },
+        {
+          "obsid": "25861555",
+          "productFilename": "od9m20dqj_epc.fits",
+          "productType": "AUXILIARY",
+          "dataproduct_type": "spectrum",
+          "productURL": "mast:HST/product/od9m20dqj_epc.fits",
+          "description": "Exposure processing"
+        },
+        {
+          "obsid": "25061187",
+          "productFilename": "odbte2eoq_raw.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "image",
+          "productURL": "mast:HST/product/odbte2eoq_raw.fits",
+          "description": "DADS RAW file - Raw exposure COS/NICMOS/STIS/WFC3/ACS"
+        },
+        {
+          "obsid": "25061186",
+          "productFilename": "odbte1afq_raw.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "image",
+          "productURL": "mast:HST/product/odbte1afq_raw.fits",
+          "description": "DADS RAW file - Raw exposure COS/NICMOS/STIS/WFC3/ACS"
+        },
+        {
+          "obsid": "25061185",
+          "productFilename": "odbsb6p0q_raw.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "image",
+          "productURL": "mast:HST/product/odbsb6p0q_raw.fits",
+          "description": "DADS RAW file - Raw exposure COS/NICMOS/STIS/WFC3/ACS"
+        },
+        {
+          "obsid": "25061184",
+          "productFilename": "odbsb5owq_raw.fits",
+          "productType": "SCIENCE",
+          "dataproduct_type": "image",
+          "productURL": "mast:HST/product/odbsb5owq_raw.fits",
+          "description": "DADS RAW file - Raw exposure COS/NICMOS/STIS/WFC3/ACS"
+        },
+        {
+          "obsid": "25054949",
+          "productFilename": "od9e02010_asn.fits",
+          "productType": "AUXILIARY",
+          "dataproduct_type": "spectrum",
+          "productURL": "mast:HST/product/od9e02010_asn.fits",
+          "description": "DADS ASN file - Association ACS/WFC3/STIS"
+        },
+        {
+          "obsid": "25054949",
+          "productFilename": "od9e02010_jif.fits",
+          "productType": "AUXILIARY",
+          "dataproduct_type": "spectrum",
+          "productURL": "mast:HST/product/od9e02010_jif.fits",
+          "description": "DADS JIF file"
+        },
+        {
+          "obsid": "25052274",
+          "productFilename": "od9m15010_asn.fits",
+          "productType": "AUXILIARY",
+          "dataproduct_type": "spectrum",
+          "productURL": "mast:HST/product/od9m15010_asn.fits",
+          "description": "DADS ASN file - Association ACS/WFC3/STIS"
+        },
+        {
+          "obsid": "25052274",
+          "productFilename": "od9m15010_jif.fits",
+          "productType": "AUXILIARY",
+          "dataproduct_type": "spectrum",
+          "productURL": "mast:HST/product/od9m15010_jif.fits",
+          "description": "DADS JIF file"
+        }
+      ],
+      "total_count": 195,
+      "returned_count": 12,
+      "truncated": true
+    }
+  }
+}
