@@ -87,12 +87,34 @@ MAST_INSTR_HINTS = set(["STIS","COS","IUE","NIRSpec","NIRISS","NIRCam","MIRI","W
 MAST_COLLECTIONS = set(["HST","JWST","IUE","HLSP"])  # HLSP includes CALSPEC, MUSCLES, ASTRAL
 ESO_INSTR_HINTS = set(["UVES","HARPS","ESPRESSO","XSHOOTER","HARPS-N"])  # subset via ESO; HN via TNG not ESO, kept for tag
 MAST_PRODUCT_PREVIEW_PATTERN = re.compile(r"(_preview|_thumb|jpg|png)", re.IGNORECASE)
-MAX_MAST_PRODUCTS = 250
+MAX_MAST_PRODUCTS = 80
+MAX_MAST_OBS_PER_INSTRUMENT = 2
+MAX_MAST_OBS_TOTAL = 12
+MAX_MAST_PRODUCTS_PER_OBSERVATION = 2
 
 def _decode_if_bytes(val):
     if isinstance(val, bytes):
         return val.decode()
     return val
+
+
+def _masked_to_float(value, default=None):
+    if value is None:
+        return default
+    if getattr(value, "mask", False):
+        return default
+    try:
+        return float(value)
+    except Exception:
+        return default
+
+
+def _mast_observation_sort_key(row):
+    for column in ("t_max", "t_min", "obs_start", "t0"):
+        candidate = _masked_to_float(row.get(column), default=None)
+        if candidate is not None:
+            return candidate
+    return 0.0
 
 
 def _get_first_value(table, *names):
@@ -233,24 +255,50 @@ def resolve_target(name):
     }
     return out
 
-def mast_observations(name, instr_hints):
+def mast_observations(name, instr_hints, *, max_per_instrument=MAX_MAST_OBS_PER_INSTRUMENT, max_total=MAX_MAST_OBS_TOTAL):
     try:
         tbl = Observations.query_object(name)
     except Exception:
         tbl = Table()
     if tbl is None or len(tbl) == 0:
         return Table()
-    # keep relevant missions/instruments
-    keep = []
+
+    instr_hints = set(instr_hints or [])
+    filtered = []
     for row in tbl:
         coll = row.get("obs_collection", None)
         inst = row.get("instrument_name", None)
-        if coll in MAST_COLLECTIONS and (not instr_hints or (inst and any(h in inst for h in instr_hints))):
-            keep.append(row)
-    return Table(rows=keep, names=tbl.colnames) if keep else Table()
+        if coll not in MAST_COLLECTIONS:
+            continue
+        if instr_hints and (not inst or not any(h in inst for h in instr_hints)):
+            continue
+        filtered.append(row)
 
-def mast_products(obs_table):
+    if not filtered:
+        return Table()
+
+    counters = {}
+    selected = []
+    for row in sorted(filtered, key=_mast_observation_sort_key, reverse=True):
+        coll = row.get("obs_collection", None)
+        inst = row.get("instrument_name", None) or "unknown"
+        key = (coll, inst)
+        if max_per_instrument is not None and counters.get(key, 0) >= max_per_instrument:
+            continue
+        counters[key] = counters.get(key, 0) + 1
+        selected.append(row)
+        if max_total is not None and len(selected) >= max_total:
+            break
+
+    result = Table(rows=selected, names=tbl.colnames) if selected else Table()
+    result.meta["total_count"] = len(filtered)
+    result.meta["kept_count"] = len(selected)
+    result.meta["truncated"] = len(selected) < len(filtered)
+    return result
+
+def mast_products(obs_table, *, max_per_observation=MAX_MAST_PRODUCTS_PER_OBSERVATION):
     all_prod = []
+    total_requested = 0
     for obsid in obs_table["obsid"]:
         prods = Observations.get_product_list(obsid)
         # spectra only
@@ -269,6 +317,7 @@ def mast_products(obs_table):
         )
 
         pkeep = prods[mask_spectrum | mask_science]
+        total_requested += len(pkeep)
         if len(pkeep):
             # strip previews/calibration junk
             if "productFilename" in pkeep.colnames:
@@ -277,10 +326,21 @@ def mast_products(obs_table):
                     bool(MAST_PRODUCT_PREVIEW_PATTERN.search(str(name))) for name in filenames
                 ])
                 pkeep = pkeep[~mask_preview]
-            all_prod.append(pkeep)
+            if max_per_observation is not None and len(pkeep) > max_per_observation:
+                pkeep = pkeep[:max_per_observation]
+            if len(pkeep):
+                all_prod.append(pkeep)
     if not all_prod:
-        return Table()
-    return vstack(all_prod, metadata_conflicts="silent")
+        table = Table()
+        table.meta["total_count"] = total_requested
+        table.meta["kept_count"] = 0
+        table.meta["truncated"] = total_requested > 0
+        return table
+    stacked = vstack(all_prod, metadata_conflicts="silent")
+    stacked.meta["total_count"] = total_requested
+    stacked.meta["kept_count"] = len(stacked)
+    stacked.meta["truncated"] = len(stacked) < total_requested
+    return stacked
 
 def eso_phase3_query(name, ra_deg, dec_deg, radius_arcsec=5):
     # We avoid login-only raw. Phase 3 reduced products only.
@@ -391,6 +451,11 @@ def write_manifest(outdir, name, star_meta, mast_meta, mast_products_tbl, eso_tb
     if mast_meta is not None and len(mast_meta):
         manifold = mast_meta.to_pandas()[["obsid","obs_collection","instrument_name","target_name","filters","t_min","t_max"]].fillna("").to_dict(orient="records")
         manifest["datasets"]["mast"] = manifold
+        manifest["datasets"]["mast_summary"] = {
+            "total_count": int(mast_meta.meta.get("total_count", len(mast_meta))),
+            "returned_count": int(mast_meta.meta.get("kept_count", len(mast_meta))),
+            "truncated": bool(mast_meta.meta.get("truncated", False)),
+        }
     mast_download_map = {}
     if mast_products_tbl is not None and len(mast_products_tbl):
         prods_df = mast_products_tbl.to_pandas()
@@ -424,13 +489,15 @@ def write_manifest(outdir, name, star_meta, mast_meta, mast_products_tbl, eso_tb
                 prods_df[col] = prods_df[col].astype(object)
                 prods_df[col] = prods_df[col].where(prods_df[col].notna(), default)
 
-        total_products = len(prods_df)
+        original_total = int(mast_products_tbl.meta.get("total_count", len(prods_df)))
+        returned_count = len(prods_df)
         prods_df = prods_df.head(MAX_MAST_PRODUCTS)
         prods = prods_df[list(expected_columns.keys())]
         manifest["datasets"]["mast_products"] = {
             "items": prods.to_dict(orient="records"),
-            "total_count": int(total_products),
-            "truncated": bool(total_products > len(prods)),
+            "total_count": int(original_total),
+            "returned_count": int(returned_count),
+            "truncated": bool(original_total > len(prods)),
         }
 
         if download:
