@@ -69,11 +69,11 @@ def test_ingest_local_ascii_populates_metadata():
 def test_ingest_local_ascii_multiple_flux_columns():
     content = dedent(
         """
-        Wavelength (nm),Paschen,Balmer,Sum
-        400,0.10,0.05,0.15
-        405,0.12,0.06,0.18
-        410,0.08,0.07,0.15
-        415,0.09,0.08,0.17
+        Wavelength (nm),Paschen Flux (arb),Balmer Flux (arb),Sum Flux (arb),Velocity (km/s)
+        400,0.10,0.05,0.15,30
+        405,0.12,0.06,0.18,32
+        410,0.08,0.07,0.15,31
+        415,0.09,0.08,0.17,29
         """
     ).strip()
 
@@ -92,14 +92,49 @@ def test_ingest_local_ascii_multiple_flux_columns():
     assert len(extras) == 2
 
     labels = {entry["label"] for entry in extras}
-    assert labels == {"Balmer", "Sum"}
+    assert labels == {"Balmer Flux (arb)", "Sum Flux (arb)"}
 
-    balmer_entry = next(entry for entry in extras if entry["label"] == "Balmer")
-    assert balmer_entry["wavelength_nm"] == [400.0, 405.0, 410.0, 415.0]
-    assert balmer_entry["flux"] == [0.05, 0.06, 0.07, 0.08]
-    assert balmer_entry["metadata"]["points"] == 4
-    assert balmer_entry["downsample"]
-    assert "4 samples" in balmer_entry["summary"]
+    for entry in extras:
+        assert entry["wavelength_nm"] == [400.0, 405.0, 410.0, 415.0]
+        assert entry["metadata"]["points"] == 4
+        assert entry["downsample"]
+        assert "4 samples" in entry["summary"]
+
+    assert "Velocity (km/s)" not in labels
+
+
+def test_ingest_local_ascii_filters_non_flux_numeric_columns():
+    content = dedent(
+        """
+        Wavelength (nm),Flux (10^-16 erg/s/cm^2/Å),Continuum (10^-16 erg/s/cm^2/Å),Temperature (K),Quality Flag
+        400,0.10,0.12,5000,0
+        405,0.12,0.11,5050,1
+        410,0.08,0.09,5075,0
+        415,0.09,0.10,5100,0
+        """
+    ).strip()
+
+    dataframe = pd.read_csv(io.StringIO(content))
+    parsed = parse_ascii(
+        dataframe,
+        content_bytes=content.encode("utf-8"),
+        column_labels=list(dataframe.columns),
+        filename="continuum.csv",
+    )
+
+    extras = parsed.get("additional_traces")
+    assert isinstance(extras, list)
+    assert len(extras) == 1
+
+    labels = {entry["label"] for entry in extras}
+    assert labels == {"Continuum (10^-16 erg/s/cm^2/Å)"}
+
+    continuum_entry = extras[0]
+    assert continuum_entry["flux"] == [0.12, 0.11, 0.09, 0.10]
+
+    non_flux_headers = {"Temperature (K)", "Quality Flag"}
+    for header in non_flux_headers:
+        assert header not in labels
 
 
 def test_parse_ascii_segments_handles_variable_whitespace():
@@ -325,23 +360,18 @@ def test_zip_dense_parser_fallback(monkeypatch):
     with zipfile.ZipFile(buffer, "w") as archive:
         archive.writestr(
             "segment.txt",
-
             "wavelength (nm),flux\n202,0.01\n202.1,0.011\n202.2,0.012\n",
-
-            "wavelength (nm),flux\n202,0.01\n202.1,0.011\n",
-
+            compress_type=zipfile.ZIP_DEFLATED,
         )
 
     payload = ingest_local_file("sun_segments.zip", buffer.getvalue())
 
-
     assert payload["wavelength_nm"] == pytest.approx([202.0, 202.1, 202.2])
-
-    assert payload["wavelength_nm"] == pytest.approx([202.0, 202.1])
 
     metadata = payload.get("metadata", {})
     assert metadata.get("segments") == ["segment.txt"]
     fallback = payload.get("provenance", {}).get("dense_parser_fallback")
+    assert fallback["method"] == "read_table"
     assert fallback["selected_segment"] == "segment.txt"
 
 

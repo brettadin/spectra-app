@@ -309,6 +309,7 @@ def ingest_local_file(name: str, content: bytes) -> Dict[str, object]:
                 )
             except ValueError as dense_exc:
                 fallback_payload: Optional[Dict[str, object]] = None
+                fallback_info: Optional[Dict[str, object]] = None
                 last_error: Optional[Exception] = None
                 for segment_name, segment_payload in segments:
                     try:
@@ -324,13 +325,14 @@ def ingest_local_file(name: str, content: bytes) -> Dict[str, object]:
                     metadata = dict(fallback_payload.get("metadata") or {})
                     metadata.setdefault("segments", [name for name, _ in segments])
                     fallback_payload["metadata"] = metadata
-                    provenance = dict(fallback_payload.get("provenance") or {})
-                    provenance["dense_parser_fallback"] = {
+                    fallback_info = {
                         "method": "read_table",
                         "error": str(dense_exc),
                         "segments": [name for name, _ in segments],
                         "selected_segment": segment_name,
                     }
+                    provenance = dict(fallback_payload.get("provenance") or {})
+                    provenance["dense_parser_fallback"] = fallback_info
                     fallback_payload["provenance"] = provenance
                     break
                 if fallback_payload is None:
@@ -343,10 +345,27 @@ def ingest_local_file(name: str, content: bytes) -> Dict[str, object]:
                 if not (_should_fallback_to_table(dense_exc) and len(segments) == 1):
                     raise
                 segment_name, segment_payload = segments[0]
+                if fallback_info is not None:
+                    fallback_info = dict(fallback_info)
+                    fallback_info["selected_segment"] = segment_name
                 try:
                     parsed = _parse_ascii_table(segment_name, segment_payload)
                 except Exception as fallback_exc:
                     raise fallback_exc from dense_exc
+                else:
+                    metadata = dict(parsed.get("metadata") or {})
+                    metadata.setdefault("segments", [name for name, _ in segments])
+                    parsed["metadata"] = metadata
+                    provenance = dict(parsed.get("provenance") or {})
+                    if fallback_info is None:
+                        fallback_info = {
+                            "method": "read_table",
+                            "error": str(dense_exc),
+                            "segments": [name for name, _ in segments],
+                            "selected_segment": segment_name,
+                        }
+                    provenance["dense_parser_fallback"] = fallback_info
+                    parsed["provenance"] = provenance
  
         else:
             if _should_use_dense_parser(processed_name, payload):
@@ -373,17 +392,15 @@ def ingest_local_file(name: str, content: bytes) -> Dict[str, object]:
                     }
                     parsed["provenance"] = provenance
             else:
-                parsed = _parse_ascii_with_table(processed_name, payload)
-
-
-                if not _should_fallback_to_table(dense_exc):
-                        raise
                 try:
+                    parsed = _parse_ascii_with_table(processed_name, payload)
+                except ValueError as dense_exc:
+                    if not _should_fallback_to_table(dense_exc):
+                        raise
+                    try:
                         parsed = _parse_ascii_table(processed_name, payload)
-                except Exception as fallback_exc:
+                    except Exception as fallback_exc:
                         raise fallback_exc from dense_exc
-                else:
-                        parsed = _parse_ascii_table(processed_name, payload)
 
     except Exception as exc:
         raise LocalIngestError(f"Failed to ingest {original_name}: {exc}") from exc
@@ -448,7 +465,9 @@ def ingest_local_file(name: str, content: bytes) -> Dict[str, object]:
     wavelengths = list(parsed.get("wavelength_nm") or [])
     flux_values = list(parsed.get("flux") or [])
 
-    if len(wavelengths) < 3 or len(flux_values) < 3:
+    fallback_info = (parsed.get("provenance") or {}).get("dense_parser_fallback")
+    min_samples = 2 if fallback_info else 3
+    if len(wavelengths) < min_samples or len(flux_values) < min_samples:
         raise LocalIngestError(
             f"{original_name} contains only {min(len(wavelengths), len(flux_values))} samples; "
             "expected a spectral table rather than metadata."

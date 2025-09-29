@@ -104,6 +104,57 @@ LINEAR_SCALE_FACTORS = {
     "in": 25_400_000.0,
 }
 
+_FLUX_LABEL_KEYWORDS = {
+    "flux",
+    "intensity",
+    "power",
+    "counts",
+    "brightness",
+    "continuum",
+    "spectral",
+    "density",
+    "irradiance",
+    "radiance",
+    "luminosity",
+    "emission",
+    "fnu",
+    "flam",
+    "surface",
+}
+
+_FLUX_LABEL_SUBSTRINGS = {
+    "flux",
+    "intens",
+    "brightness",
+    "continuum",
+    "spectral",
+    "density",
+    "irradiance",
+    "radiance",
+    "luminos",
+    "emission",
+    "fnu",
+    "flam",
+    "count",
+}
+
+_FLUX_UNIT_KEYWORDS = {
+    "erg",
+    "jansky",
+    "jy",
+    "w/",
+    "w m",
+    "photon",
+    "photons",
+    "count",
+    "counts",
+    "adu",
+    "flux",
+    "intens",
+    "radiance",
+    "irradiance",
+}
+
 
 def checksum_bytes(content: bytes) -> str:
     """Return a stable SHA-256 digest for the provided payload."""
@@ -127,6 +178,24 @@ def _normalise_header_key(key: str) -> str:
     cleaned = re.sub(r"[^a-z0-9]+", "_", cleaned)
     cleaned = re.sub(r"_+", "_", cleaned)
     return cleaned.strip("_")
+
+
+def _is_flux_like_label(label: str) -> bool:
+    lowered = str(label).strip().lower()
+    if not lowered:
+        return False
+    tokens = [token for token in re.split(r"[^a-z0-9]+", lowered) if token]
+    for token in tokens:
+        if token in _FLUX_LABEL_KEYWORDS:
+            return True
+        if any(keyword in token for keyword in _FLUX_LABEL_SUBSTRINGS):
+            return True
+    unit_hint = _extract_flux_unit_from_label(str(label))
+    if unit_hint:
+        lowered_unit = unit_hint.strip().lower()
+        if any(keyword in lowered_unit for keyword in _FLUX_UNIT_KEYWORDS):
+            return True
+    return False
 
 
 def _split_header_line(line: str) -> Optional[Tuple[str, str]]:
@@ -314,8 +383,7 @@ def _detect_columns(df: pd.DataFrame) -> Tuple[str, str]:
     for name in columns:
         if name == wavelength:
             continue
-        label = str(name).lower()
-        if any(keyword in label for keyword in ("flux", "int", "power", "counts", "brightness")):
+        if _is_flux_like_label(name):
             flux = name
             break
     if wavelength == flux and len(columns) > 2:
@@ -535,6 +603,8 @@ def parse_ascii(
         if column in {wavelength_col, flux_col}:
             continue
         if column not in numeric_valid.columns:
+            continue
+        if not _is_flux_like_label(column):
             continue
         series = numeric_valid[column]
         if series is None:
