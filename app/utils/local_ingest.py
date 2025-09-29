@@ -96,7 +96,9 @@ def _choose_label(name: str, parsed: Mapping[str, object]) -> str:
     return Path(name).stem or "Spectrum"
 
 
-def _build_summary(sample_count: int, metadata: Mapping[str, object], flux_unit: str) -> str:
+def _build_summary(
+    sample_count: int, metadata: Mapping[str, object], flux_unit: str
+) -> str:
     parts = [f"{sample_count} samples"]
     wavelength_range = metadata.get("wavelength_range_nm")
     if isinstance(wavelength_range, (list, tuple)) and len(wavelength_range) == 2:
@@ -117,7 +119,9 @@ def _build_summary(sample_count: int, metadata: Mapping[str, object], flux_unit:
     return " • ".join(parts)
 
 
-def _maybe_decompress(name: str, content: bytes) -> Tuple[str, bytes, Optional[Dict[str, object]]]:
+def _maybe_decompress(
+    name: str, content: bytes
+) -> Tuple[str, bytes, Optional[Dict[str, object]]]:
     path = Path(name)
     suffixes = [suffix.lower() for suffix in path.suffixes]
     if suffixes and suffixes[-1] in {".gz", ".gzip"}:
@@ -170,8 +174,23 @@ def _read_zip_segments(name: str, content: bytes) -> List[Tuple[str, bytes]]:
             continue
         segments.append((filename, payload))
     if not segments:
-        raise LocalIngestError(f"Archive {name} did not contain supported ASCII spectra.")
+        raise LocalIngestError(
+            f"Archive {name} did not contain supported ASCII spectra."
+        )
     return segments
+
+
+def _parse_ascii_with_table(name: str, payload: bytes) -> Dict[str, object]:
+    table = read_table(payload, include_header=True)
+    return parse_ascii(
+        table.dataframe,
+        content_bytes=payload,
+        header_lines=table.header_lines,
+        column_labels=table.column_labels,
+        delimiter=table.delimiter,
+        filename=name,
+        orientation=getattr(table, "orientation", None),
+    )
 
 
 def _persist_dense_cache(
@@ -214,9 +233,7 @@ def _persist_dense_cache(
                 )
             )
     if not chunk_records and wavelengths.size:
-        chunk_records.append(
-            cache.write_chunk(dataset_id, 0, wavelengths, flux, aux)
-        )
+        chunk_records.append(cache.write_chunk(dataset_id, 0, wavelengths, flux, aux))
 
     tiers = []
     for key, data in (parsed.get("downsample") or {}).items():
@@ -264,29 +281,69 @@ def ingest_local_file(name: str, content: bytes) -> Dict[str, object]:
             parsed = parse_fits(payload, filename=processed_name)
         elif detected_format == "zip":
             segments = _read_zip_segments(processed_name, payload)
-            parsed = parse_ascii_segments(
-                segments,
-                root_filename=processed_name,
-                chunk_size=_DENSE_CHUNK_SIZE,
-            )
-        else:
-            if _should_use_dense_parser(processed_name, payload):
+            try:
                 parsed = parse_ascii_segments(
-                    [(processed_name, payload)],
+                    segments,
                     root_filename=processed_name,
                     chunk_size=_DENSE_CHUNK_SIZE,
                 )
+            except ValueError as dense_exc:
+                fallback_payload: Optional[Dict[str, object]] = None
+                last_error: Optional[Exception] = None
+                for segment_name, segment_payload in segments:
+                    try:
+                        candidate = _parse_ascii_with_table(
+                            segment_name, segment_payload
+                        )
+                    except (
+                        Exception
+                    ) as candidate_exc:  # pragma: no cover - fallback failure
+                        last_error = candidate_exc
+                        continue
+                    fallback_payload = dict(candidate)
+                    metadata = dict(fallback_payload.get("metadata") or {})
+                    metadata.setdefault("segments", [name for name, _ in segments])
+                    fallback_payload["metadata"] = metadata
+                    provenance = dict(fallback_payload.get("provenance") or {})
+                    provenance["dense_parser_fallback"] = {
+                        "method": "read_table",
+                        "error": str(dense_exc),
+                        "segments": [name for name, _ in segments],
+                        "selected_segment": segment_name,
+                    }
+                    fallback_payload["provenance"] = provenance
+                    break
+                if fallback_payload is None:
+                    if last_error is not None:
+                        raise dense_exc from last_error
+                    raise dense_exc
+                parsed = fallback_payload
+        else:
+            if _should_use_dense_parser(processed_name, payload):
+                try:
+                    parsed = parse_ascii_segments(
+                        [(processed_name, payload)],
+                        root_filename=processed_name,
+                        chunk_size=_DENSE_CHUNK_SIZE,
+                    )
+                except ValueError as dense_exc:
+                    try:
+                        fallback_payload = _parse_ascii_with_table(
+                            processed_name, payload
+                        )
+                    except (
+                        Exception
+                    ) as fallback_error:  # pragma: no cover - fallback failure
+                        raise dense_exc from fallback_error
+                    parsed = dict(fallback_payload)
+                    provenance = dict(parsed.get("provenance") or {})
+                    provenance["dense_parser_fallback"] = {
+                        "method": "read_table",
+                        "error": str(dense_exc),
+                    }
+                    parsed["provenance"] = provenance
             else:
-                table = read_table(payload, include_header=True)
-                parsed = parse_ascii(
-                    table.dataframe,
-                    content_bytes=payload,
-                    header_lines=table.header_lines,
-                    column_labels=table.column_labels,
-                    delimiter=table.delimiter,
-                    filename=processed_name,
-                    orientation=getattr(table, "orientation", None),
-                )
+                parsed = _parse_ascii_with_table(processed_name, payload)
     except Exception as exc:
         raise LocalIngestError(f"Failed to ingest {original_name}: {exc}") from exc
 
@@ -323,7 +380,7 @@ def ingest_local_file(name: str, content: bytes) -> Dict[str, object]:
 
     label = _choose_label(original_name, parsed)
     flux_unit = str(parsed.get("flux_unit") or "arb")
-    
+
     if processed_name:
         ingest_info.setdefault("filename", processed_name)
     checksum = provenance.get("checksum")
