@@ -361,7 +361,46 @@ def write_manifest(outdir, name, star_meta, mast_meta, mast_products_tbl, eso_tb
         manifold = mast_meta.to_pandas()[["obsid","obs_collection","instrument_name","target_name","filters","t_min","t_max"]].fillna("").to_dict(orient="records")
         manifest["datasets"]["mast"] = manifold
     if mast_products_tbl is not None and len(mast_products_tbl):
-        prods = mast_products_tbl.to_pandas()[["obsid","productFilename","productType","dataproduct_type","productURL","description"]]
+        prods_df = mast_products_tbl.to_pandas()
+        prods_df.columns = [str(c) for c in prods_df.columns]
+
+        def _find_column(df, *candidates):
+            lower_map = {c.lower(): c for c in df.columns}
+            for cand in candidates:
+                key = cand.lower()
+                if key in lower_map:
+                    return lower_map[key]
+            return None
+
+        obsid_col = _find_column(prods_df, "obsid", "obsID", "observationID")
+        if obsid_col is not None and obsid_col != "obsid":
+            prods_df = prods_df.rename(columns={obsid_col: "obsid"})
+        elif obsid_col is None:
+            prods_df["obsid"] = None
+
+        product_url_col = _find_column(prods_df, "productURL", "dataURI", "dataURL")
+        if product_url_col is not None and product_url_col != "productURL":
+            prods_df = prods_df.rename(columns={product_url_col: "productURL"})
+        elif product_url_col is None:
+            prods_df["productURL"] = ""
+
+        expected_columns = {
+            "obsid": None,
+            "productFilename": "",
+            "productType": "",
+            "dataproduct_type": "",
+            "productURL": "",
+            "description": "",
+        }
+
+        for col, default in expected_columns.items():
+            if col not in prods_df.columns:
+                prods_df[col] = default
+            else:
+                prods_df[col] = prods_df[col].astype(object)
+                prods_df[col] = prods_df[col].where(prods_df[col].notna(), default)
+
+        prods = prods_df[list(expected_columns.keys())]
         manifest["datasets"]["mast_products"] = prods.to_dict(orient="records")
     # ESO Phase 3
     if eso_tbl is not None and len(eso_tbl):
