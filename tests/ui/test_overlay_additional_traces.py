@@ -24,11 +24,11 @@ def reset_session_state(monkeypatch):
 def test_add_overlay_payload_handles_additional_traces(reset_session_state):
     content = dedent(
         """
-        Wavelength (nm),Flux (arb),Continuum Flux (arb),Velocity (km/s)
-        400,0.10,0.05,30
-        405,0.12,0.06,32
-        410,0.08,0.07,31
-        415,0.09,0.08,29
+        Wavelength (nm),Flux (arb),Continuum Flux (arb),Sun,Temperature (K),Quality Flag,Velocity (km/s)
+        400,0.10,0.05,1.0,5000,0,30
+        405,0.12,0.06,1.0,5050,1,32
+        410,0.08,0.07,1.0,5075,0,31
+        415,0.09,0.08,1.0,5100,0,29
         """
     ).strip()
 
@@ -54,7 +54,10 @@ def test_add_overlay_payload_handles_additional_traces(reset_session_state):
     }
 
     assert payload["additional_traces"]
-    assert {entry["label"] for entry in payload["additional_traces"]} == {"Continuum Flux (arb)"}
+    labels = {entry["label"] for entry in payload["additional_traces"]}
+    assert labels == {"Continuum Flux (arb)"}
+    assert "Sun" not in labels
+    assert "Temperature (K)" not in labels
 
     added, message = main._add_overlay_payload(payload)
 
