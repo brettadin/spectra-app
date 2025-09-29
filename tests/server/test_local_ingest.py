@@ -76,7 +76,9 @@ def test_parse_ascii_segments_handles_variable_whitespace():
         """
     ).encode("utf-8")
 
-    parsed = parse_ascii_segments([("segment.txt", segment)], root_filename="segment.txt", chunk_size=2)
+    parsed = parse_ascii_segments(
+        [("segment.txt", segment)], root_filename="segment.txt", chunk_size=2
+    )
 
     assert parsed["wavelength_nm"] == pytest.approx([380.0, 380.5, 381.0])
     assert parsed["flux"] == pytest.approx([0.5, 0.55, 0.6])
@@ -97,7 +99,9 @@ def test_parse_ascii_segments_converts_angstrom_to_nm():
         """
     ).encode("utf-8")
 
-    parsed = parse_ascii_segments([("segment.txt", segment)], root_filename="segment.txt")
+    parsed = parse_ascii_segments(
+        [("segment.txt", segment)], root_filename="segment.txt"
+    )
 
     assert parsed["wavelength_nm"] == pytest.approx([500.0, 500.5])
     metadata = parsed["metadata"]
@@ -117,7 +121,9 @@ def test_parse_ascii_segments_wavenumber_sorted_to_nm():
         """
     ).encode("utf-8")
 
-    parsed = parse_ascii_segments([("segment.txt", segment)], root_filename="segment.txt")
+    parsed = parse_ascii_segments(
+        [("segment.txt", segment)], root_filename="segment.txt"
+    )
 
     assert parsed["wavelength_nm"] == pytest.approx([500.0, 1000.0])
     assert parsed["flux"] == pytest.approx([1.0, 0.5])
@@ -243,6 +249,52 @@ def test_ingest_local_dense_ascii_uses_cache(monkeypatch):
     assert cache_path.exists()
 
 
+def test_dense_parser_fallback_to_table(monkeypatch):
+    monkeypatch.setattr(local_ingest, "_DENSE_SIZE_THRESHOLD", 0)
+    monkeypatch.setattr(local_ingest, "_DENSE_LINE_THRESHOLD", 0)
+
+    def failing_segments(*args, **kwargs):
+        raise ValueError("No numeric samples detected across ASCII segments")
+
+    monkeypatch.setattr(local_ingest, "parse_ascii_segments", failing_segments)
+
+    content = dedent(
+        """
+        wavelength (nm), irradiance (W/m^2/nm)
+        202,0.0097
+        202.001,0.0098
+        202.002,0.0099
+        """
+    ).encode("utf-8")
+
+    payload = ingest_local_file("sun.csv", content)
+
+    assert payload["wavelength_nm"] == pytest.approx([202.0, 202.001, 202.002])
+    fallback = payload.get("provenance", {}).get("dense_parser_fallback")
+    assert fallback["method"] == "read_table"
+    assert "No numeric samples" in fallback["error"]
+
+
+def test_zip_dense_parser_fallback(monkeypatch):
+    def failing_segments(*args, **kwargs):
+        raise ValueError("No numeric samples detected across ASCII segments")
+
+    monkeypatch.setattr(local_ingest, "parse_ascii_segments", failing_segments)
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr(
+            "segment.txt",
+            "wavelength (nm),flux\n202,0.01\n202.1,0.011\n",
+        )
+
+    payload = ingest_local_file("sun_segments.zip", buffer.getvalue())
+
+    assert payload["wavelength_nm"] == pytest.approx([202.0, 202.1])
+    metadata = payload.get("metadata", {})
+    assert metadata.get("segments") == ["segment.txt"]
+    fallback = payload.get("provenance", {}).get("dense_parser_fallback")
+    assert fallback["selected_segment"] == "segment.txt"
 def test_ingest_local_dense_ascii_falls_back_for_tab_delimited(monkeypatch):
     monkeypatch.setattr(local_ingest, "_DENSE_SIZE_THRESHOLD", 0)
     monkeypatch.setattr(local_ingest, "_DENSE_LINE_THRESHOLD", 0)
