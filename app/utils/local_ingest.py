@@ -148,6 +148,26 @@ def _should_use_dense_parser(name: str, payload: bytes) -> bool:
     return False
 
 
+def _should_fallback_to_table(error: Exception) -> bool:
+    if not isinstance(error, ValueError):
+        return False
+    message = str(error).lower()
+    return "no numeric samples" in message
+
+
+def _parse_ascii_table(filename: str, payload: bytes) -> Dict[str, object]:
+    table = read_table(payload, include_header=True)
+    return parse_ascii(
+        table.dataframe,
+        content_bytes=payload,
+        header_lines=table.header_lines,
+        column_labels=table.column_labels,
+        delimiter=table.delimiter,
+        filename=filename,
+        orientation=getattr(table, "orientation", None),
+    )
+
+
 def _read_zip_segments(name: str, content: bytes) -> List[Tuple[str, bytes]]:
     try:
         archive = zipfile.ZipFile(io.BytesIO(content))
@@ -264,29 +284,37 @@ def ingest_local_file(name: str, content: bytes) -> Dict[str, object]:
             parsed = parse_fits(payload, filename=processed_name)
         elif detected_format == "zip":
             segments = _read_zip_segments(processed_name, payload)
-            parsed = parse_ascii_segments(
-                segments,
-                root_filename=processed_name,
-                chunk_size=_DENSE_CHUNK_SIZE,
-            )
-        else:
-            if _should_use_dense_parser(processed_name, payload):
+            try:
                 parsed = parse_ascii_segments(
-                    [(processed_name, payload)],
+                    segments,
                     root_filename=processed_name,
                     chunk_size=_DENSE_CHUNK_SIZE,
                 )
+            except ValueError as dense_exc:
+                if not (_should_fallback_to_table(dense_exc) and len(segments) == 1):
+                    raise
+                segment_name, segment_payload = segments[0]
+                try:
+                    parsed = _parse_ascii_table(segment_name, segment_payload)
+                except Exception as fallback_exc:
+                    raise fallback_exc from dense_exc
+        else:
+            if _should_use_dense_parser(processed_name, payload):
+                try:
+                    parsed = parse_ascii_segments(
+                        [(processed_name, payload)],
+                        root_filename=processed_name,
+                        chunk_size=_DENSE_CHUNK_SIZE,
+                    )
+                except ValueError as dense_exc:
+                    if not _should_fallback_to_table(dense_exc):
+                        raise
+                    try:
+                        parsed = _parse_ascii_table(processed_name, payload)
+                    except Exception as fallback_exc:
+                        raise fallback_exc from dense_exc
             else:
-                table = read_table(payload, include_header=True)
-                parsed = parse_ascii(
-                    table.dataframe,
-                    content_bytes=payload,
-                    header_lines=table.header_lines,
-                    column_labels=table.column_labels,
-                    delimiter=table.delimiter,
-                    filename=processed_name,
-                    orientation=getattr(table, "orientation", None),
-                )
+                parsed = _parse_ascii_table(processed_name, payload)
     except Exception as exc:
         raise LocalIngestError(f"Failed to ingest {original_name}: {exc}") from exc
 
