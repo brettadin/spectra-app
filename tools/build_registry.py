@@ -7,9 +7,14 @@ import pandas as pd
 from astropy.table import Table, vstack
 from astroquery.simbad import Simbad
 from astroquery.mast import Observations
+try:
+    from astroquery.eso import Eso
+except ImportError:  # pragma: no cover - optional dependency in some envs
+    Eso = None
 from astroquery.ipac.nexsci.nasa_exoplanet_archive import NasaExoplanetArchive
 from astropy.coordinates import SkyCoord
 import astropy.units as u
+import requests
 
 # Optional VO for CARMENES DR1
 try:
@@ -279,14 +284,18 @@ def mast_products(obs_table):
 
 def eso_phase3_query(name, ra_deg, dec_deg, radius_arcsec=5):
     # We avoid login-only raw. Phase 3 reduced products only.
+    if Eso is None:
+        return Table()
     try:
-        from astroquery.eso import Eso
         eso = Eso()
         eso.ROW_LIMIT = 10000
         # search Phase 3 around coordinates
         # Note: API uses strings for RA/DEC or SkyCoord
-        r = eso.query_surveys("phase3_main", coord=SkyCoord(ra_deg*u.deg, dec_deg*u.deg),
-                              radius=f"{radius_arcsec}s")
+        r = eso.query_surveys(
+            "phase3_main",
+            coord=SkyCoord(ra_deg * u.deg, dec_deg * u.deg),
+            radius=f"{radius_arcsec}s",
+        )
         if r is None or len(r) == 0:
             return Table()
         # spectra only
@@ -339,7 +348,28 @@ def summarize_star(meta, planets_df, tags):
         parts.append(f"tags: {', '.join(tags)}")
     return " | ".join(parts)
 
-def write_manifest(outdir, name, star_meta, mast_meta, mast_products_tbl, eso_tbl, carm_tbl, planets_df, tags):
+
+def _find_dataframe_column(df, *candidates):
+    lower_map = {str(c).lower(): c for c in df.columns}
+    for cand in candidates:
+        key = cand.lower()
+        if key in lower_map:
+            return lower_map[key]
+    return None
+
+
+def _normalize_local_path(value):
+    if value is None:
+        return None
+    if isinstance(value, bytes):
+        value = value.decode()
+    try:
+        return str(Path(value))
+    except Exception:
+        return str(value)
+
+
+def write_manifest(outdir, name, star_meta, mast_meta, mast_products_tbl, eso_tbl, carm_tbl, planets_df, tags, download=False):
     outdir = Path(outdir) / name.replace(" ", "_")
     outdir.mkdir(parents=True, exist_ok=True)
     manifest = {
@@ -361,25 +391,18 @@ def write_manifest(outdir, name, star_meta, mast_meta, mast_products_tbl, eso_tb
     if mast_meta is not None and len(mast_meta):
         manifold = mast_meta.to_pandas()[["obsid","obs_collection","instrument_name","target_name","filters","t_min","t_max"]].fillna("").to_dict(orient="records")
         manifest["datasets"]["mast"] = manifold
+    mast_download_map = {}
     if mast_products_tbl is not None and len(mast_products_tbl):
         prods_df = mast_products_tbl.to_pandas()
         prods_df.columns = [str(c) for c in prods_df.columns]
 
-        def _find_column(df, *candidates):
-            lower_map = {c.lower(): c for c in df.columns}
-            for cand in candidates:
-                key = cand.lower()
-                if key in lower_map:
-                    return lower_map[key]
-            return None
-
-        obsid_col = _find_column(prods_df, "obsid", "obsID", "observationID")
+        obsid_col = _find_dataframe_column(prods_df, "obsid", "obsID", "observationID")
         if obsid_col is not None and obsid_col != "obsid":
             prods_df = prods_df.rename(columns={obsid_col: "obsid"})
         elif obsid_col is None:
             prods_df["obsid"] = None
 
-        product_url_col = _find_column(prods_df, "productURL", "dataURI", "dataURL")
+        product_url_col = _find_dataframe_column(prods_df, "productURL", "dataURI", "dataURL")
         if product_url_col is not None and product_url_col != "productURL":
             prods_df = prods_df.rename(columns={product_url_col: "productURL"})
         elif product_url_col is None:
@@ -409,13 +432,117 @@ def write_manifest(outdir, name, star_meta, mast_meta, mast_products_tbl, eso_tb
             "total_count": int(total_products),
             "truncated": bool(total_products > len(prods)),
         }
+
+        if download:
+            try:
+                mast_dir = outdir / "mast"
+                mast_dir.mkdir(parents=True, exist_ok=True)
+                dl_tbl = Observations.download_products(
+                    mast_products_tbl,
+                    download_dir=str(mast_dir),
+                )
+                if dl_tbl is not None:
+                    dl_df = Table(dl_tbl).to_pandas() if isinstance(dl_tbl, Table) else pd.DataFrame(dl_tbl)
+                    if not dl_df.empty:
+                        dl_df.columns = [str(c) for c in dl_df.columns]
+                        path_col = _find_dataframe_column(dl_df, "Local Path", "local_path", "Local_Path")
+                        filename_col = _find_dataframe_column(dl_df, "productFilename", "Product Filename")
+                        url_col = _find_dataframe_column(dl_df, "URL", "productURL", "dataURI")
+                        obsid_download_col = _find_dataframe_column(dl_df, "obsid", "obsID", "observationID")
+                        if path_col is not None:
+                            for _, row in dl_df.iterrows():
+                                path_value = _normalize_local_path(row.get(path_col))
+                                if not path_value:
+                                    continue
+                                if filename_col and row.get(filename_col):
+                                    mast_download_map[("filename", str(row.get(filename_col)))] = path_value
+                                if url_col and row.get(url_col):
+                                    mast_download_map.setdefault(("url", str(row.get(url_col))), path_value)
+                                if obsid_download_col and row.get(obsid_download_col) is not None:
+                                    mast_download_map.setdefault(("obsid", str(row.get(obsid_download_col))), path_value)
+            except Exception:
+                mast_download_map = {}
     # ESO Phase 3
+    eso_download_map = {}
     if eso_tbl is not None and len(eso_tbl):
         cols = [c for c in ["DP.ID","INSTRUME","TARGET","DP.DATATYPE","DP.TYPE","MJD-OBS","DP.DID"] if c in eso_tbl.colnames]
-        manifest["datasets"]["eso_phase3"] = eso_tbl[cols].to_pandas().to_dict(orient="records")
+        eso_records = eso_tbl[cols].to_pandas().to_dict(orient="records")
+        manifest["datasets"]["eso_phase3"] = eso_records
+
+        if download and Eso is not None:
+            try:
+                id_col = "DP.ID" if "DP.ID" in eso_tbl.colnames else None
+                eso_ids = [val for val in eso_tbl[id_col] if val] if id_col else []
+                if eso_ids:
+                    eso_dir = outdir / "eso"
+                    eso_dir.mkdir(parents=True, exist_ok=True)
+                    eso_client = Eso()
+                    files = eso_client.retrieve_data(eso_ids, destination=str(eso_dir))
+                    if isinstance(files, dict):
+                        iterable = files.items()
+                    else:
+                        iterable = zip(eso_ids, files or [])
+                    for dataset_id, path_value in iterable:
+                        normalized = _normalize_local_path(path_value)
+                        if normalized:
+                            eso_download_map[str(dataset_id)] = normalized
+            except Exception:
+                eso_download_map = {}
+
     # CARMENES
     if carm_tbl is not None and len(carm_tbl):
-        manifest["datasets"]["carmenes_dr1"] = Table(carm_tbl).to_pandas().to_dict(orient="records")
+        carm_df = Table(carm_tbl).to_pandas()
+        carm_records = carm_df.to_dict(orient="records")
+        if download:
+            access_col = None
+            for candidate in ["access_url", "accessURL", "accref"]:
+                if candidate in carm_df.columns:
+                    access_col = candidate
+                    break
+            if access_col:
+                carm_dir = outdir / "carmenes"
+                carm_dir.mkdir(parents=True, exist_ok=True)
+                for record in carm_records:
+                    url = record.get(access_col)
+                    if not url:
+                        continue
+                    try:
+                        response = requests.get(url, stream=True, timeout=60)
+                        response.raise_for_status()
+                        filename = Path(url).name or "download"
+                        path = carm_dir / filename
+                        with open(path, "wb") as fh:
+                            for chunk in response.iter_content(chunk_size=8192):
+                                if chunk:
+                                    fh.write(chunk)
+                        record["local_path"] = str(path)
+                    except Exception:
+                        continue
+        manifest["datasets"]["carmenes_dr1"] = carm_records
+
+    if mast_download_map and "mast_products" in manifest["datasets"]:
+        for item in manifest["datasets"]["mast_products"]["items"]:
+            candidates = [
+                ("filename", item.get("productFilename")),
+                ("url", item.get("productURL")),
+                ("obsid", item.get("obsid")),
+            ]
+            for key_type, value in candidates:
+                if not value:
+                    continue
+                local_path = mast_download_map.get((key_type, str(value)))
+                if local_path:
+                    item["local_path"] = local_path
+                    break
+
+    if eso_download_map and "eso_phase3" in manifest["datasets"]:
+        for item in manifest["datasets"]["eso_phase3"]:
+            dataset_id = item.get("DP.ID") or item.get("DPID") or item.get("DP.DID")
+            if not dataset_id:
+                continue
+            path_value = eso_download_map.get(str(dataset_id))
+            if path_value:
+                item["local_path"] = path_value
 
     (outdir / "manifest.json").write_text(json.dumps(manifest, indent=2))
     return manifest
@@ -453,7 +580,18 @@ def main():
         coord = SkyCoord(meta["ra_deg"]*u.deg, meta["dec_deg"]*u.deg)
         carm_tbl = carmenes_dr1(coord) if HAS_PYVO else None
 
-        manifest = write_manifest(args.out, name, meta, mast_obs, mast_prod, eso_tbl, carm_tbl, planets_df, tags)
+        manifest = write_manifest(
+            args.out,
+            name,
+            meta,
+            mast_obs,
+            mast_prod,
+            eso_tbl,
+            carm_tbl,
+            planets_df,
+            tags,
+            download=args.download,
+        )
 
         rows.append({
             "name": name,
