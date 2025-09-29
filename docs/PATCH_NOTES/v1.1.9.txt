@@ -1,0 +1,5 @@
+v1.1.9 — Overlay stability and ingest wiring.
+- Fixed duplicate Streamlit keys for Target catalog overlay buttons.
+- Ledger lock now syncs via the `duplicate_ledger_lock` model state; widget keys remain read-only.
+- Overlay ingest queue downloads spectra and hands them to the local ingest pipeline with provenance.
+- Brains reference: docs/brains/brains_v1.1.9.md
