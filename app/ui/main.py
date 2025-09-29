@@ -39,7 +39,7 @@ from app.similarity import (
 )
 from app.similarity_panel import render_similarity_panel
 from app.ui.example_browser import ExamplePreview, render_example_browser_sheet
-from app.utils.downsample import build_downsample_tiers
+from app.utils.downsample import build_downsample_tiers, build_lttb_downsample
 from app.utils.duplicate_ledger import DuplicateLedger
 from app.utils.flux import flux_percentile_range
 from app.providers import ProviderQuery, search as provider_search
@@ -118,6 +118,7 @@ class OverlayTrace:
         if wavelengths.size <= max_points:
             return wavelengths, flux_values, hover_values, True
 
+        min_points = max(64, max_points // 2)
         for tier in sorted(self.downsample.keys()):
             tier_data = self.downsample[tier]
             tier_w = np.asarray(tier_data[0], dtype=float)
@@ -132,11 +133,16 @@ class OverlayTrace:
             tier_f = tier_f[tier_w_mask]
             if tier_w.size == 0:
                 continue
-            if tier_w.size <= max_points:
+            if tier_w.size >= max_points:
+                return tier_w[:max_points], tier_f[:max_points], None, False
+            if tier_w.size >= min_points:
                 return tier_w, tier_f, None, False
 
-        step = max(1, int(math.ceil(wavelengths.size / max_points)))
-        return wavelengths[::step], flux_values[::step], None, False
+        target_points = min(int(max_points), int(wavelengths.size))
+        downsampled = build_lttb_downsample(wavelengths, flux_values, target_points)
+        sampled_w = np.asarray(downsampled.wavelength_nm, dtype=float)
+        sampled_f = np.asarray(downsampled.flux, dtype=float)
+        return sampled_w, sampled_f, None, False
 
     def to_vectors(
         self,
@@ -570,7 +576,7 @@ def _add_overlay(
                 tuple(float(value) for value in flux_ds),
             )
     if not downsample_map:
-        generated = build_downsample_tiers(values_w, values_f)
+        generated = build_downsample_tiers(values_w, values_f, strategy="lttb")
         downsample_map = {
             tier: (tuple(result.wavelength_nm), tuple(result.flux))
             for tier, result in generated.items()

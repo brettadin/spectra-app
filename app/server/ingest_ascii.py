@@ -552,6 +552,9 @@ def parse_ascii(
         tiers = build_downsample_tiers(
             np.asarray(wavelengths_extra, dtype=float),
             np.asarray(flux_extra, dtype=float),
+
+            strategy="lttb",
+
         )
         extra_metadata = dict(metadata)
         extra_metadata["points"] = len(wavelengths_extra)
@@ -824,7 +827,7 @@ def parse_ascii_segments(
     else:
         auxiliary_values = None
 
-    tiers = build_downsample_tiers(wavelength_nm, flux_array)
+    tiers = build_downsample_tiers(wavelength_nm, flux_array, strategy="lttb")
     provenance["downsample_tiers"] = sorted(int(key) for key in tiers)
 
     payload = {
