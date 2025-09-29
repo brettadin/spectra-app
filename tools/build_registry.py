@@ -82,6 +82,7 @@ MAST_INSTR_HINTS = set(["STIS","COS","IUE","NIRSpec","NIRISS","NIRCam","MIRI","W
 MAST_COLLECTIONS = set(["HST","JWST","IUE","HLSP"])  # HLSP includes CALSPEC, MUSCLES, ASTRAL
 ESO_INSTR_HINTS = set(["UVES","HARPS","ESPRESSO","XSHOOTER","HARPS-N"])  # subset via ESO; HN via TNG not ESO, kept for tag
 MAST_PRODUCT_PREVIEW_PATTERN = re.compile(r"(_preview|_thumb|jpg|png)", re.IGNORECASE)
+MAX_MAST_PRODUCTS = 250
 
 def _decode_if_bytes(val):
     if isinstance(val, bytes):
@@ -400,8 +401,14 @@ def write_manifest(outdir, name, star_meta, mast_meta, mast_products_tbl, eso_tb
                 prods_df[col] = prods_df[col].astype(object)
                 prods_df[col] = prods_df[col].where(prods_df[col].notna(), default)
 
+        total_products = len(prods_df)
+        prods_df = prods_df.head(MAX_MAST_PRODUCTS)
         prods = prods_df[list(expected_columns.keys())]
-        manifest["datasets"]["mast_products"] = prods.to_dict(orient="records")
+        manifest["datasets"]["mast_products"] = {
+            "items": prods.to_dict(orient="records"),
+            "total_count": int(total_products),
+            "truncated": bool(total_products > len(prods)),
+        }
     # ESO Phase 3
     if eso_tbl is not None and len(eso_tbl):
         cols = [c for c in ["DP.ID","INSTRUME","TARGET","DP.DATATYPE","DP.TYPE","MJD-OBS","DP.DID"] if c in eso_tbl.colnames]

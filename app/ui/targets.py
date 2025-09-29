@@ -1,9 +1,24 @@
 # app/ui/targets.py  (new small component)
 import json, pandas as pd, streamlit as st
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple, List, Dict, Any
 
 from streamlit.delta_generator import DeltaGenerator
+
+
+def _extract_mast_products(manifest: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], int, bool]:
+    datasets = manifest.get("datasets", {}) if isinstance(manifest, dict) else {}
+    mast_products = datasets.get("mast_products", [])
+
+    if isinstance(mast_products, dict):
+        items = list(mast_products.get("items", []))
+        total = int(mast_products.get("total_count", len(items) or 0))
+        truncated = bool(mast_products.get("truncated", total > len(items)))
+        return items, total, truncated
+
+    items = list(mast_products)
+    total = len(items)
+    return items, total, False
 
 
 def render_targets_panel(
@@ -39,10 +54,10 @@ def render_targets_panel(
         summary = manifest.get("summaries", {}).get("auto", "")
         expander.markdown(f"**{manifest['canonical_name']}** — {summary}")
         # Show MAST products with quick-add buttons
-        mast_products = manifest.get("datasets", {}).get("mast_products", [])
+        mast_products, total_count, truncated = _extract_mast_products(manifest)
         if mast_products:
             expander.subheader("MAST spectra")
-            for r in mast_products[:200]:  # don’t explode UI
+            for r in mast_products:
                 url = r.get("productURL") or ""
                 label = (
                     f"{r.get('productFilename','')} [{r.get('dataproduct_type','')}]"
@@ -53,6 +68,10 @@ def render_targets_panel(
                     # your app’s existing overlay fetcher likely accepts URLs/paths;
                     # dispatch an event or stash URL in session to be ingested
                     st.session_state.setdefault("ingest_queue", []).append(url)
+            if truncated:
+                expander.caption(
+                    f"Showing first {len(mast_products)} of {total_count} MAST products."
+                )
         else:
             expander.info("No curated MAST spectra found for this target.")
 
