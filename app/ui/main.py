@@ -799,6 +799,12 @@ def _render_differential_section(container: DeltaGenerator) -> None:
         container.caption("Traces are regridded onto the reference before subtracting.")
 
 
+def _render_similarity_sidebar() -> None:
+    target = st
+    target.markdown("#### Similarity settings")
+    metric_options = ["cosine", "rmse", "xcorr", "line_match"]
+    current_metrics = st.session_state.get("similarity_metrics", metric_options)
+    metrics = target.multiselect(
 def _render_similarity_sidebar(container: Optional[DeltaGenerator] = None) -> None:
     target = container or st
     target.markdown("#### Similarity settings")
@@ -844,6 +850,11 @@ def _render_similarity_sidebar(container: DeltaGenerator) -> None:
     norm_codes = {"Unit vector (L2)": "unit", "Peak normalised": "max", "Z-score": "zscore", "None": "none"}
     current_code = st.session_state.get("similarity_normalization", st.session_state.get("normalization_mode", "unit"))
     current_label = next((label for label, code in norm_codes.items() if code == current_code), norm_labels[0])
+    selection = target.selectbox(
+        "Similarity normalization",
+        norm_labels,
+        index=norm_labels.index(current_label),
+    )
     selection = target.selectbox("Similarity normalization", norm_labels, index=norm_labels.index(current_label))
     selection = container.selectbox("Similarity normalization", norm_labels, index=norm_labels.index(current_label))
     st.session_state["similarity_normalization"] = norm_codes[selection]
