@@ -1,19 +1,11 @@
-this is a last moment addition
+# Repository notes for agents
 
+This codebase tracks the actively maintained v2.x series of the Spectra App. Legacy
+"brains" or atlas assets that may be mentioned in older documentation are now
+out-of-date; rely on the current repository state and accompanying notes instead.
 
-
-you are working on a much more updated version of this app
-
-all past brains and atlas files are much out of date than they may seem.
-
-
-
-the next ai to read this will:
-
-refer to instructions and past versions and notes, but we have a lot more to work with this time. 
-
-take note of whats different, and adjust the documentation as such.
-versions from here on out will be v2.0+
-
-after you read this file, delete my text in here. then rewrite it in a more formal way such that the next ai will know what to do, where to look for stuff, etc.
+When onboarding to a task:
+- Review the documentation in `docs/` and prior changelogs for relevant context.
+- Prefer the current implementation over historical references when discrepancies arise.
+- Update documentation as needed to reflect material differences from older versions.
 

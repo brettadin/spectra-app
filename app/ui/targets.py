@@ -1,9 +1,19 @@
 # app/ui/targets.py  (new small component)
-import json, pandas as pd, streamlit as st
+import json
 from pathlib import Path
-from typing import Optional, Tuple, List, Dict, Any
+from typing import Any, Dict, List, Optional, Tuple
+
+import pandas as pd
+import streamlit as st
 
 from streamlit.delta_generator import DeltaGenerator
+
+
+class RegistryUnavailableError(RuntimeError):
+    """Raised when the target registry directory or catalog is missing."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
 
 
 def _extract_mast_products(manifest: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], int, bool]:
@@ -30,12 +40,14 @@ def render_targets_panel(
     container = sidebar or st.sidebar
     p = Path(registry_dir)
     if not p.exists():
-        container.warning("No registry at data_registry/. Run build_registry.py first.")
-        return
+        raise RegistryUnavailableError(
+            "No registry at data_registry/. Run build_registry.py first."
+        )
     catalog_path = p / "catalog.csv"
     if not catalog_path.exists():
-        container.warning("No registry at data_registry/. Run build_registry.py first.")
-        return
+        raise RegistryUnavailableError(
+            "No registry at data_registry/. Run build_registry.py first."
+        )
     cat = pd.read_csv(catalog_path)
     expander = container.expander("Target catalog", expanded=expanded)
     with expander:
