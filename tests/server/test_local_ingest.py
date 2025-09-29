@@ -295,6 +295,24 @@ def test_zip_dense_parser_fallback(monkeypatch):
     assert metadata.get("segments") == ["segment.txt"]
     fallback = payload.get("provenance", {}).get("dense_parser_fallback")
     assert fallback["selected_segment"] == "segment.txt"
+def test_ingest_local_dense_ascii_falls_back_for_tab_delimited(monkeypatch):
+    monkeypatch.setattr(local_ingest, "_DENSE_SIZE_THRESHOLD", 0)
+    monkeypatch.setattr(local_ingest, "_DENSE_LINE_THRESHOLD", 0)
+
+    def failing_parse_ascii_segments(*args, **kwargs):
+        raise ValueError("No numeric samples detected across ASCII segments")
+
+    monkeypatch.setattr(local_ingest, "parse_ascii_segments", failing_parse_ascii_segments)
+
+    tab_path = Path(__file__).resolve().parents[1] / "data" / "tab_header.tsv"
+    content = tab_path.read_bytes()
+
+    payload = ingest_local_file("tab_header.csv", content)
+
+    assert payload["wavelength_nm"] == [500.0, 505.0]
+    assert payload["flux"] == [1.2, 1.3]
+    assert payload["metadata"]["filename"] == "tab_header.csv"
+    assert payload["provenance"]["filename"] == "tab_header.csv"
 
 
 def test_ingest_local_fits_enriches_metadata():
