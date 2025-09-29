@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
-from app.ui.targets import render_targets_panel
+from app.ui.targets import RegistryUnavailableError, render_targets_panel
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -2209,14 +2209,21 @@ def render() -> None:
     _render_settings_group(controls_panel)
 
     data_panel = sidebar.expander("Data library", expanded=False)
+    registry_warning: Optional[str] = None
     with data_panel:
         _render_examples_group(data_panel)
         data_panel.divider()
-        render_targets_panel(expanded=False, sidebar=data_panel)
+        try:
+            render_targets_panel(expanded=False, sidebar=data_panel)
+        except RegistryUnavailableError as exc:
+            registry_warning = str(exc)
+            data_panel.info(registry_warning)
         data_panel.divider()
         _render_line_catalog_group(data_panel)
         data_panel.divider()
         _render_uploads_group(data_panel)
+    if registry_warning:
+        sidebar.warning(registry_warning)
 
     overlay_tab, diff_tab, archive_tab, docs_tab = st.tabs(["Overlay", "Differential", "Archive", "Docs & Provenance"])
     with overlay_tab:
