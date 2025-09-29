@@ -5,11 +5,12 @@ from pathlib import Path
 from textwrap import dedent
 
 import numpy as np
+import pandas as pd
 import pytest
 from astropy.io import fits
 
 import app.utils.local_ingest as local_ingest
-from app.server.ingest_ascii import parse_ascii_segments
+from app.server.ingest_ascii import parse_ascii, parse_ascii_segments
 from app.utils.local_ingest import ingest_local_file
 
 
@@ -63,6 +64,42 @@ def test_ingest_local_ascii_populates_metadata():
     assert "3 samples" in summary
     assert "500.00–501.00 nm" in summary
     assert "Flux: 10^-16 erg/s/cm^2/Å" in summary
+
+
+def test_ingest_local_ascii_multiple_flux_columns():
+    content = dedent(
+        """
+        Wavelength (nm),Paschen,Balmer,Sum
+        400,0.10,0.05,0.15
+        405,0.12,0.06,0.18
+        410,0.08,0.07,0.15
+        415,0.09,0.08,0.17
+        """
+    ).strip()
+
+    dataframe = pd.read_csv(io.StringIO(content))
+    parsed = parse_ascii(
+        dataframe,
+        content_bytes=content.encode("utf-8"),
+        column_labels=list(dataframe.columns),
+        filename="series.csv",
+    )
+
+    assert parsed["flux"] == [0.10, 0.12, 0.08, 0.09]
+
+    extras = parsed.get("additional_traces")
+    assert isinstance(extras, list)
+    assert len(extras) == 2
+
+    labels = {entry["label"] for entry in extras}
+    assert labels == {"Balmer", "Sum"}
+
+    balmer_entry = next(entry for entry in extras if entry["label"] == "Balmer")
+    assert balmer_entry["wavelength_nm"] == [400.0, 405.0, 410.0, 415.0]
+    assert balmer_entry["flux"] == [0.05, 0.06, 0.07, 0.08]
+    assert balmer_entry["metadata"]["points"] == 4
+    assert balmer_entry["downsample"]
+    assert "4 samples" in balmer_entry["summary"]
 
 
 def test_parse_ascii_segments_handles_variable_whitespace():

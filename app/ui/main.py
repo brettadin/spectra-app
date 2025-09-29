@@ -633,7 +633,7 @@ def _add_overlay(
 
 
 def _add_overlay_payload(payload: Dict[str, object]) -> Tuple[bool, str]:
-    return _add_overlay(
+    base_added, base_message = _add_overlay(
         str(payload.get("label") or "Trace"),
         payload.get("wavelength_nm") or [],
         payload.get("flux") or [],
@@ -649,6 +649,44 @@ def _add_overlay_payload(payload: Dict[str, object]) -> Tuple[bool, str]:
         downsample=payload.get("downsample"),
         cache_dataset_id=payload.get("cache_dataset_id"),
     )
+    additional = payload.get("additional_traces")
+    extra_success = 0
+    failure_messages: List[str] = []
+    if isinstance(additional, Sequence):
+        for entry in additional:
+            if not isinstance(entry, Mapping):
+                continue
+            label = entry.get("label")
+            extra_label = str(label) if label is not None else f"{payload.get('label', 'Trace')} (extra)"
+            success, message = _add_overlay(
+                extra_label,
+                entry.get("wavelength_nm") or [],
+                entry.get("flux") or [],
+                flux_unit=entry.get("flux_unit") or payload.get("flux_unit"),
+                flux_kind=entry.get("flux_kind") or payload.get("flux_kind"),
+                kind=str(entry.get("kind") or payload.get("kind") or "spectrum"),
+                provider=entry.get("provider") or payload.get("provider"),
+                summary=entry.get("summary") or payload.get("summary"),
+                metadata=entry.get("metadata") or payload.get("metadata"),
+                provenance=entry.get("provenance") or payload.get("provenance"),
+                hover=entry.get("hover"),
+                axis=entry.get("axis") or payload.get("axis"),
+                downsample=entry.get("downsample"),
+                cache_dataset_id=entry.get("cache_dataset_id")
+                or payload.get("cache_dataset_id"),
+            )
+            if success:
+                extra_success += 1
+            else:
+                failure_messages.append(message)
+
+    combined_message = base_message
+    if extra_success:
+        combined_message += f"; added {extra_success} additional series"
+    if failure_messages:
+        combined_message += "; " + "; ".join(failure_messages)
+
+    return base_added or extra_success > 0, combined_message
 
 
 def _add_example_trace(spec: ExampleSpec) -> Tuple[bool, str]:
