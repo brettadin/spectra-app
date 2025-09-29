@@ -11,6 +11,10 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 from urllib.parse import quote, urlparse
 
+
+from urllib.parse import urlparse
+
+
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -398,6 +402,13 @@ def _process_ingest_queue() -> None:
                 continue
 
             response = requests.get(resolved_url, timeout=60)
+
+
+            _add_overlay_from_url(url, label=label)
+            continue
+
+            response = requests.get(url, timeout=60)
+
             response.raise_for_status()
 
             filename = derived_name or f"overlay-{uuid.uuid4().hex[:8]}"
@@ -422,6 +433,10 @@ def _process_ingest_queue() -> None:
             ingest_info["source_url"] = url
             if resolved_url and resolved_url != url:
                 ingest_info.setdefault("resolved_url", resolved_url)
+
+
+
+
             ingest_info.setdefault("label", label)
             provenance["ingest"] = ingest_info
             payload["provenance"] = provenance
@@ -2275,7 +2290,13 @@ def _render_differential_tab() -> None:
             step=100,
             value=sample_default,
         )
+
         submitted = st.form_submit_button("Compute differential", width="stretch")
+
+        submitted = st.form_submit_button(
+            "Compute differential", use_container_width=True
+        )
+
 
     result = st.session_state.get("differential_result")
     if submitted:

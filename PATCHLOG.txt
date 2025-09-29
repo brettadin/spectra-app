@@ -7,3 +7,4 @@ Spectra App — Patch Log (append-only)
 - v1.1.7 (REF 1.1.7-A01): ship the All Archives combined provider, surface the new tab in the archive UI, harden aggregation tests, and refresh continuity docs/versioning for the release.
 - v1.1.8 (REF 1.1.8-A01): switch UI timestamps to timezone-aware UTC output, normalise FITS flux unit parsing to silence UnitsWarning spam, and refresh the continuity collateral for the release.
 - v1.1.9: fix overlay button keys, respect ledger lock session state, wire the ingest queue into the overlay pipeline, reject metadata-like uploads, and refresh docs for the release.
+- v1.1.9: fix overlay button keys, respect ledger lock session state, wire the ingest queue into the overlay pipeline, and refresh docs for the release.

@@ -288,16 +288,25 @@ def test_zip_dense_parser_fallback(monkeypatch):
     with zipfile.ZipFile(buffer, "w") as archive:
         archive.writestr(
             "segment.txt",
+
             "wavelength (nm),flux\n202,0.01\n202.1,0.011\n202.2,0.012\n",
+
+            "wavelength (nm),flux\n202,0.01\n202.1,0.011\n",
+
         )
 
     payload = ingest_local_file("sun_segments.zip", buffer.getvalue())
 
+
     assert payload["wavelength_nm"] == pytest.approx([202.0, 202.1, 202.2])
+
+    assert payload["wavelength_nm"] == pytest.approx([202.0, 202.1])
+
     metadata = payload.get("metadata", {})
     assert metadata.get("segments") == ["segment.txt"]
     fallback = payload.get("provenance", {}).get("dense_parser_fallback")
     assert fallback["selected_segment"] == "segment.txt"
+
 
 
 def test_reject_metadata_like_tables():
@@ -313,6 +322,26 @@ def test_reject_metadata_like_tables():
         ingest_local_file("metadata.csv", content)
 
     assert "contains only" in str(excinfo.value)
+
+def test_ingest_local_dense_ascii_falls_back_for_tab_delimited(monkeypatch):
+    monkeypatch.setattr(local_ingest, "_DENSE_SIZE_THRESHOLD", 0)
+    monkeypatch.setattr(local_ingest, "_DENSE_LINE_THRESHOLD", 0)
+
+    def failing_parse_ascii_segments(*args, **kwargs):
+        raise ValueError("No numeric samples detected across ASCII segments")
+
+    monkeypatch.setattr(local_ingest, "parse_ascii_segments", failing_parse_ascii_segments)
+
+    tab_path = Path(__file__).resolve().parents[1] / "data" / "tab_header.tsv"
+    content = tab_path.read_bytes()
+
+    payload = ingest_local_file("tab_header.csv", content)
+
+    assert payload["wavelength_nm"] == [500.0, 505.0]
+    assert payload["flux"] == [1.2, 1.3]
+    assert payload["metadata"]["filename"] == "tab_header.csv"
+    assert payload["provenance"]["filename"] == "tab_header.csv"
+
 
 
 def test_ingest_local_fits_enriches_metadata():
