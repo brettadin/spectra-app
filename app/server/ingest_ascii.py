@@ -5,7 +5,7 @@ import io
 import math
 import re
 from array import array
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
@@ -274,6 +274,31 @@ def _collect_header_metadata(
     return metadata, raw, label_candidates, axis_hint, wavelength_unit_hint, flux_unit_hint
 
 
+def _series_summary(sample_count: int, metadata: Mapping[str, object], flux_unit: str) -> str:
+    parts = [f"{sample_count} samples"]
+    wavelength_range = metadata.get("wavelength_range_nm")
+    if (
+        isinstance(wavelength_range, (list, tuple))
+        and len(wavelength_range) == 2
+    ):
+        try:
+            low = float(wavelength_range[0])
+            high = float(wavelength_range[1])
+        except (TypeError, ValueError):  # pragma: no cover - defensive
+            pass
+        else:
+            parts.append(f"{low:.2f}–{high:.2f} nm")
+    if flux_unit:
+        parts.append(f"Flux: {flux_unit}")
+    instrument = metadata.get("instrument")
+    if isinstance(instrument, str) and instrument.strip():
+        parts.append(instrument.strip())
+    observation = metadata.get("observation_date")
+    if isinstance(observation, str) and observation.strip():
+        parts.append(observation.strip())
+    return " • ".join(parts)
+
+
 def _detect_columns(df: pd.DataFrame) -> Tuple[str, str]:
     columns = list(df.columns)
     if len(columns) < 2:
@@ -421,10 +446,11 @@ def parse_ascii(
     wavelength_col, flux_col = _detect_columns(dataframe)
     provenance["column_mapping"] = {"wavelength": wavelength_col, "flux": flux_col}
 
-    working = dataframe[[wavelength_col, flux_col]].copy()
-    working[wavelength_col] = pd.to_numeric(working[wavelength_col], errors="coerce")
-    working[flux_col] = pd.to_numeric(working[flux_col], errors="coerce")
-    working = working.dropna()
+    numeric = dataframe.copy()
+    for column in numeric.columns:
+        numeric[column] = pd.to_numeric(numeric[column], errors="coerce")
+
+    working = numeric[[wavelength_col, flux_col]].dropna()
     if working.empty:
         raise ValueError("No numeric spectral samples available in ASCII data")
 
@@ -438,9 +464,11 @@ def parse_ascii(
 
     reported_wavelength_unit = wavelength_unit
     try:
-        wavelength_nm = to_nm(working[wavelength_col].tolist(), wavelength_unit)
+        wavelength_series = working[wavelength_col]
+        wavelength_nm = to_nm(wavelength_series.tolist(), wavelength_unit)
     except ValueError:
-        wavelength_nm = to_nm(working[wavelength_col].tolist(), assumed_unit)
+        wavelength_series = working[wavelength_col]
+        wavelength_nm = to_nm(wavelength_series.tolist(), assumed_unit)
         provenance.setdefault("unit_inference", {})["fallback"] = assumed_unit
         wavelength_unit = assumed_unit
     metadata.setdefault("reported_wavelength_unit", reported_wavelength_unit)
@@ -499,7 +527,56 @@ def parse_ascii(
 
     label_hint = next((candidate for candidate in label_candidates if candidate), None)
 
-    return {
+    numeric_valid = numeric.loc[working.index].copy()
+    numeric_valid["__wavelength_nm"] = list(float(value) for value in wavelength_nm)
+
+    additional_traces: List[Dict[str, object]] = []
+    for column in column_labels:
+        if column in {wavelength_col, flux_col}:
+            continue
+        if column not in numeric_valid.columns:
+            continue
+        series = numeric_valid[column]
+        if series is None:
+            continue
+        series_values = series.to_numpy(dtype=float, copy=False)
+        finite_mask = np.isfinite(series_values)
+        if int(np.count_nonzero(finite_mask)) < 3:
+            continue
+        indices = series.index[finite_mask]
+        subset = numeric_valid.loc[indices, ["__wavelength_nm", column]]
+        if subset.empty:
+            continue
+        wavelengths_extra = [float(value) for value in subset["__wavelength_nm"].tolist()]
+        flux_extra = [float(value) for value in subset[column].tolist()]
+        tiers = build_downsample_tiers(
+            np.asarray(wavelengths_extra, dtype=float),
+            np.asarray(flux_extra, dtype=float),
+            strategy="lttb",
+        )
+        extra_metadata = dict(metadata)
+        extra_metadata["points"] = len(wavelengths_extra)
+        additional_traces.append(
+            {
+                "label": str(column),
+                "wavelength_nm": wavelengths_extra,
+                "flux": flux_extra,
+                "flux_unit": flux_unit,
+                "flux_kind": flux_kind,
+                "axis": axis,
+                "metadata": extra_metadata,
+                "summary": _series_summary(len(wavelengths_extra), extra_metadata, flux_unit),
+                "downsample": {
+                    int(level): {
+                        "wavelength_nm": list(result.wavelength_nm),
+                        "flux": list(result.flux),
+                    }
+                    for level, result in tiers.items()
+                },
+            }
+        )
+
+    payload: Dict[str, object] = {
         "label_hint": label_hint,
         "wavelength_nm": [float(value) for value in wavelength_nm],
         "flux": [float(value) for value in flux_values],
@@ -510,6 +587,11 @@ def parse_ascii(
         "axis": axis,
         "kind": "spectrum",
     }
+
+    if additional_traces:
+        payload["additional_traces"] = additional_traces
+
+    return payload
 
 
 def parse_ascii_segments(
@@ -743,7 +825,7 @@ def parse_ascii_segments(
     else:
         auxiliary_values = None
 
-    tiers = build_downsample_tiers(wavelength_nm, flux_array)
+    tiers = build_downsample_tiers(wavelength_nm, flux_array, strategy="lttb")
     provenance["downsample_tiers"] = sorted(int(key) for key in tiers)
 
     payload = {

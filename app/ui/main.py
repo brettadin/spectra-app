@@ -39,7 +39,7 @@ from app.similarity import (
 )
 from app.similarity_panel import render_similarity_panel
 from app.ui.example_browser import ExamplePreview, render_example_browser_sheet
-from app.utils.downsample import build_downsample_tiers
+from app.utils.downsample import build_downsample_tiers, build_lttb_downsample
 from app.utils.duplicate_ledger import DuplicateLedger
 from app.utils.flux import flux_percentile_range
 from app.providers import ProviderQuery, search as provider_search
@@ -118,6 +118,7 @@ class OverlayTrace:
         if wavelengths.size <= max_points:
             return wavelengths, flux_values, hover_values, True
 
+        min_points = max(64, max_points // 2)
         for tier in sorted(self.downsample.keys()):
             tier_data = self.downsample[tier]
             tier_w = np.asarray(tier_data[0], dtype=float)
@@ -132,11 +133,16 @@ class OverlayTrace:
             tier_f = tier_f[tier_w_mask]
             if tier_w.size == 0:
                 continue
-            if tier_w.size <= max_points:
+            if tier_w.size >= max_points:
+                return tier_w[:max_points], tier_f[:max_points], None, False
+            if tier_w.size >= min_points:
                 return tier_w, tier_f, None, False
 
-        step = max(1, int(math.ceil(wavelengths.size / max_points)))
-        return wavelengths[::step], flux_values[::step], None, False
+        target_points = min(int(max_points), int(wavelengths.size))
+        downsampled = build_lttb_downsample(wavelengths, flux_values, target_points)
+        sampled_w = np.asarray(downsampled.wavelength_nm, dtype=float)
+        sampled_f = np.asarray(downsampled.flux, dtype=float)
+        return sampled_w, sampled_f, None, False
 
     def to_vectors(
         self,
@@ -570,7 +576,7 @@ def _add_overlay(
                 tuple(float(value) for value in flux_ds),
             )
     if not downsample_map:
-        generated = build_downsample_tiers(values_w, values_f)
+        generated = build_downsample_tiers(values_w, values_f, strategy="lttb")
         downsample_map = {
             tier: (tuple(result.wavelength_nm), tuple(result.flux))
             for tier, result in generated.items()
@@ -633,7 +639,7 @@ def _add_overlay(
 
 
 def _add_overlay_payload(payload: Dict[str, object]) -> Tuple[bool, str]:
-    return _add_overlay(
+    base_added, base_message = _add_overlay(
         str(payload.get("label") or "Trace"),
         payload.get("wavelength_nm") or [],
         payload.get("flux") or [],
@@ -649,6 +655,44 @@ def _add_overlay_payload(payload: Dict[str, object]) -> Tuple[bool, str]:
         downsample=payload.get("downsample"),
         cache_dataset_id=payload.get("cache_dataset_id"),
     )
+    additional = payload.get("additional_traces")
+    extra_success = 0
+    failure_messages: List[str] = []
+    if isinstance(additional, Sequence):
+        for entry in additional:
+            if not isinstance(entry, Mapping):
+                continue
+            label = entry.get("label")
+            extra_label = str(label) if label is not None else f"{payload.get('label', 'Trace')} (extra)"
+            success, message = _add_overlay(
+                extra_label,
+                entry.get("wavelength_nm") or [],
+                entry.get("flux") or [],
+                flux_unit=entry.get("flux_unit") or payload.get("flux_unit"),
+                flux_kind=entry.get("flux_kind") or payload.get("flux_kind"),
+                kind=str(entry.get("kind") or payload.get("kind") or "spectrum"),
+                provider=entry.get("provider") or payload.get("provider"),
+                summary=entry.get("summary") or payload.get("summary"),
+                metadata=entry.get("metadata") or payload.get("metadata"),
+                provenance=entry.get("provenance") or payload.get("provenance"),
+                hover=entry.get("hover"),
+                axis=entry.get("axis") or payload.get("axis"),
+                downsample=entry.get("downsample"),
+                cache_dataset_id=entry.get("cache_dataset_id")
+                or payload.get("cache_dataset_id"),
+            )
+            if success:
+                extra_success += 1
+            else:
+                failure_messages.append(message)
+
+    combined_message = base_message
+    if extra_success:
+        combined_message += f"; added {extra_success} additional series"
+    if failure_messages:
+        combined_message += "; " + "; ".join(failure_messages)
+
+    return base_added or extra_success > 0, combined_message
 
 
 def _add_example_trace(spec: ExampleSpec) -> Tuple[bool, str]:
