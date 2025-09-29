@@ -1,5 +1,5 @@
 {
-  "version": "v1.1.8",
-  "date_utc": "2025-09-23T00:00:00Z",
-  "summary": "Hardened UTC timestamps in the UI and suppressed noisy FITS unit warnings during archive ingest."
+  "version": "v1.1.9",
+  "date_utc": "2025-09-28T23:00:00Z",
+  "summary": "Target overlays now use unique keys, honor ledger lock state, and ingest queued spectra directly into the viewer."
 }

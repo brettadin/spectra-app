@@ -9,13 +9,17 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
-from app.ui.targets import RegistryUnavailableError, render_targets_panel
+from urllib.parse import urlparse
+
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
+import requests
 import streamlit as st
+from plotly.subplots import make_subplots
 from streamlit.delta_generator import DeltaGenerator
+
+from app.ui.targets import RegistryUnavailableError, render_targets_panel
 
 from app._version import get_version_info
 from app.archive_ui import ArchiveUI
@@ -34,18 +38,14 @@ from app.ui.example_browser import ExamplePreview, render_example_browser_sheet
 from app.utils.downsample import build_downsample_tiers
 from app.utils.duplicate_ledger import DuplicateLedger
 from app.utils.flux import flux_percentile_range
+from app.providers import ProviderQuery, search as provider_search
 from app.utils.local_ingest import (
     SUPPORTED_ASCII_EXTENSIONS,
     SUPPORTED_FITS_EXTENSIONS,
     LocalIngestError,
     ingest_local_file,
 )
-from app.providers import ProviderQuery, search as provider_search
-for url in st.session_state.get("ingest_queue", []):
-    # call your existing ingestion path; example:
-    # add_trace_from_url(url, label=os.path.basename(url))
-    pass
-st.session_state["ingest_queue"] = []
+
 st.set_page_config(page_title="Spectra App", layout="wide")
 
 EXPORT_DIR = Path("exports")
@@ -69,7 +69,9 @@ class OverlayTrace:
     flux_unit: str = "arb"
     flux_kind: str = "relative"
     axis: str = "emission"
-    downsample: Dict[int, Tuple[Tuple[float, ...], Tuple[float, ...]]] = field(default_factory=dict)
+    downsample: Dict[int, Tuple[Tuple[float, ...], Tuple[float, ...]]] = field(
+        default_factory=dict
+    )
     cache_dataset_id: Optional[str] = None
 
     def to_dataframe(self) -> pd.DataFrame:
@@ -105,7 +107,9 @@ class OverlayTrace:
             wavelengths = wavelengths[mask]
             flux_values = flux_values[mask]
             if hover_values is not None:
-                hover_values = [hover for hover, keep in zip(hover_values, mask.tolist()) if keep]
+                hover_values = [
+                    hover for hover, keep in zip(hover_values, mask.tolist()) if keep
+                ]
 
         if wavelengths.size <= max_points:
             return wavelengths, flux_values, hover_values, True
@@ -146,7 +150,11 @@ class OverlayTrace:
                 kind=self.kind,
                 fingerprint=self.fingerprint,
             )
-        selected_w, selected_f, _, _ = self.sample(viewport or (None, None), max_points=max_points or len(self.wavelength_nm), include_hover=False)
+        selected_w, selected_f, _, _ = self.sample(
+            viewport or (None, None),
+            max_points=max_points or len(self.wavelength_nm),
+            include_hover=False,
+        )
         return TraceVectors(
             trace_id=self.trace_id,
             label=self.label,
@@ -298,6 +306,7 @@ def _format_version_timestamp(raw: object) -> str:
 # ---------------------------------------------------------------------------
 # Session state helpers
 
+
 def _ensure_session_state() -> None:
     st.session_state.setdefault("session_id", str(uuid.uuid4()))
     st.session_state.setdefault("overlay_traces", [])
@@ -308,10 +317,14 @@ def _ensure_session_state() -> None:
     st.session_state.setdefault("normalization_mode", "unit")
     st.session_state.setdefault("differential_mode", "Off")
     st.session_state.setdefault("reference_trace_id", None)
-    st.session_state.setdefault("similarity_metrics", ["cosine", "rmse", "xcorr", "line_match"])
+    st.session_state.setdefault(
+        "similarity_metrics", ["cosine", "rmse", "xcorr", "line_match"]
+    )
     st.session_state.setdefault("similarity_primary_metric", "cosine")
     st.session_state.setdefault("similarity_line_peaks", 8)
-    st.session_state.setdefault("similarity_normalization", st.session_state.get("normalization_mode", "unit"))
+    st.session_state.setdefault(
+        "similarity_normalization", st.session_state.get("normalization_mode", "unit")
+    )
     st.session_state.setdefault("duplicate_policy", "skip")
     st.session_state.setdefault("local_upload_registry", {})
     st.session_state.setdefault("differential_result", None)
@@ -325,13 +338,77 @@ def _ensure_session_state() -> None:
     st.session_state.setdefault("duplicate_base_policy", "skip")
     st.session_state.setdefault("duplicate_ledger_lock", False)
     st.session_state.setdefault("duplicate_ledger_pending_action", None)
-    st.session_state.setdefault(
-        "duplicate_ledger_lock_checkbox", st.session_state.get("duplicate_ledger_lock", False)
-    )
+    st.session_state.setdefault("ingest_queue", [])
     if "duplicate_ledger" not in st.session_state:
         st.session_state["duplicate_ledger"] = DuplicateLedger()
     if "similarity_cache" not in st.session_state:
         st.session_state["similarity_cache"] = SimilarityCache()
+
+
+def _process_ingest_queue() -> None:
+    queue = list(st.session_state.get("ingest_queue", []))
+    if not queue:
+        return
+
+    try:
+        from app.core.ingest import add_overlay_from_url as _add_overlay_from_url  # type: ignore
+    except Exception:  # pragma: no cover - optional integration point
+        _add_overlay_from_url = None
+
+    for item in queue:
+        if isinstance(item, dict):
+            url = str(item.get("url") or "")
+            label_hint = str(item.get("label") or "").strip()
+            provider_hint = item.get("provider")
+        else:
+            url = str(item or "")
+            label_hint = ""
+            provider_hint = None
+
+        if not url:
+            continue
+
+        derived_name = Path(urlparse(url).path).name
+        label = label_hint or derived_name or "remote-spectrum"
+
+        try:
+            if _add_overlay_from_url is not None:
+                _add_overlay_from_url(url, label=label)
+                continue
+
+            response = requests.get(url, timeout=60)
+            response.raise_for_status()
+
+            filename = derived_name or f"overlay-{uuid.uuid4().hex[:8]}"
+            try:
+                payload = ingest_local_file(filename, response.content)
+            except LocalIngestError as exc:
+                st.warning(f"Unable to ingest {label}: {exc}")
+                continue
+
+            payload = dict(payload)
+            payload.setdefault("label", label)
+            if provider_hint and not payload.get("provider"):
+                payload["provider"] = str(provider_hint)
+
+            metadata = dict(payload.get("metadata") or {})
+            metadata.setdefault("source", "Target overlay queue")
+            payload["metadata"] = metadata
+
+            provenance = dict(payload.get("provenance") or {})
+            ingest_info = dict(provenance.get("ingest") or {})
+            ingest_info.setdefault("method", "overlay_queue")
+            ingest_info["source_url"] = url
+            ingest_info.setdefault("label", label)
+            provenance["ingest"] = ingest_info
+            payload["provenance"] = provenance
+
+            added, message = _add_overlay_payload(payload)
+            (st.success if added else st.info)(message)
+        except Exception as exc:  # pragma: no cover - network/runtime failure
+            st.warning(f"Failed to ingest {label}: {exc}")
+
+    st.session_state["ingest_queue"] = []
 
 
 def _get_overlays() -> List[OverlayTrace]:
@@ -425,9 +502,7 @@ def _add_overlay(
         return False, "No spectral samples available."
 
     if hover is not None and len(hover) == len(values_w):
-        paired = sorted(
-            zip(values_w, values_f, hover), key=lambda item: float(item[0])
-        )
+        paired = sorted(zip(values_w, values_f, hover), key=lambda item: float(item[0]))
         values_w = [float(item[0]) for item in paired]
         values_f = [float(item[1]) for item in paired]
         hover_sorted = [item[2] for item in paired]
@@ -444,7 +519,9 @@ def _add_overlay(
                 tier_value = int(tier)
             except (TypeError, ValueError):
                 continue
-            wavelengths_ds = payload.get("wavelength_nm") if isinstance(payload, Mapping) else None
+            wavelengths_ds = (
+                payload.get("wavelength_nm") if isinstance(payload, Mapping) else None
+            )
             flux_ds = payload.get("flux") if isinstance(payload, Mapping) else None
             if not wavelengths_ds or not flux_ds:
                 continue
@@ -484,7 +561,9 @@ def _add_overlay(
         metadata=dict(metadata or {}),
         provenance=dict(provenance or {}),
         fingerprint=fingerprint,
-        hover=tuple(str(text) for text in (hover_sorted or [])) if hover_sorted else None,
+        hover=(
+            tuple(str(text) for text in (hover_sorted or [])) if hover_sorted else None
+        ),
         flux_unit=str(flux_unit or "arb"),
         flux_kind=str(flux_kind or "relative"),
         axis=str(axis or "emission"),
@@ -574,8 +653,12 @@ def _load_example(spec: ExampleSpec) -> Tuple[bool, str]:
     return added, message
 
 
-def _load_example_preview(spec: ExampleSpec, *, allow_network: bool) -> Optional[ExamplePreview]:
-    cache: Dict[str, Dict[str, Tuple[float, ...]]] = st.session_state.setdefault("example_preview_cache", {})
+def _load_example_preview(
+    spec: ExampleSpec, *, allow_network: bool
+) -> Optional[ExamplePreview]:
+    cache: Dict[str, Dict[str, Tuple[float, ...]]] = st.session_state.setdefault(
+        "example_preview_cache", {}
+    )
     cached = cache.get(spec.slug)
     if cached:
         return ExamplePreview(tuple(cached["wavelengths"]), tuple(cached["flux"]))
@@ -736,20 +819,30 @@ def _render_display_section(container: DeltaGenerator) -> None:
     units = container.selectbox(
         "Wavelength units",
         ["nm", "Å", "µm", "cm^-1"],
-        index=["nm", "Å", "µm", "cm^-1"].index(st.session_state.get("display_units", "nm")),
+        index=["nm", "Å", "µm", "cm^-1"].index(
+            st.session_state.get("display_units", "nm")
+        ),
     )
     st.session_state["display_units"] = units
     display_mode_options = ["Flux (raw)", "Flux (normalized)"]
     current_mode = st.session_state.get("display_mode", "Flux (raw)")
-    mode_index = display_mode_options.index(current_mode) if current_mode in display_mode_options else 0
-    st.session_state["display_mode"] = container.selectbox("Flux scaling", display_mode_options, index=mode_index)
+    mode_index = (
+        display_mode_options.index(current_mode)
+        if current_mode in display_mode_options
+        else 0
+    )
+    st.session_state["display_mode"] = container.selectbox(
+        "Flux scaling", display_mode_options, index=mode_index
+    )
 
     overlays = _get_overlays()
     target_overlays = [trace for trace in overlays if trace.visible] or overlays
     min_bound, max_bound = _infer_viewport_bounds(target_overlays)
     if math.isclose(min_bound, max_bound):
         max_bound = min_bound + 1.0
-    auto = container.checkbox("Auto viewport", value=bool(st.session_state.get("auto_viewport", True)))
+    auto = container.checkbox(
+        "Auto viewport", value=bool(st.session_state.get("auto_viewport", True))
+    )
     st.session_state["auto_viewport"] = auto
     if auto:
         st.session_state["viewport_nm"] = (None, None)
@@ -785,7 +878,9 @@ def _render_differential_section(container: DeltaGenerator) -> None:
     current_norm = st.session_state.get("normalization_mode", "unit")
     norm_labels = list(norm_map.keys())
     try:
-        index = norm_labels.index(next(label for label, code in norm_map.items() if code == current_norm))
+        index = norm_labels.index(
+            next(label for label, code in norm_map.items() if code == current_norm)
+        )
     except StopIteration:
         index = 0
     selection = container.selectbox("Normalization", norm_labels, index=index)
@@ -794,7 +889,9 @@ def _render_differential_section(container: DeltaGenerator) -> None:
     diff_options = ["Off", "Relative to reference"]
     diff_mode = st.session_state.get("differential_mode", "Off")
     diff_index = diff_options.index(diff_mode) if diff_mode in diff_options else 0
-    st.session_state["differential_mode"] = container.selectbox("Differential mode", diff_options, index=diff_index)
+    st.session_state["differential_mode"] = container.selectbox(
+        "Differential mode", diff_options, index=diff_index
+    )
     if st.session_state["differential_mode"] != "Off":
         container.caption("Traces are regridded onto the reference before subtracting.")
 
@@ -834,9 +931,19 @@ def _render_similarity_sidebar(container: Optional[DeltaGenerator] = None) -> No
     st.session_state["similarity_line_peaks"] = int(line_peaks)
 
     norm_labels = ["Unit vector (L2)", "Peak normalised", "Z-score", "None"]
-    norm_codes = {"Unit vector (L2)": "unit", "Peak normalised": "max", "Z-score": "zscore", "None": "none"}
-    current_code = st.session_state.get("similarity_normalization", st.session_state.get("normalization_mode", "unit"))
-    current_label = next((label for label, code in norm_codes.items() if code == current_code), norm_labels[0])
+    norm_codes = {
+        "Unit vector (L2)": "unit",
+        "Peak normalised": "max",
+        "Z-score": "zscore",
+        "None": "none",
+    }
+    current_code = st.session_state.get(
+        "similarity_normalization", st.session_state.get("normalization_mode", "unit")
+    )
+    current_label = next(
+        (label for label, code in norm_codes.items() if code == current_code),
+        norm_labels[0],
+    )
     selection = target.selectbox(
         "Similarity normalization",
         norm_labels,
@@ -874,7 +981,9 @@ def _render_example_browser() -> None:
         recents=list(st.session_state.get("example_recent", [])),
         load_callback=_load_example,
         toggle_favourite=_toggle_example_favourite,
-        preview_loader=lambda spec: _load_example_preview(spec, allow_network=network_available),
+        preview_loader=lambda spec: _load_example_preview(
+            spec, allow_network=network_available
+        ),
         resolve_spec=_get_example_spec,
         network_available=network_available,
     )
@@ -904,20 +1013,33 @@ def _render_uploads_group(container: DeltaGenerator) -> None:
 
     lock_state = bool(st.session_state.get("duplicate_ledger_lock", False))
     pending = st.session_state.get("duplicate_ledger_pending_action")
-    checkbox_value = container.checkbox(
+    checkbox_default = lock_state if pending is None else (pending == "enable")
+    ledger_checkbox = container.checkbox(
         "Enforce ledger lock",
-        value=lock_state if pending is None else (pending == "enable"),
+        value=checkbox_default,
         key="duplicate_ledger_lock_checkbox",
         help="Persist duplicate fingerprints across sessions using the ledger.",
     )
+    checkbox_value = bool(ledger_checkbox)
 
-    if pending is None and checkbox_value != lock_state:
-        st.session_state["duplicate_ledger_pending_action"] = (
-            "enable" if checkbox_value else "disable"
-        )
-        pending = st.session_state["duplicate_ledger_pending_action"]
+    if pending is None:
+        if checkbox_value != lock_state:
+            st.session_state["duplicate_ledger_pending_action"] = (
+                "enable" if checkbox_value else "disable"
+            )
+            pending = st.session_state["duplicate_ledger_pending_action"]
+    else:
+        if checkbox_value == lock_state:
+            st.session_state["duplicate_ledger_pending_action"] = None
+            pending = None
+        elif checkbox_value != checkbox_default:
+            st.session_state["duplicate_ledger_pending_action"] = (
+                "enable" if checkbox_value else "disable"
+            )
+            pending = st.session_state["duplicate_ledger_pending_action"]
 
-    pending = st.session_state.get("duplicate_ledger_pending_action")
+    if pending is None:
+        st.session_state["duplicate_ledger_lock"] = lock_state
     if pending == "enable":
         container.warning(
             "Enable ledger lock to enforce duplicate detection against the persistent ledger."
@@ -927,11 +1049,9 @@ def _render_uploads_group(container: DeltaGenerator) -> None:
             st.session_state["duplicate_ledger_lock"] = True
             st.session_state["duplicate_policy"] = "ledger"
             st.session_state["duplicate_ledger_pending_action"] = None
-            st.session_state["duplicate_ledger_lock_checkbox"] = True
             container.success("Ledger lock enabled.")
         if cancel_col.button("Cancel", key="cancel_ledger_enable"):
             st.session_state["duplicate_ledger_pending_action"] = None
-            st.session_state["duplicate_ledger_lock_checkbox"] = False
     elif pending == "disable":
         container.warning(
             "Disable ledger lock? New duplicates will follow the session policy."
@@ -943,11 +1063,9 @@ def _render_uploads_group(container: DeltaGenerator) -> None:
                 "duplicate_base_policy", "skip"
             )
             st.session_state["duplicate_ledger_pending_action"] = None
-            st.session_state["duplicate_ledger_lock_checkbox"] = False
             container.info("Ledger lock disabled.")
         if cancel_col.button("Keep lock", key="cancel_ledger_disable"):
             st.session_state["duplicate_ledger_pending_action"] = None
-            st.session_state["duplicate_ledger_lock_checkbox"] = True
     else:
         if st.session_state.get("duplicate_ledger_lock", False):
             container.caption(
@@ -960,12 +1078,12 @@ def _render_uploads_group(container: DeltaGenerator) -> None:
                 ledger.purge_session(st.session_state.get("session_id"))
                 container.success("Session ledger entries cleared.")
         else:
-            container.caption(
-                "Duplicates will follow the selected session policy."
-            )
+            container.caption("Duplicates will follow the selected session policy.")
+
 
 # ---------------------------------------------------------------------------
 # Overlay rendering helpers
+
 
 def _infer_viewport_bounds(overlays: Sequence[OverlayTrace]) -> Tuple[float, float]:
     if not overlays:
@@ -1067,7 +1185,9 @@ def _effective_viewport(
     return (None, None)
 
 
-def _extract_metadata_range(metadata: Dict[str, object]) -> Optional[Tuple[float, float]]:
+def _extract_metadata_range(
+    metadata: Dict[str, object],
+) -> Optional[Tuple[float, float]]:
     for key in ("wavelength_effective_range_nm", "wavelength_range_nm"):
         value = metadata.get(key) if metadata else None
         if isinstance(value, (list, tuple)) and len(value) == 2:
@@ -1081,7 +1201,9 @@ def _extract_metadata_range(metadata: Dict[str, object]) -> Optional[Tuple[float
     return None
 
 
-def _filter_viewport(df: pd.DataFrame, viewport: Tuple[float | None, float | None]) -> pd.DataFrame:
+def _filter_viewport(
+    df: pd.DataFrame, viewport: Tuple[float | None, float | None]
+) -> pd.DataFrame:
     low, high = viewport
     if low is not None:
         df = df[df["wavelength_nm"] >= low]
@@ -1103,7 +1225,9 @@ def _convert_wavelength(series: pd.Series, unit: str) -> Tuple[pd.Series, str]:
     return values, "Wavelength (nm)"
 
 
-def _normalize_hover_values(values: Optional[Sequence[object]]) -> Optional[List[Optional[str]]]:
+def _normalize_hover_values(
+    values: Optional[Sequence[object]],
+) -> Optional[List[Optional[str]]]:
     if values is None:
         return None
     normalized: List[Optional[str]] = []
@@ -1127,7 +1251,11 @@ def _add_line_trace(
 ) -> None:
     xs: List[float | None] = []
     ys: List[float | None] = []
-    resolved_hover = _normalize_hover_values(hover_values) if hover_values is not None else _normalize_hover_values(df.get("hover"))
+    resolved_hover = (
+        _normalize_hover_values(hover_values)
+        if hover_values is not None
+        else _normalize_hover_values(df.get("hover"))
+    )
     hover: Optional[List[Optional[str]]] = [] if resolved_hover is not None else None
     for idx, (_, row) in enumerate(df.iterrows()):
         x = row.get("wavelength")
@@ -1187,7 +1315,9 @@ def _build_overlay_figure(
             df = _filter_viewport(df, viewport)
             if df.empty:
                 continue
-            converted, axis_title = _convert_wavelength(df["wavelength_nm"], display_units)
+            converted, axis_title = _convert_wavelength(
+                df["wavelength_nm"], display_units
+            )
             df = df.assign(wavelength=converted, flux=df["flux"].astype(float))
             hover_values = _normalize_hover_values(df.get("hover"))
             _add_line_trace(fig, df, trace.label, hover_values)
@@ -1233,7 +1363,9 @@ def _build_overlay_figure(
         elif normalization_mode and normalization_mode != "none":
             flux_array = apply_normalization(flux_array, normalization_mode)
 
-        hover_values = _normalize_hover_values(sample_hover) if sample_hover is not None else None
+        hover_values = (
+            _normalize_hover_values(sample_hover) if sample_hover is not None else None
+        )
 
         fig.add_trace(
             go.Scatter(
@@ -1349,7 +1481,9 @@ def _render_overlay_table(overlays: Sequence[OverlayTrace]) -> None:
 
 
 def _remove_overlays(trace_ids: Sequence[str]) -> None:
-    remaining = [trace for trace in _get_overlays() if trace.trace_id not in set(trace_ids)]
+    remaining = [
+        trace for trace in _get_overlays() if trace.trace_id not in set(trace_ids)
+    ]
     _set_overlays(remaining)
     cache: SimilarityCache = st.session_state["similarity_cache"]
     cache.reset()
@@ -1371,7 +1505,9 @@ def _normalise_wavelength_range(meta: Dict[str, object]) -> str:
     return "—"
 
 
-def _build_metadata_summary_rows(overlays: Sequence[OverlayTrace]) -> List[Dict[str, object]]:
+def _build_metadata_summary_rows(
+    overlays: Sequence[OverlayTrace],
+) -> List[Dict[str, object]]:
     rows: List[Dict[str, object]] = []
     for trace in overlays:
         meta = {str(k).lower(): v for k, v in (trace.metadata or {}).items()}
@@ -1387,7 +1523,9 @@ def _build_metadata_summary_rows(overlays: Sequence[OverlayTrace]) -> List[Dict[
                 or meta.get("observation_date")
                 or "—",
                 "Range (nm)": _normalise_wavelength_range(meta),
-                "Resolution": meta.get("resolution_native") or meta.get("resolution") or "—",
+                "Resolution": meta.get("resolution_native")
+                or meta.get("resolution")
+                or "—",
             }
         )
     return rows
@@ -1417,7 +1555,9 @@ def _get_upload_registry() -> Dict[str, Dict[str, object]]:
     return st.session_state.setdefault("local_upload_registry", {})
 
 
-def _read_uploaded_file(uploaded) -> Tuple[Optional[str], Optional[bytes], Optional[str], str]:
+def _read_uploaded_file(
+    uploaded,
+) -> Tuple[Optional[str], Optional[bytes], Optional[str], str]:
     """Return the checksum and payload bytes for a Streamlit upload widget."""
 
     try:
@@ -1435,7 +1575,9 @@ def _read_uploaded_file(uploaded) -> Tuple[Optional[str], Optional[bytes], Optio
 def _render_local_upload() -> None:
     st.markdown("### Upload recorded spectra")
     supported = sorted(SUPPORTED_ASCII_EXTENSIONS | SUPPORTED_FITS_EXTENSIONS)
-    accepted_types = sorted({ext.lstrip(".") for ext in supported if ext.startswith(".")})
+    accepted_types = sorted(
+        {ext.lstrip(".") for ext in supported if ext.startswith(".")}
+    )
     uploader = st.file_uploader(
         "Select spectral files",
         type=accepted_types,
@@ -1443,10 +1585,7 @@ def _render_local_upload() -> None:
         key="local_upload_widget",
         help="Supports ASCII tables (CSV/TXT/TSV/ASCII), FITS spectral products, and gzip-compressed variants.",
     )
-    st.caption(
-        "Supported extensions: "
-        + ", ".join(sorted(supported))
-    )
+    st.caption("Supported extensions: " + ", ".join(sorted(supported)))
     if st.button("Reset uploaded file tracker", key="reset_upload_registry"):
         st.session_state["local_upload_registry"] = {}
         st.success("Cleared upload tracker.")
@@ -1468,7 +1607,7 @@ def _render_local_upload() -> None:
             continue
 
         checksum = hashlib.sha256(payload_bytes).hexdigest()
-        
+
         checksum, payload_bytes, error_message, level = _read_uploaded_file(uploaded)
         if error_message:
             (st.error if level == "error" else st.warning)(error_message)
@@ -1490,20 +1629,36 @@ def _render_local_upload() -> None:
             payload = ingest_local_file(uploaded.name, payload_bytes)
         except LocalIngestError as exc:
             st.warning(str(exc))
-            registry[checksum] = {"name": uploaded.name, "added": False, "message": str(exc)}
+            registry[checksum] = {
+                "name": uploaded.name,
+                "added": False,
+                "message": str(exc),
+            }
             continue
         except Exception as exc:  # pragma: no cover - unexpected failure
             st.error(f"Unexpected error ingesting {uploaded.name}: {exc}")
-            registry[checksum] = {"name": uploaded.name, "added": False, "message": str(exc)}
-            
+            registry[checksum] = {
+                "name": uploaded.name,
+                "added": False,
+                "message": str(exc),
+            }
+
             message = str(exc)
             st.warning(message)
-            registry[checksum] = {"name": uploaded.name, "added": False, "message": message}
+            registry[checksum] = {
+                "name": uploaded.name,
+                "added": False,
+                "message": message,
+            }
             continue
         except Exception as exc:  # pragma: no cover - unexpected failure
             message = f"Unexpected error ingesting {uploaded.name}: {exc}"
             st.error(message)
-            registry[checksum] = {"name": uploaded.name, "added": False, "message": message}
+            registry[checksum] = {
+                "name": uploaded.name,
+                "added": False,
+                "message": message,
+            }
             continue
 
         added, message = _add_overlay_payload(payload)
@@ -1539,7 +1694,9 @@ def _export_current_view(
         if display_mode != "Flux (raw)":
             scaled = apply_normalization(scaled, "max")
         for wavelength_value, flux_value in zip(converted, scaled):
-            if not math.isfinite(float(wavelength_value)) or not math.isfinite(float(flux_value)):
+            if not math.isfinite(float(wavelength_value)) or not math.isfinite(
+                float(flux_value)
+            ):
                 continue
             rows.append(
                 {
@@ -1573,11 +1730,17 @@ def _export_current_view(
     manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     st.success(f"Exported: {csv_path.name}, {png_path.name}, {manifest_path.name}")
 
+
 # ---------------------------------------------------------------------------
 # Line metadata helpers
 
+
 def _collect_line_overlays(overlays: Sequence[OverlayTrace]) -> List[OverlayTrace]:
-    return [trace for trace in overlays if trace.kind == "lines" and trace.metadata.get("lines")]
+    return [
+        trace
+        for trace in overlays
+        if trace.kind == "lines" and trace.metadata.get("lines")
+    ]
 
 
 def _build_line_table(trace: OverlayTrace) -> pd.DataFrame:
@@ -1617,6 +1780,7 @@ def _render_line_tables(overlays: Sequence[OverlayTrace]) -> None:
 # ---------------------------------------------------------------------------
 # Patch log helpers
 
+
 def _resolve_patch_metadata(version_info: Mapping[str, object]) -> Tuple[str, str, str]:
     """Derive patch version and summary strings for UI presentation."""
 
@@ -1638,7 +1802,9 @@ def _resolve_patch_metadata(version_info: Mapping[str, object]) -> Tuple[str, st
     if patch_line:
         display_line = patch_line
     elif patch_version:
-        display_line = f"{patch_version}: {patch_summary}" if patch_summary else patch_version
+        display_line = (
+            f"{patch_version}: {patch_summary}" if patch_summary else patch_version
+        )
     else:
         display_line = patch_summary
 
@@ -1713,6 +1879,7 @@ def _convert_nist_payload(data: Dict[str, object]) -> Optional[Dict[str, object]
 # ---------------------------------------------------------------------------
 # Status bar
 
+
 def _render_status_bar(version_info: Mapping[str, object]) -> None:
     overlays = _get_overlays()
     viewport_setting = st.session_state.get("viewport_nm", (None, None))
@@ -1737,8 +1904,12 @@ def _render_status_bar(version_info: Mapping[str, object]) -> None:
         "skip": "session dedupe",
         "ledger": "ledger enforced",
     }
-    policy = policy_map.get(st.session_state.get("duplicate_policy"), "duplicates allowed")
-    reference = _trace_label(st.session_state.get("reference_trace_id")) if overlays else "—"
+    policy = policy_map.get(
+        st.session_state.get("duplicate_policy"), "duplicates allowed"
+    )
+    reference = (
+        _trace_label(st.session_state.get("reference_trace_id")) if overlays else "—"
+    )
     st.markdown(
         (
             "<div style='margin-top:1rem;padding:0.6rem 0.8rem;border-top:1px solid #333;font-size:0.85rem;opacity:0.85;'>"
@@ -1751,6 +1922,7 @@ def _render_status_bar(version_info: Mapping[str, object]) -> None:
 
 # ---------------------------------------------------------------------------
 # Main tab renderers
+
 
 def _render_overlay_tab(version_info: Dict[str, str]) -> None:
     st.header("Overlay workspace")
@@ -1778,7 +1950,14 @@ def _render_overlay_tab(version_info: Dict[str, str]) -> None:
             float(effective_viewport[1]) if effective_viewport[1] is not None else None,
         )
 
-    reference = next((trace for trace in overlays if trace.trace_id == st.session_state.get("reference_trace_id")), overlays[0])
+    reference = next(
+        (
+            trace
+            for trace in overlays
+            if trace.trace_id == st.session_state.get("reference_trace_id")
+        ),
+        overlays[0],
+    )
 
     fig, axis_title = _build_overlay_figure(
         overlays,
@@ -1798,7 +1977,9 @@ def _render_overlay_tab(version_info: Dict[str, str]) -> None:
         _render_overlay_table(overlays)
     with action_col:
         if st.button("Export view", key="export_view"):
-            _export_current_view(fig, overlays, display_units, display_mode, effective_viewport)
+            _export_current_view(
+                fig, overlays, display_units, display_mode, effective_viewport
+            )
         st.caption(f"Axis: {axis_title}")
 
     cache: SimilarityCache = st.session_state["similarity_cache"]
@@ -1923,7 +2104,11 @@ def _build_differential_figure(result: DifferentialResult) -> go.Figure:
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1.0),
     )
     fig.update_xaxes(title_text="Wavelength (nm)", row=2, col=1)
-    fig.update_yaxes(title_text=f"Flux ({_normalization_display(result.normalization)})", row=1, col=1)
+    fig.update_yaxes(
+        title_text=f"Flux ({_normalization_display(result.normalization)})",
+        row=1,
+        col=1,
+    )
     fig.update_yaxes(title_text=result.operation_label, row=2, col=1)
     return fig
 
@@ -1980,7 +2165,10 @@ def _add_differential_overlay(result: DifferentialResult) -> Tuple[bool, str]:
         "computed_at": timestamp,
     }
     if result.grid_nm:
-        metadata["wavelength_range_nm"] = [float(min(result.grid_nm)), float(max(result.grid_nm))]
+        metadata["wavelength_range_nm"] = [
+            float(min(result.grid_nm)),
+            float(max(result.grid_nm)),
+        ]
     summary = f"{result.operation_label} on {result.sample_points} samples"
     return _add_overlay(
         result.label,
@@ -2064,7 +2252,9 @@ def _render_differential_tab() -> None:
             step=100,
             value=sample_default,
         )
-        submitted = st.form_submit_button("Compute differential", use_container_width=True)
+        submitted = st.form_submit_button(
+            "Compute differential", use_container_width=True
+        )
 
     result = st.session_state.get("differential_result")
     if submitted:
@@ -2107,6 +2297,11 @@ def _render_archive_tab() -> None:
 
 def _render_docs_tab() -> None:
     st.header("Docs & provenance")
+    st.info(
+        "v1.1.9 adds reliable Target catalog overlays: buttons use unique keys, "
+        "ledger lock respects confirmation flows, and queued spectra ingest "
+        "directly into the overlay workspace."
+    )
     if not DOC_LIBRARY:
         st.info("Documentation library is empty.")
         return
@@ -2114,7 +2309,9 @@ def _render_docs_tab() -> None:
     category_titles = [category.title for category in DOC_LIBRARY]
     if "docs_category_select" not in st.session_state:
         st.session_state["docs_category_select"] = category_titles[0]
-    selected_category_title = st.selectbox("Guide category", category_titles, key="docs_category_select")
+    selected_category_title = st.selectbox(
+        "Guide category", category_titles, key="docs_category_select"
+    )
     category = next(cat for cat in DOC_LIBRARY if cat.title == selected_category_title)
     if category.description:
         st.caption(category.description)
@@ -2124,9 +2321,14 @@ def _render_docs_tab() -> None:
         st.warning("No documents available in this category yet.")
         entry = None
     else:
-        if "docs_entry_select" not in st.session_state or st.session_state["docs_entry_select"] not in entry_titles:
+        if (
+            "docs_entry_select" not in st.session_state
+            or st.session_state["docs_entry_select"] not in entry_titles
+        ):
             st.session_state["docs_entry_select"] = entry_titles[0]
-        selected_entry_title = st.selectbox("Document", entry_titles, key="docs_entry_select")
+        selected_entry_title = st.selectbox(
+            "Document", entry_titles, key="docs_entry_select"
+        )
         entry = next(e for e in category.entries if e.title == selected_entry_title)
         if entry.description:
             st.caption(entry.description)
@@ -2171,8 +2373,10 @@ def _render_docs_tab() -> None:
 # ---------------------------------------------------------------------------
 # Entry points
 
+
 def render() -> None:
     _ensure_session_state()
+    _process_ingest_queue()
     version_info = get_version_info()
     _, patch_summary, _ = _resolve_patch_metadata(version_info)
 
@@ -2208,7 +2412,9 @@ def render() -> None:
     if registry_warning:
         sidebar.warning(registry_warning)
 
-    overlay_tab, diff_tab, archive_tab, docs_tab = st.tabs(["Overlay", "Differential", "Archive", "Docs & Provenance"])
+    overlay_tab, diff_tab, archive_tab, docs_tab = st.tabs(
+        ["Overlay", "Differential", "Archive", "Docs & Provenance"]
+    )
     with overlay_tab:
         _render_overlay_tab(version_info)
     with diff_tab:
@@ -2223,6 +2429,7 @@ def render() -> None:
 
 def main() -> None:
     render()
+
 
 if __name__ == "__main__":
     main()
