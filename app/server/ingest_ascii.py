@@ -311,13 +311,36 @@ def _detect_columns(df: pd.DataFrame) -> Tuple[str, str]:
         if any(keyword in label for keyword in ("wave", "lam", "freq", "wn")):
             wavelength = name
             break
-    for name in columns:
+
+    # Prefer flux-like columns (including irradiance/radiance style labels) and
+    # use an explicit unit label as a tie-breaker when multiple candidates are present.
+    flux_keywords = (
+        "flux",
+        "int",
+        "power",
+        "counts",
+        "brightness",
+        "irradiance",
+        "radiance",
+    )
+    spectral_tokens = ("power", "flux", "irradiance", "radiance")
+    best_score: Tuple[int, int, int] | None = None
+    best_flux = flux
+    for idx, name in enumerate(columns):
         if name == wavelength:
             continue
-        label = str(name).lower()
-        if any(keyword in label for keyword in ("flux", "int", "power", "counts", "brightness")):
-            flux = name
-            break
+        label = str(name)
+        lowered = label.lower()
+        keyword_match = any(keyword in lowered for keyword in flux_keywords)
+        if not keyword_match and "spectral" in lowered:
+            keyword_match = any(token in lowered for token in spectral_tokens)
+        unit_match = 1 if _extract_flux_unit_from_label(label) else 0
+        score = (1 if keyword_match else 0, unit_match, -idx)
+        if best_score is None or score > best_score:
+            best_score = score
+            best_flux = name
+
+    flux = best_flux
     if wavelength == flux and len(columns) > 2:
         flux = next(col for col in columns if col != wavelength)
     return str(wavelength), str(flux)
@@ -445,6 +468,8 @@ def parse_ascii(
 
     wavelength_col, flux_col = _detect_columns(dataframe)
     provenance["column_mapping"] = {"wavelength": wavelength_col, "flux": flux_col}
+    metadata.setdefault("wavelength_column", str(wavelength_col))
+    metadata.setdefault("flux_column", str(flux_col))
 
     numeric = dataframe.copy()
     for column in numeric.columns:

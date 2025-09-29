@@ -102,6 +102,28 @@ def test_ingest_local_ascii_multiple_flux_columns():
     assert "4 samples" in balmer_entry["summary"]
 
 
+def test_ingest_local_ascii_prefers_irradiance_column():
+    content = dedent(
+        """
+        Wavelength (nm),Sun,Irradiance (W/m^2/nm)
+        400,0.10,0.15
+        405,0.12,0.18
+        410,0.08,0.14
+        """
+    ).strip()
+
+    dataframe = pd.read_csv(io.StringIO(content))
+    parsed = parse_ascii(
+        dataframe,
+        content_bytes=content.encode("utf-8"),
+        column_labels=list(dataframe.columns),
+        filename="solar.csv",
+    )
+
+    assert parsed["flux"] == [0.15, 0.18, 0.14]
+    assert parsed["metadata"]["flux_column"] == "Irradiance (W/m^2/nm)"
+
+
 def test_parse_ascii_segments_handles_variable_whitespace():
     segment = dedent(
         """
