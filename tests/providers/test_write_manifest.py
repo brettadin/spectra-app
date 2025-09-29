@@ -35,6 +35,7 @@ def test_write_manifest_normalizes_mast_products(tmp_path):
 
     mast_products = manifest["datasets"]["mast_products"]
     assert mast_products["total_count"] == 1
+    assert mast_products["returned_count"] == 1
     assert mast_products["truncated"] is False
     assert len(mast_products["items"]) == 1
     entry = mast_products["items"][0]
@@ -75,6 +76,7 @@ def test_write_manifest_caps_mast_products(tmp_path):
 
     mast_products = manifest["datasets"]["mast_products"]
     assert mast_products["total_count"] == total
+    assert mast_products["returned_count"] == total
     assert mast_products["truncated"] is True
     assert len(mast_products["items"]) == build_registry.MAX_MAST_PRODUCTS
     assert mast_products["items"][0]["obsid"] == "OBS-0"
