@@ -9,6 +9,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
+from urllib.parse import quote, urlparse
+
 from urllib.parse import urlparse
 
 import numpy as np
@@ -345,6 +347,26 @@ def _ensure_session_state() -> None:
         st.session_state["similarity_cache"] = SimilarityCache()
 
 
+MAST_DOWNLOAD_ENDPOINT = "https://mast.stsci.edu/api/v0.1/Download/file"
+
+
+def _resolve_overlay_url(raw_url: str) -> str:
+    """Return a concrete URL for overlay ingestion."""
+
+    url = str(raw_url or "").strip()
+    if not url:
+        return ""
+
+    parsed = urlparse(url)
+    scheme = (parsed.scheme or "").lower()
+
+    if scheme == "mast" or (not scheme and url.startswith("mast:")):
+        encoded = quote(url, safe="")
+        return f"{MAST_DOWNLOAD_ENDPOINT}?uri={encoded}"
+
+    return url
+
+
 def _process_ingest_queue() -> None:
     queue = list(st.session_state.get("ingest_queue", []))
     if not queue:
@@ -368,11 +390,16 @@ def _process_ingest_queue() -> None:
         if not url:
             continue
 
+        resolved_url = _resolve_overlay_url(url)
         derived_name = Path(urlparse(url).path).name
         label = label_hint or derived_name or "remote-spectrum"
 
         try:
             if _add_overlay_from_url is not None:
+                _add_overlay_from_url(resolved_url, label=label)
+                continue
+
+            response = requests.get(resolved_url, timeout=60)
                 _add_overlay_from_url(url, label=label)
                 continue
 
@@ -399,6 +426,9 @@ def _process_ingest_queue() -> None:
             ingest_info = dict(provenance.get("ingest") or {})
             ingest_info.setdefault("method", "overlay_queue")
             ingest_info["source_url"] = url
+            if resolved_url and resolved_url != url:
+                ingest_info.setdefault("resolved_url", resolved_url)
+
             ingest_info.setdefault("label", label)
             provenance["ingest"] = ingest_info
             payload["provenance"] = provenance
