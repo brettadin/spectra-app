@@ -1,17 +1,26 @@
-# Spectra App — Brains v1.1.9
+# Brains — v1.1.9
 
-## Context
-- Dense solar atlas uploads (2.5M+ rows) previously failed because the ASCII parser relied on pandas `read_csv` with strict delimiters, exhausting memory on whitespace-delimited files and throwing field-count errors.
-- The overlay visibility UI required a form submission, leading to the “double input” lag reported by users.
-- Plot discontinuities (“sharp drop-offs”) were traced to concatenating chunked DataFrames without reconciling boundaries before downsampling.
+## Release focus
+- Overlay buttons in the Target catalog now carry unique Streamlit keys and queue remote spectra for ingestion.
+- Ledger lock is controlled via the `duplicate_ledger_lock` session variable; the checkbox only reflects state and no longer mutates widget keys.
+- The main loop now processes `ingest_queue` items by downloading spectra and passing them through the local ingest pipeline.
+- Local ingest rejects metadata-only tables (<3 samples) so overlays plotted from MAST products stay astrophysically plausible.
 
-## Decisions & fixes
-- Introduced `parse_ascii_segments` which streams ASCII payloads (or zip archives of them) into numeric arrays, normalises units, computes auxiliary statistics, and pre-builds multi-tier downsample caches.
-- Added `SpectrumCache` to persist chunked `.npz` payloads with a JSON index, enabling lazy retrieval and future viewport-driven refinements.
-- Overlay traces now carry downsample tiers and a `sample` helper so the UI only renders ~12k points per trace; this removed the drop-off artifact by downsampling *after* global sorting/deduplication.
-- The overlay table is powered by `st.data_editor` with live boolean checkboxes plus “Show all/Hide all” shortcuts—no more form submission lag.
+## Add new targets via `targets.yaml`
+1. Append the target metadata to `targets.yaml`, filling in identifiers and any curated product manifests.
+2. Run `python tools/build_registry.py --roster targets.yaml --out data_registry` to regenerate the catalog and per-target manifests.
+3. Verify the generated `data_registry/<Target>/manifest.json` includes datasets (MAST, ESO, CARMENES) and summaries before committing.
+4. Start the app and confirm the target appears in the sidebar catalog with expected summary text and overlay controls.
 
-## Follow-ups / caveats
-- Auxiliary third-column values are stored on disk with summary stats, but the UI still ignores them; surface in metadata drawer if needed.
-- Differential plots currently use the downsampled vectors; for ultra-fine comparisons consider hydrating full-resolution data on demand.
-- Cache directories respect `SPECTRA_CACHE_DIR`; clean shutdown should purge test fixtures to avoid drift.
+## Troubleshooting: `NoResultsWarning`
+- **Meaning:** The catalog manifest returned zero curated products for the selected provider (MAST, ESO, or CARMENES). This is surfaced as a `NoResultsWarning` when providers respond with empty datasets.
+- **Steps:**
+  - Confirm the provider is live by querying it directly (e.g., run the associated fetcher script or review provider logs).
+  - Inspect the target's manifest under `data_registry/<Target>/manifest.json` to ensure dataset sections populated during the registry build.
+  - If only one provider is empty, add or refresh curated product lists for that provider and rebuild the registry.
+  - For persistent provider outages, note the warning in release docs and advise operators to retry once services recover.
+
+## Continuity
+- Update docs/handoffs.md with the new overlay queue flow and recovery guidance.
+- Refresh `CHANGELOG.md`, `PATCHLOG.txt`, and `app/version.json` for v1.1.9.
+- Patch notes: `docs/PATCH_NOTES/v1.1.9.txt` and `docs/patch_notes/PATCH_NOTES_v1.1.9.md`.

@@ -16,7 +16,9 @@ class RegistryUnavailableError(RuntimeError):
         super().__init__(message)
 
 
-def _extract_mast_products(manifest: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], int, bool]:
+def _extract_mast_products(
+    manifest: Dict[str, Any],
+) -> Tuple[List[Dict[str, Any]], int, bool]:
     datasets = manifest.get("datasets", {}) if isinstance(manifest, dict) else {}
     mast_products = datasets.get("mast_products", [])
 
@@ -77,23 +79,31 @@ def render_targets_panel(
         mast_products, total_count, truncated = _extract_mast_products(manifest)
         if mast_products:
             expander.subheader("MAST spectra")
-            for r in mast_products:
+            display_products = mast_products[:200]
+            for idx, r in enumerate(display_products):
                 url = r.get("productURL") or ""
-                label = (
-                    f"{r.get('productFilename','')} [{r.get('dataproduct_type','')}]"
-                )
+                obsid = str(r.get("obsid", idx))
+                fname = str(r.get("productFilename", ""))
+                dtype = str(r.get("dataproduct_type", ""))
+                label = f"{fname} [{dtype}]"
                 cols = expander.columns([3, 1])
                 cols[0].code(label, language="text")
-                if cols[1].button("Overlay", key=f"ov-{label}"):
-                    # your app’s existing overlay fetcher likely accepts URLs/paths;
-                    # dispatch an event or stash URL in session to be ingested
-                    st.session_state.setdefault("ingest_queue", []).append(url)
-            if truncated:
+                btn_key = f"ov-{obsid}-{idx}"
+                if cols[1].button("Overlay", key=btn_key):
+                    entry = {"url": url, "label": fname or f"product-{idx}"}
+                    provider = str(
+                        r.get("obs_collection") or r.get("provider") or ""
+                    ).strip()
+                    if provider:
+                        entry["provider"] = provider
+                    st.session_state.setdefault("ingest_queue", []).append(entry)
+            if truncated or len(mast_products) > len(display_products):
                 expander.caption(
-                    f"Showing first {len(mast_products)} of {total_count} MAST products."
+                    f"Showing first {len(display_products)} of {total_count} MAST products."
                 )
         else:
             expander.info("No curated MAST spectra found for this target.")
+
 
 # In your existing main.py, sidebar area:
 # from app.ui.targets import render_targets_panel

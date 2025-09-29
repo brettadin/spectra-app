@@ -38,19 +38,20 @@ def test_metadata_summary_ascii_upload_header_units():
         Wavelength (Angstrom),Flux
         5000,10
         6000,20
+        7000,30
         """
     ).encode("utf-8")
 
     payload = ingest_local_file("header_example.csv", content)
 
-    assert payload["wavelength_nm"] == pytest.approx([500.0, 600.0])
+    assert payload["wavelength_nm"] == pytest.approx([500.0, 600.0, 700.0])
     metadata = payload["metadata"]
     assert metadata["instrument"] == "HeaderSpec"
     assert metadata["telescope"] == "HeaderScope"
     assert metadata["observation_date"] == "2023-07-01"
     assert metadata["wavelength_effective_range_nm"] == [350.0, 800.0]
-    assert metadata["wavelength_range_nm"] == [500.0, 600.0]
-    assert metadata["data_wavelength_range_nm"] == [500.0, 600.0]
+    assert metadata["wavelength_range_nm"] == [500.0, 700.0]
+    assert metadata["data_wavelength_range_nm"] == [500.0, 700.0]
     assert payload["flux_unit"] == "photons/s"
     assert metadata["reported_flux_unit"] == "photons/s"
 

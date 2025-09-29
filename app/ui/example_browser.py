@@ -80,7 +80,12 @@ def filter_examples(
         if not terms:
             matches_terms = True
         else:
-            haystack_parts: List[str] = [spec.slug, spec.label, spec.description, spec.provider]
+            haystack_parts: List[str] = [
+                spec.slug,
+                spec.label,
+                spec.description,
+                spec.provider,
+            ]
             query = getattr(spec, "query", None)
             if query is not None:
                 try:
@@ -141,7 +146,9 @@ def render_example_browser_sheet(
         st.session_state.setdefault("example_browser_search", "")
         stored_providers = [
             provider
-            for provider in st.session_state.get("example_browser_provider_filter", provider_options)
+            for provider in st.session_state.get(
+                "example_browser_provider_filter", provider_options
+            )
             if provider in provider_options
         ]
         if not stored_providers:
@@ -207,11 +214,13 @@ def render_example_browser_sheet(
                 if preview:
                     st.plotly_chart(
                         _sparkline(preview),
-                        use_container_width=True,
+                        width="stretch",
                         config={"displayModeBar": False},
                     )
                 elif not network_available:
-                    st.caption("Preview unavailable offline; load to fetch cached data.")
+                    st.caption(
+                        "Preview unavailable offline; load to fetch cached data."
+                    )
                 else:
                     st.caption("Preview unavailable; load to fetch data.")
 
@@ -226,7 +235,9 @@ def render_example_browser_sheet(
                 ):
                     st.session_state["example_browser_active_detail"] = spec.slug
                     detail_slug = spec.slug
-                favourite_label = "★ Favourited" if spec.slug in favourites_set else "☆ Favourite"
+                favourite_label = (
+                    "★ Favourited" if spec.slug in favourites_set else "☆ Favourite"
+                )
                 if button_cols[2].button(
                     favourite_label, key=f"example_browser_favourite_{spec.slug}"
                 ):
@@ -254,4 +265,3 @@ def render_example_browser_sheet(
                     st.json(query_payload)
             else:
                 st.session_state["example_browser_active_detail"] = None
-

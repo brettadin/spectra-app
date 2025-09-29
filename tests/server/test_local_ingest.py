@@ -32,6 +32,7 @@ def test_ingest_local_ascii_populates_metadata():
         Wavelength (Angstrom),Flux (10^-16 erg/s/cm^2/Å)
         5000,1.2
         5005,1.5
+        5010,1.7
         """
     ).encode("utf-8")
 
@@ -41,15 +42,15 @@ def test_ingest_local_ascii_populates_metadata():
     assert payload["provider"] == "LOCAL"
     assert payload["flux_unit"] == "10^-16 erg/s/cm^2/Å"
     assert payload["flux_kind"] == "absolute"
-    assert payload["wavelength_nm"] == [500.0, 500.5]
-    assert payload["flux"] == [1.2, 1.5]
+    assert payload["wavelength_nm"] == [500.0, 500.5, 501.0]
+    assert payload["flux"] == [1.2, 1.5, 1.7]
 
     metadata = payload["metadata"]
     assert metadata["instrument"] == "ExampleSpec"
     assert metadata["telescope"] == "ExampleScope"
     assert metadata["observation_date"] == "2023-08-01T12:34:56Z"
     assert metadata["target"] == "Vega"
-    assert metadata["wavelength_range_nm"] == [500.0, 500.5]
+    assert metadata["wavelength_range_nm"] == [500.0, 501.0]
     assert metadata["filename"] == "example.csv"
 
     provenance = payload["provenance"]
@@ -59,8 +60,8 @@ def test_ingest_local_ascii_populates_metadata():
     assert provenance["ingest"]["method"] == "local_upload"
 
     summary = payload["summary"]
-    assert "2 samples" in summary
-    assert "500.00–500.50 nm" in summary
+    assert "3 samples" in summary
+    assert "500.00–501.00 nm" in summary
     assert "Flux: 10^-16 erg/s/cm^2/Å" in summary
 
 
@@ -76,7 +77,9 @@ def test_parse_ascii_segments_handles_variable_whitespace():
         """
     ).encode("utf-8")
 
-    parsed = parse_ascii_segments([("segment.txt", segment)], root_filename="segment.txt", chunk_size=2)
+    parsed = parse_ascii_segments(
+        [("segment.txt", segment)], root_filename="segment.txt", chunk_size=2
+    )
 
     assert parsed["wavelength_nm"] == pytest.approx([380.0, 380.5, 381.0])
     assert parsed["flux"] == pytest.approx([0.5, 0.55, 0.6])
@@ -97,7 +100,9 @@ def test_parse_ascii_segments_converts_angstrom_to_nm():
         """
     ).encode("utf-8")
 
-    parsed = parse_ascii_segments([("segment.txt", segment)], root_filename="segment.txt")
+    parsed = parse_ascii_segments(
+        [("segment.txt", segment)], root_filename="segment.txt"
+    )
 
     assert parsed["wavelength_nm"] == pytest.approx([500.0, 500.5])
     metadata = parsed["metadata"]
@@ -117,7 +122,9 @@ def test_parse_ascii_segments_wavenumber_sorted_to_nm():
         """
     ).encode("utf-8")
 
-    parsed = parse_ascii_segments([("segment.txt", segment)], root_filename="segment.txt")
+    parsed = parse_ascii_segments(
+        [("segment.txt", segment)], root_filename="segment.txt"
+    )
 
     assert parsed["wavelength_nm"] == pytest.approx([500.0, 1000.0])
     assert parsed["flux"] == pytest.approx([1.0, 0.5])
@@ -162,13 +169,14 @@ def test_ingest_local_ascii_wavenumber_converts_to_nm():
         # Target: SampleStar
         Wavenumber (cm^-1),Flux
         20000,1.0
+        15000,0.8
         10000,0.5
         """
     ).encode("utf-8")
 
     payload = ingest_local_file("wavenumber.csv", content)
 
-    assert payload["wavelength_nm"] == [500.0, 1000.0]
+    assert payload["wavelength_nm"] == pytest.approx([500.0, 666.6666667, 1000.0])
     metadata = payload["metadata"]
     assert metadata["original_wavelength_unit"] == "cm^-1"
     assert metadata["reported_wavelength_unit"] == "cm^-1"
@@ -181,6 +189,7 @@ def test_ingest_local_ascii_gzip_round_trip():
             Wavelength (nm),Flux
             400,1.0
             405,0.5
+            410,0.25
             """
         ).encode("utf-8")
     )
@@ -241,6 +250,69 @@ def test_ingest_local_dense_ascii_uses_cache(monkeypatch):
     assert cache_info is not None
     cache_path = Path(cache_info["path"])
     assert cache_path.exists()
+
+
+def test_dense_parser_fallback_to_table(monkeypatch):
+    monkeypatch.setattr(local_ingest, "_DENSE_SIZE_THRESHOLD", 0)
+    monkeypatch.setattr(local_ingest, "_DENSE_LINE_THRESHOLD", 0)
+
+    def failing_segments(*args, **kwargs):
+        raise ValueError("No numeric samples detected across ASCII segments")
+
+    monkeypatch.setattr(local_ingest, "parse_ascii_segments", failing_segments)
+
+    content = dedent(
+        """
+        wavelength (nm), irradiance (W/m^2/nm)
+        202,0.0097
+        202.001,0.0098
+        202.002,0.0099
+        """
+    ).encode("utf-8")
+
+    payload = ingest_local_file("sun.csv", content)
+
+    assert payload["wavelength_nm"] == pytest.approx([202.0, 202.001, 202.002])
+    fallback = payload.get("provenance", {}).get("dense_parser_fallback")
+    assert fallback["method"] == "read_table"
+    assert "No numeric samples" in fallback["error"]
+
+
+def test_zip_dense_parser_fallback(monkeypatch):
+    def failing_segments(*args, **kwargs):
+        raise ValueError("No numeric samples detected across ASCII segments")
+
+    monkeypatch.setattr(local_ingest, "parse_ascii_segments", failing_segments)
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr(
+            "segment.txt",
+            "wavelength (nm),flux\n202,0.01\n202.1,0.011\n202.2,0.012\n",
+        )
+
+    payload = ingest_local_file("sun_segments.zip", buffer.getvalue())
+
+    assert payload["wavelength_nm"] == pytest.approx([202.0, 202.1, 202.2])
+    metadata = payload.get("metadata", {})
+    assert metadata.get("segments") == ["segment.txt"]
+    fallback = payload.get("provenance", {}).get("dense_parser_fallback")
+    assert fallback["selected_segment"] == "segment.txt"
+
+
+def test_reject_metadata_like_tables():
+    content = dedent(
+        """
+        RA (2000),DEC (2000)
+        10,20
+        30,40
+        """
+    ).encode("utf-8")
+
+    with pytest.raises(local_ingest.LocalIngestError) as excinfo:
+        ingest_local_file("metadata.csv", content)
+
+    assert "contains only" in str(excinfo.value)
 
 
 def test_ingest_local_fits_enriches_metadata():
