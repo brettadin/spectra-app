@@ -799,23 +799,12 @@ def _render_differential_section(container: DeltaGenerator) -> None:
         container.caption("Traces are regridded onto the reference before subtracting.")
 
 
-def _render_similarity_sidebar() -> None:
-    target = st
-    target.markdown("#### Similarity settings")
-    metric_options = ["cosine", "rmse", "xcorr", "line_match"]
-    current_metrics = st.session_state.get("similarity_metrics", metric_options)
-    metrics = target.multiselect(
 def _render_similarity_sidebar(container: Optional[DeltaGenerator] = None) -> None:
     target = container or st
     target.markdown("#### Similarity settings")
     metric_options = ["cosine", "rmse", "xcorr", "line_match"]
     current_metrics = st.session_state.get("similarity_metrics", metric_options)
     metrics = target.multiselect(
-def _render_similarity_sidebar(container: DeltaGenerator) -> None:
-    container.markdown("#### Similarity settings")
-    metric_options = ["cosine", "rmse", "xcorr", "line_match"]
-    current_metrics = st.session_state.get("similarity_metrics", metric_options)
-    metrics = container.multiselect(
         "Metrics",
         options=metric_options,
         default=current_metrics if current_metrics else metric_options[:1],
@@ -829,7 +818,6 @@ def _render_similarity_sidebar(container: DeltaGenerator) -> None:
     if primary not in metrics:
         primary = metrics[0]
     st.session_state["similarity_primary_metric"] = target.selectbox(
-    st.session_state["similarity_primary_metric"] = container.selectbox(
         "Primary metric",
         metrics,
         index=metrics.index(primary),
@@ -837,7 +825,6 @@ def _render_similarity_sidebar(container: DeltaGenerator) -> None:
     )
 
     line_peaks = target.slider(
-    line_peaks = container.slider(
         "Line peak count",
         min_value=3,
         max_value=20,
@@ -855,8 +842,6 @@ def _render_similarity_sidebar(container: DeltaGenerator) -> None:
         norm_labels,
         index=norm_labels.index(current_label),
     )
-    selection = target.selectbox("Similarity normalization", norm_labels, index=norm_labels.index(current_label))
-    selection = container.selectbox("Similarity normalization", norm_labels, index=norm_labels.index(current_label))
     st.session_state["similarity_normalization"] = norm_codes[selection]
 
 
@@ -876,8 +861,6 @@ def _render_settings_group(container: DeltaGenerator) -> None:
     _render_display_section(container)
     container.divider()
     _render_differential_section(container)
-    with container.expander("Similarity settings", expanded=False):
-        _render_similarity_sidebar()
     with container.expander("Similarity settings", expanded=False) as similarity_panel:
         _render_similarity_sidebar(similarity_panel)
 
