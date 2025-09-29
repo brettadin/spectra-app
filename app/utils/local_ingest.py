@@ -470,4 +470,8 @@ def ingest_local_file(name: str, content: bytes) -> Dict[str, object]:
         "cache_dataset_id": metadata.get("cache_dataset_id"),
     }
 
+    additional = parsed.get("additional_traces")
+    if isinstance(additional, list) and additional:
+        payload["additional_traces"] = additional
+
     return payload
