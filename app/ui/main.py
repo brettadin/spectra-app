@@ -2334,9 +2334,6 @@ def _render_differential_tab() -> None:
             step=100,
             value=sample_default,
         )
-
-        submitted = st.form_submit_button("Compute differential", width="stretch")
-
         submitted = st.form_submit_button(
             "Compute differential", use_container_width=True
         )
