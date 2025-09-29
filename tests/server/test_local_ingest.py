@@ -106,11 +106,11 @@ def test_ingest_local_ascii_multiple_flux_columns():
 def test_ingest_local_ascii_filters_non_flux_numeric_columns():
     content = dedent(
         """
-        Wavelength (nm),Flux (10^-16 erg/s/cm^2/Å),Continuum (10^-16 erg/s/cm^2/Å),Temperature (K),Quality Flag
-        400,0.10,0.12,5000,0
-        405,0.12,0.11,5050,1
-        410,0.08,0.09,5075,0
-        415,0.09,0.10,5100,0
+        Wavelength (nm),Flux (10^-16 erg/s/cm^2/Å),Continuum (10^-16 erg/s/cm^2/Å),Sun,Temperature (K),Quality Flag,Radial Velocity (km/s)
+        400,0.10,0.12,1.0,5000,0,30
+        405,0.12,0.11,1.0,5050,1,32
+        410,0.08,0.09,1.0,5075,0,31
+        415,0.09,0.10,1.0,5100,0,29
         """
     ).strip()
 
@@ -132,7 +132,12 @@ def test_ingest_local_ascii_filters_non_flux_numeric_columns():
     continuum_entry = extras[0]
     assert continuum_entry["flux"] == [0.12, 0.11, 0.09, 0.10]
 
-    non_flux_headers = {"Temperature (K)", "Quality Flag"}
+    non_flux_headers = {
+        "Temperature (K)",
+        "Quality Flag",
+        "Sun",
+        "Radial Velocity (km/s)",
+    }
     for header in non_flux_headers:
         assert header not in labels
 

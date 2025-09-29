@@ -116,10 +116,14 @@ _FLUX_LABEL_KEYWORDS = {
     "irradiance",
     "radiance",
     "luminosity",
+    "luminance",
     "emission",
+    "emittance",
     "fnu",
     "flam",
     "surface",
+    "fluxdensity",
+    "spectralflux",
 }
 
 _FLUX_LABEL_SUBSTRINGS = {
@@ -132,18 +136,22 @@ _FLUX_LABEL_SUBSTRINGS = {
     "irradiance",
     "radiance",
     "luminos",
+    "lumin",
     "emission",
     "fnu",
     "flam",
     "count",
+    "fluxdens",
 }
 
 _FLUX_UNIT_KEYWORDS = {
     "erg",
+    "ergs",
     "jansky",
     "jy",
     "w/",
     "w m",
+    "watt",
     "photon",
     "photons",
     "count",
@@ -153,6 +161,44 @@ _FLUX_UNIT_KEYWORDS = {
     "intens",
     "radiance",
     "irradiance",
+    "nm^-1",
+    "hz^-1",
+    "cm^-2",
+    "sr^-1",
+    "/nm",
+}
+
+_NON_FLUX_LABEL_KEYWORDS = {
+    "airmass",
+    "air",
+    "altitude",
+    "azimuth",
+    "date",
+    "time",
+    "sun",
+    "moon",
+    "earth",
+    "target",
+    "object",
+    "quality",
+    "flag",
+    "mask",
+    "error",
+    "uncertainty",
+    "sigma",
+    "std",
+    "stdev",
+    "velocity",
+    "speed",
+    "km",
+    "kms",
+    "temperature",
+    "temp",
+    "exposure",
+    "seeing",
+    "angle",
+    "index",
+    "ratio",
 }
 
 
@@ -185,6 +231,9 @@ def _is_flux_like_label(label: str) -> bool:
     if not lowered:
         return False
     tokens = [token for token in re.split(r"[^a-z0-9]+", lowered) if token]
+    significant = [token for token in tokens if len(token) > 1]
+    if significant and all(token in _NON_FLUX_LABEL_KEYWORDS for token in significant):
+        return False
     for token in tokens:
         if token in _FLUX_LABEL_KEYWORDS:
             return True
