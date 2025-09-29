@@ -400,8 +400,8 @@ def _process_ingest_queue() -> None:
                 continue
 
             response = requests.get(resolved_url, timeout=60)
-                _add_overlay_from_url(url, label=label)
-                continue
+            _add_overlay_from_url(url, label=label)
+            continue
 
             response = requests.get(url, timeout=60)
             response.raise_for_status()
