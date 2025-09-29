@@ -1,11 +1,17 @@
 from types import SimpleNamespace
 
+
 import numpy as np
 
 import pytest
 
 from app.ui import main
 from app.utils.downsample import build_downsample_tiers
+
+import pytest
+
+from app.ui import main
+
 
 
 @pytest.fixture(autouse=True)
@@ -56,6 +62,7 @@ def test_add_overlay_payload_handles_additional_traces(reset_session_state):
     assert labels == {"Series", "Balmer", "Sum"}
 
 
+
 def test_overlay_sampling_respects_viewport_density(reset_session_state):
     wavelengths = np.linspace(300.0, 900.0, 5000, dtype=float)
     flux = np.exp(-0.5 * ((wavelengths - 600.0) / 20.0) ** 2)
@@ -83,3 +90,4 @@ def test_overlay_sampling_respects_viewport_density(reset_session_state):
     assert sampled_w[0] >= viewport[0] - 1e-6
     assert sampled_w[-1] <= viewport[1] + 1e-6
     assert sampled_f.size == sampled_w.size
+

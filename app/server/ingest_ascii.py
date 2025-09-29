@@ -552,7 +552,9 @@ def parse_ascii(
         tiers = build_downsample_tiers(
             np.asarray(wavelengths_extra, dtype=float),
             np.asarray(flux_extra, dtype=float),
+
             strategy="lttb",
+
         )
         extra_metadata = dict(metadata)
         extra_metadata["points"] = len(wavelengths_extra)
