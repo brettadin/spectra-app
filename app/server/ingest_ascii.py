@@ -432,6 +432,9 @@ def _detect_columns(df: pd.DataFrame) -> Tuple[str, str]:
 
     # Prefer flux-like columns (including irradiance/radiance style labels) and
     # use an explicit unit label as a tie-breaker when multiple candidates are present.
+    # The keyword list intentionally mirrors the heuristics in ``_is_flux_like_label``
+    # so that "spectral power", "spectral irradiance", and similar phrases outrank
+    # contextual columns such as "Sun" or "Observer" that may appear alongside them.
     flux_keywords = (
         "flux",
         "int",
@@ -440,25 +443,32 @@ def _detect_columns(df: pd.DataFrame) -> Tuple[str, str]:
         "brightness",
         "irradiance",
         "radiance",
+        "spectral power",
+        "spectral irradiance",
+        "spectral radiance",
+        "power density",
     )
-    spectral_tokens = ("power", "flux", "irradiance", "radiance")
-    best_score: Tuple[int, int, int] | None = None
+    spectral_tokens = {"power", "flux", "irradiance", "radiance"}
+    best_score: Tuple[int, int, int, int] | None = None
     best_flux = flux
     for idx, name in enumerate(columns):
         if name == wavelength:
             continue
 
-        if _is_flux_like_label(name):
-            flux = name
-            break
-
         label = str(name)
         lowered = label.lower()
+        tokens = [token for token in re.split(r"[^a-z0-9]+", lowered) if token]
+        token_set = set(tokens)
         keyword_match = any(keyword in lowered for keyword in flux_keywords)
-        if not keyword_match and "spectral" in lowered:
-            keyword_match = any(token in lowered for token in spectral_tokens)
+        if not keyword_match and "spectral" in token_set:
+            keyword_match = bool(spectral_tokens & token_set)
         unit_match = 1 if _extract_flux_unit_from_label(label) else 0
-        score = (1 if keyword_match else 0, unit_match, -idx)
+        score = (
+            1 if _is_flux_like_label(label) else 0,
+            1 if keyword_match else 0,
+            unit_match,
+            -idx,
+        )
         if best_score is None or score > best_score:
             best_score = score
             best_flux = name

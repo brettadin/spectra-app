@@ -164,6 +164,47 @@ def test_ingest_local_ascii_prefers_irradiance_column():
     assert parsed["metadata"]["flux_column"] == "Irradiance (W/m^2/nm)"
 
 
+@pytest.mark.parametrize(
+    "columns, expected",
+    [
+        (
+            ["Wavelength (nm)", "Sun", "Irradiance (W/m^2/nm)"],
+            "Irradiance (W/m^2/nm)",
+        ),
+        (
+            ["Wavelength (nm)", "Observer", "Spectral Power (W/m^2/nm)"],
+            "Spectral Power (W/m^2/nm)",
+        ),
+        (
+            ["Wavelength (nm)", "Solar Radiance"],
+            "Solar Radiance",
+        ),
+    ],
+)
+def test_ingest_local_ascii_prefers_flux_keyword_variants(columns, expected):
+    header = ",".join(columns)
+    rows = []
+    wavelengths = [400, 405, 410]
+    for idx, wavelength in enumerate(wavelengths):
+        values = [str(wavelength)]
+        for col_idx in range(1, len(columns)):
+            values.append(f"{0.1 + 0.05 * (idx + col_idx):.2f}")
+        rows.append(",".join(values))
+
+    content = "\n".join([header, *rows])
+
+    dataframe = pd.read_csv(io.StringIO(content))
+    parsed = parse_ascii(
+        dataframe,
+        content_bytes=content.encode("utf-8"),
+        column_labels=list(dataframe.columns),
+        filename="solar_variants.csv",
+    )
+
+    assert parsed["flux"] == dataframe[expected].tolist()
+    assert parsed["metadata"]["flux_column"] == expected
+
+
 def test_parse_ascii_segments_handles_variable_whitespace():
     segment = dedent(
         """
