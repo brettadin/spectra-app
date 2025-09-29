@@ -53,6 +53,14 @@ def render_targets_panel(
         manifest = json.loads(man_path.read_text())
         summary = manifest.get("summaries", {}).get("auto", "")
         expander.markdown(f"**{manifest['canonical_name']}** — {summary}")
+        mast_summary = manifest.get("datasets", {}).get("mast_summary", {})
+        if mast_summary:
+            total_obs = mast_summary.get("total_count")
+            returned_obs = mast_summary.get("returned_count")
+            if mast_summary.get("truncated") and total_obs and returned_obs is not None:
+                expander.caption(
+                    f"Showing {returned_obs} curated MAST observations from {total_obs} total results."
+                )
         # Show MAST products with quick-add buttons
         mast_products, total_count, truncated = _extract_mast_products(manifest)
         if mast_products:

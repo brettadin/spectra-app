@@ -15,6 +15,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
+from streamlit.delta_generator import DeltaGenerator
 
 from app._version import get_version_info
 from app.archive_ui import ArchiveUI
@@ -605,110 +606,110 @@ def _load_example_preview(spec: ExampleSpec, *, allow_network: bool) -> Optional
     return preview
 
 
-def _render_examples_group() -> None:
-    with st.sidebar.expander("Examples", expanded=False):
-        if not EXAMPLE_LIBRARY:
-            st.caption("Example library unavailable.")
-            return
+def _render_examples_group(container: DeltaGenerator) -> None:
+    container.markdown("#### Examples")
+    if not EXAMPLE_LIBRARY:
+        container.caption("Example library unavailable.")
+        return
 
-        st.button(
-            "Browse example library",
-            key="example_browser_open",
-            help="Open the example browser to search curated spectra.",
-            on_click=lambda: st.session_state.__setitem__("example_browser_visible", True),
+    container.button(
+        "Browse example library",
+        key="example_browser_open",
+        help="Open the example browser to search curated spectra.",
+        on_click=lambda: st.session_state.__setitem__("example_browser_visible", True),
+    )
+
+    quick_form = container.form("example_quick_add_form")
+    selection = quick_form.selectbox(
+        "Quick add",
+        EXAMPLE_LIBRARY,
+        format_func=lambda spec: spec.label,
+        key="example_quick_add_select",
+    )
+    quick_form.caption(selection.description)
+    submitted = quick_form.form_submit_button("Load example")
+    if submitted:
+        added, message = _load_example(selection)
+        (container.success if added else container.info)(message)
+
+    favourites = _resolve_examples(st.session_state.get("example_favourites", []))
+    if favourites:
+        fav_form = container.form("example_favourites_form")
+        favourite = fav_form.selectbox(
+            "Favourites",
+            favourites,
+            format_func=lambda spec: spec.label,
+            key="example_favourite_select",
         )
+        fav_submit = fav_form.form_submit_button("Load favourite")
+        if fav_submit:
+            added, message = _load_example(favourite)
+            (container.success if added else container.info)(message)
+    else:
+        container.caption("Mark favourites in the browser to pin them here.")
 
-        with st.form("example_quick_add_form"):
-            selection = st.selectbox(
-                "Quick add",
-                EXAMPLE_LIBRARY,
-                format_func=lambda spec: spec.label,
-                key="example_quick_add_select",
-            )
-            st.caption(selection.description)
-            submitted = st.form_submit_button("Load example")
-        if submitted:
-            added, message = _load_example(selection)
-            (st.success if added else st.info)(message)
+    recents = _resolve_examples(st.session_state.get("example_recent", []))
+    if recents:
+        recent_form = container.form("example_recent_form")
+        recent = recent_form.selectbox(
+            "Recent",
+            recents,
+            format_func=lambda spec: spec.label,
+            key="example_recent_select",
+        )
+        recent_submit = recent_form.form_submit_button("Reload recent")
+        if recent_submit:
+            added, message = _load_example(recent)
+            (container.success if added else container.info)(message)
 
-        favourites = _resolve_examples(st.session_state.get("example_favourites", []))
-        if favourites:
-            with st.form("example_favourites_form"):
-                favourite = st.selectbox(
-                    "Favourites",
-                    favourites,
-                    format_func=lambda spec: spec.label,
-                    key="example_favourite_select",
-                )
-                fav_submit = st.form_submit_button("Load favourite")
-            if fav_submit:
-                added, message = _load_example(favourite)
-                (st.success if added else st.info)(message)
-        else:
-            st.caption("Mark favourites in the browser to pin them here.")
-
-        recents = _resolve_examples(st.session_state.get("example_recent", []))
-        if recents:
-            with st.form("example_recent_form"):
-                recent = st.selectbox(
-                    "Recent",
-                    recents,
-                    format_func=lambda spec: spec.label,
-                    key="example_recent_select",
-                )
-                recent_submit = st.form_submit_button("Reload recent")
-            if recent_submit:
-                added, message = _load_example(recent)
-                (st.success if added else st.info)(message)
-
-        overlays = _get_overlays()
-        if overlays:
-            options = [trace.trace_id for trace in overlays]
-            current = st.session_state.get("reference_trace_id")
-            try:
-                index = options.index(current) if current in options else 0
-            except ValueError:
-                index = 0
-            st.session_state["reference_trace_id"] = st.selectbox(
-                "Reference trace",
-                options,
-                index=index,
-                format_func=_trace_label,
-                key="reference_trace_select",
-            )
-            if st.button("Clear overlays", key="clear_overlays_button"):
-                _clear_overlays()
-                st.warning("Cleared all overlays.")
-        else:
-            st.caption("Load an example or fetch from an archive to begin.")
+    overlays = _get_overlays()
+    if overlays:
+        options = [trace.trace_id for trace in overlays]
+        current = st.session_state.get("reference_trace_id")
+        try:
+            index = options.index(current) if current in options else 0
+        except ValueError:
+            index = 0
+        st.session_state["reference_trace_id"] = container.selectbox(
+            "Reference trace",
+            options,
+            index=index,
+            format_func=_trace_label,
+            key="reference_trace_select",
+        )
+        if container.button("Clear overlays", key="clear_overlays_button"):
+            _clear_overlays()
+            container.warning("Cleared all overlays.")
+    else:
+        container.caption("Load an example or fetch from an archive to begin.")
 
 
-def _render_line_catalog_group() -> None:
-    with st.sidebar.expander("Line catalogs", expanded=False):
-        online = bool(st.session_state.get("network_available", True))
-        if not online:
-            st.caption("Using local cache")
-            st.info("NIST lookups are unavailable while offline.")
-            return
-        st.markdown("#### NIST ASD lines")
-        _render_nist_form()
+def _render_line_catalog_group(container: DeltaGenerator) -> None:
+    online = bool(st.session_state.get("network_available", True))
+    container.markdown("#### Line catalogs")
+    if not online:
+        container.caption("Using local cache")
+        container.info("NIST lookups are unavailable while offline.")
+        return
+    container.markdown("NIST ASD lines")
+    _render_nist_form(container)
 
 
-def _render_nist_form() -> None:
-    with st.sidebar.form("nist_overlay_form", clear_on_submit=False):
-        identifier = st.text_input("Element or spectrum", placeholder="e.g. Fe II")
-        lower = st.number_input("Lower λ (nm)", min_value=0.0, value=380.0, step=5.0)
-        upper = st.number_input("Upper λ (nm)", min_value=0.0, value=750.0, step=5.0)
-        use_ritz = st.checkbox("Prefer Ritz wavelengths", value=True)
-        submitted = st.form_submit_button("Fetch lines")
+def _render_nist_form(container: DeltaGenerator) -> None:
+    form = container.form("nist_overlay_form", clear_on_submit=False)
+    identifier = form.text_input("Element or spectrum", placeholder="e.g. Fe II")
+    lower = form.number_input("Lower λ (nm)", min_value=0.0, value=380.0, step=5.0)
+    upper = form.number_input("Upper λ (nm)", min_value=0.0, value=750.0, step=5.0)
+    use_ritz = form.checkbox("Prefer Ritz wavelengths", value=True)
+    submitted = form.form_submit_button("Fetch lines")
     if not submitted:
         return
     identifier = (identifier or "").strip()
     if not identifier:
-        st.sidebar.warning("Enter an element identifier.")
+        container.warning("Enter an element identifier.")
         return
     if math.isclose(lower, upper):
-        st.sidebar.warning("Lower and upper bounds must differ.")
+        container.warning("Lower and upper bounds must differ.")
         return
     try:
         result = fetch_spectrum(
@@ -720,19 +721,19 @@ def _render_nist_form() -> None:
             use_ritz=use_ritz,
         )
     except (FetchError, ValueError, RuntimeError) as exc:
-        st.sidebar.error(f"NIST fetch failed: {exc}")
+        container.error(f"NIST fetch failed: {exc}")
         return
     payload = _convert_nist_payload(result)
     if not payload:
-        st.sidebar.warning("NIST returned no lines for that query.")
+        container.warning("NIST returned no lines for that query.")
         return
     added, message = _add_overlay_payload(payload)
-    (st.sidebar.success if added else st.sidebar.info)(message)
+    (container.success if added else container.info)(message)
 
 
-def _render_display_section() -> None:
-    st.sidebar.markdown("#### Display & viewport")
-    units = st.sidebar.selectbox(
+def _render_display_section(container: DeltaGenerator) -> None:
+    container.markdown("#### Display & viewport")
+    units = container.selectbox(
         "Wavelength units",
         ["nm", "Å", "µm", "cm^-1"],
         index=["nm", "Å", "µm", "cm^-1"].index(st.session_state.get("display_units", "nm")),
@@ -741,14 +742,14 @@ def _render_display_section() -> None:
     display_mode_options = ["Flux (raw)", "Flux (normalized)"]
     current_mode = st.session_state.get("display_mode", "Flux (raw)")
     mode_index = display_mode_options.index(current_mode) if current_mode in display_mode_options else 0
-    st.session_state["display_mode"] = st.sidebar.selectbox("Flux scaling", display_mode_options, index=mode_index)
+    st.session_state["display_mode"] = container.selectbox("Flux scaling", display_mode_options, index=mode_index)
 
     overlays = _get_overlays()
     target_overlays = [trace for trace in overlays if trace.visible] or overlays
     min_bound, max_bound = _infer_viewport_bounds(target_overlays)
     if math.isclose(min_bound, max_bound):
         max_bound = min_bound + 1.0
-    auto = st.sidebar.checkbox("Auto viewport", value=bool(st.session_state.get("auto_viewport", True)))
+    auto = container.checkbox("Auto viewport", value=bool(st.session_state.get("auto_viewport", True)))
     st.session_state["auto_viewport"] = auto
     if auto:
         st.session_state["viewport_nm"] = (None, None)
@@ -763,7 +764,7 @@ def _render_display_section() -> None:
         default_high = min(float(max_bound), float(default_high))
         if default_low >= default_high:
             default_low, default_high = float(min_bound), float(max_bound)
-    selection = st.sidebar.slider(
+    selection = container.slider(
         "Viewport (nm)",
         min_value=float(min_bound),
         max_value=float(max_bound),
@@ -773,8 +774,8 @@ def _render_display_section() -> None:
     st.session_state["viewport_nm"] = (float(selection[0]), float(selection[1]))
 
 
-def _render_differential_section() -> None:
-    st.sidebar.markdown("#### Differential & normalization")
+def _render_differential_section(container: DeltaGenerator) -> None:
+    container.markdown("#### Differential & normalization")
     norm_map = {
         "Unit vector (L2)": "unit",
         "Peak normalised": "max",
@@ -787,22 +788,23 @@ def _render_differential_section() -> None:
         index = norm_labels.index(next(label for label, code in norm_map.items() if code == current_norm))
     except StopIteration:
         index = 0
-    selection = st.sidebar.selectbox("Normalization", norm_labels, index=index)
+    selection = container.selectbox("Normalization", norm_labels, index=index)
     st.session_state["normalization_mode"] = norm_map[selection]
 
     diff_options = ["Off", "Relative to reference"]
     diff_mode = st.session_state.get("differential_mode", "Off")
     diff_index = diff_options.index(diff_mode) if diff_mode in diff_options else 0
-    st.session_state["differential_mode"] = st.sidebar.selectbox("Differential mode", diff_options, index=diff_index)
+    st.session_state["differential_mode"] = container.selectbox("Differential mode", diff_options, index=diff_index)
     if st.session_state["differential_mode"] != "Off":
-        st.sidebar.caption("Traces are regridded onto the reference before subtracting.")
+        container.caption("Traces are regridded onto the reference before subtracting.")
 
 
-def _render_similarity_sidebar() -> None:
-    st.sidebar.markdown("#### Similarity settings")
+def _render_similarity_sidebar(container: Optional[DeltaGenerator] = None) -> None:
+    target = container or st
+    target.markdown("#### Similarity settings")
     metric_options = ["cosine", "rmse", "xcorr", "line_match"]
     current_metrics = st.session_state.get("similarity_metrics", metric_options)
-    metrics = st.sidebar.multiselect(
+    metrics = target.multiselect(
         "Metrics",
         options=metric_options,
         default=current_metrics if current_metrics else metric_options[:1],
@@ -815,14 +817,14 @@ def _render_similarity_sidebar() -> None:
     primary = st.session_state.get("similarity_primary_metric", metrics[0])
     if primary not in metrics:
         primary = metrics[0]
-    st.session_state["similarity_primary_metric"] = st.sidebar.selectbox(
-        "Primary matrix",
+    st.session_state["similarity_primary_metric"] = target.selectbox(
+        "Primary metric",
         metrics,
         index=metrics.index(primary),
         format_func=lambda m: m.replace("_", " ").title(),
     )
 
-    line_peaks = st.sidebar.slider(
+    line_peaks = target.slider(
         "Line peak count",
         min_value=3,
         max_value=20,
@@ -835,26 +837,27 @@ def _render_similarity_sidebar() -> None:
     norm_codes = {"Unit vector (L2)": "unit", "Peak normalised": "max", "Z-score": "zscore", "None": "none"}
     current_code = st.session_state.get("similarity_normalization", st.session_state.get("normalization_mode", "unit"))
     current_label = next((label for label, code in norm_codes.items() if code == current_code), norm_labels[0])
-    selection = st.sidebar.selectbox("Similarity normalization", norm_labels, index=norm_labels.index(current_label))
+    selection = target.selectbox("Similarity normalization", norm_labels, index=norm_labels.index(current_label))
     st.session_state["similarity_normalization"] = norm_codes[selection]
 
 
-def _render_settings_group() -> None:
-    with st.sidebar.expander("Settings", expanded=False):
-        online = st.checkbox(
-            "Network available",
-            value=bool(st.session_state.get("network_available", True)),
-            key="network_available_toggle",
-            help="Disable to work offline using cached data only.",
-        )
-        st.session_state["network_available"] = bool(online)
-        if not online:
-            st.caption("Using local cache for remote fetches.")
-        st.divider()
-        _render_display_section()
-        st.divider()
-        _render_differential_section()
-        st.divider()
+def _render_settings_group(container: DeltaGenerator) -> None:
+    container.markdown("### Session controls")
+    online = container.checkbox(
+        "Enable archive fetchers",
+        value=bool(st.session_state.get("network_available", True)),
+        key="network_available_toggle",
+        help="Disable to work offline using cached data only.",
+    )
+    st.session_state["network_available"] = bool(online)
+    if not online:
+        container.caption("Using local cache for remote fetches.")
+
+    container.divider()
+    _render_display_section(container)
+    container.divider()
+    _render_differential_section(container)
+    with container.expander("Similarity settings", expanded=False):
         _render_similarity_sidebar()
 
 
@@ -873,90 +876,89 @@ def _render_example_browser() -> None:
     )
 
 
-def _render_uploads_group() -> None:
-    with st.sidebar.expander("Uploads", expanded=False):
-        st.markdown("#### Duplicate handling")
-        base_options = {"skip": "Skip duplicates (session)", "allow": "Allow duplicates"}
-        base_code = st.session_state.get("duplicate_base_policy", "skip")
-        base_labels = list(base_options.values())
-        try:
-            base_index = [code for code in base_options.keys()].index(base_code)
-        except ValueError:
-            base_index = 0
-        base_selection = st.radio(
-            "Session policy",
-            base_labels,
-            index=base_index,
-            key="duplicate_base_policy_radio",
-        )
-        resolved_base = next(
-            code for code, label in base_options.items() if label == base_selection
-        )
-        st.session_state["duplicate_base_policy"] = resolved_base
-        if not st.session_state.get("duplicate_ledger_lock", False):
-            st.session_state["duplicate_policy"] = resolved_base
+def _render_uploads_group(container: DeltaGenerator) -> None:
+    container.markdown("#### Duplicate handling")
+    base_options = {"skip": "Skip duplicates (session)", "allow": "Allow duplicates"}
+    base_code = st.session_state.get("duplicate_base_policy", "skip")
+    base_labels = list(base_options.values())
+    try:
+        base_index = [code for code in base_options.keys()].index(base_code)
+    except ValueError:
+        base_index = 0
+    base_selection = container.radio(
+        "Session policy",
+        base_labels,
+        index=base_index,
+        key="duplicate_base_policy_radio",
+    )
+    resolved_base = next(
+        code for code, label in base_options.items() if label == base_selection
+    )
+    st.session_state["duplicate_base_policy"] = resolved_base
+    if not st.session_state.get("duplicate_ledger_lock", False):
+        st.session_state["duplicate_policy"] = resolved_base
 
-        lock_state = bool(st.session_state.get("duplicate_ledger_lock", False))
-        pending = st.session_state.get("duplicate_ledger_pending_action")
-        checkbox_value = st.checkbox(
-            "Enforce ledger lock",
-            value=lock_state if pending is None else (pending == "enable"),
-            key="duplicate_ledger_lock_checkbox",
-            help="Persist duplicate fingerprints across sessions using the ledger.",
+    lock_state = bool(st.session_state.get("duplicate_ledger_lock", False))
+    pending = st.session_state.get("duplicate_ledger_pending_action")
+    checkbox_value = container.checkbox(
+        "Enforce ledger lock",
+        value=lock_state if pending is None else (pending == "enable"),
+        key="duplicate_ledger_lock_checkbox",
+        help="Persist duplicate fingerprints across sessions using the ledger.",
+    )
+
+    if pending is None and checkbox_value != lock_state:
+        st.session_state["duplicate_ledger_pending_action"] = (
+            "enable" if checkbox_value else "disable"
         )
+        pending = st.session_state["duplicate_ledger_pending_action"]
 
-        if pending is None and checkbox_value != lock_state:
-            st.session_state["duplicate_ledger_pending_action"] = (
-                "enable" if checkbox_value else "disable"
+    pending = st.session_state.get("duplicate_ledger_pending_action")
+    if pending == "enable":
+        container.warning(
+            "Enable ledger lock to enforce duplicate detection against the persistent ledger."
+        )
+        confirm_col, cancel_col = container.columns(2)
+        if confirm_col.button("Confirm lock", key="confirm_ledger_enable"):
+            st.session_state["duplicate_ledger_lock"] = True
+            st.session_state["duplicate_policy"] = "ledger"
+            st.session_state["duplicate_ledger_pending_action"] = None
+            st.session_state["duplicate_ledger_lock_checkbox"] = True
+            container.success("Ledger lock enabled.")
+        if cancel_col.button("Cancel", key="cancel_ledger_enable"):
+            st.session_state["duplicate_ledger_pending_action"] = None
+            st.session_state["duplicate_ledger_lock_checkbox"] = False
+    elif pending == "disable":
+        container.warning(
+            "Disable ledger lock? New duplicates will follow the session policy."
+        )
+        confirm_col, cancel_col = container.columns(2)
+        if confirm_col.button("Disable lock", key="confirm_ledger_disable"):
+            st.session_state["duplicate_ledger_lock"] = False
+            st.session_state["duplicate_policy"] = st.session_state.get(
+                "duplicate_base_policy", "skip"
             )
-            pending = st.session_state["duplicate_ledger_pending_action"]
-
-        pending = st.session_state.get("duplicate_ledger_pending_action")
-        if pending == "enable":
-            st.warning(
-                "Enable ledger lock to enforce duplicate detection against the persistent ledger."
+            st.session_state["duplicate_ledger_pending_action"] = None
+            st.session_state["duplicate_ledger_lock_checkbox"] = False
+            container.info("Ledger lock disabled.")
+        if cancel_col.button("Keep lock", key="cancel_ledger_disable"):
+            st.session_state["duplicate_ledger_pending_action"] = None
+            st.session_state["duplicate_ledger_lock_checkbox"] = True
+    else:
+        if st.session_state.get("duplicate_ledger_lock", False):
+            container.caption(
+                "Ledger lock is active; duplicates are validated against the persistent ledger."
             )
-            confirm_col, cancel_col = st.columns(2)
-            if confirm_col.button("Confirm lock", key="confirm_ledger_enable"):
-                st.session_state["duplicate_ledger_lock"] = True
-                st.session_state["duplicate_policy"] = "ledger"
-                st.session_state["duplicate_ledger_pending_action"] = None
-                st.session_state["duplicate_ledger_lock_checkbox"] = True
-                st.success("Ledger lock enabled.")
-            if cancel_col.button("Cancel", key="cancel_ledger_enable"):
-                st.session_state["duplicate_ledger_pending_action"] = None
-                st.session_state["duplicate_ledger_lock_checkbox"] = False
-        elif pending == "disable":
-            st.warning(
-                "Disable ledger lock? New duplicates will follow the session policy."
-            )
-            confirm_col, cancel_col = st.columns(2)
-            if confirm_col.button("Disable lock", key="confirm_ledger_disable"):
-                st.session_state["duplicate_ledger_lock"] = False
-                st.session_state["duplicate_policy"] = st.session_state.get(
-                    "duplicate_base_policy", "skip"
-                )
-                st.session_state["duplicate_ledger_pending_action"] = None
-                st.session_state["duplicate_ledger_lock_checkbox"] = False
-                st.info("Ledger lock disabled.")
-            if cancel_col.button("Keep lock", key="cancel_ledger_disable"):
-                st.session_state["duplicate_ledger_pending_action"] = None
-                st.session_state["duplicate_ledger_lock_checkbox"] = True
+            if container.button(
+                "Undo session ledger entries", key="purge_session_ledger"
+            ):
+                ledger: DuplicateLedger = st.session_state["duplicate_ledger"]
+                ledger.purge_session(st.session_state.get("session_id"))
+                container.success("Session ledger entries cleared.")
         else:
-            if st.session_state.get("duplicate_ledger_lock", False):
-                st.caption(
-                    "Ledger lock is active; duplicates are validated against the persistent ledger."
-                )
-                if st.button(
-                    "Undo session ledger entries", key="purge_session_ledger"
-                ):
-                    ledger: DuplicateLedger = st.session_state["duplicate_ledger"]
-                    ledger.purge_session(st.session_state.get("session_id"))
-                    st.success("Session ledger entries cleared.")
-            else:
-                st.caption(
-                    "Duplicates will follow the selected session policy."
-                )
+            container.caption(
+                "Duplicates will follow the selected session policy."
+            )
 
 # ---------------------------------------------------------------------------
 # Overlay rendering helpers
@@ -2181,11 +2183,19 @@ def render() -> None:
     st.caption(" • ".join(part for part in caption_parts if part))
 
     _render_example_browser()
-    _render_examples_group()
-    _render_line_catalog_group()
-    render_targets_panel(expanded=False)
-    _render_uploads_group()
-    _render_settings_group()
+    sidebar = st.sidebar
+    controls_panel = sidebar.container()
+    _render_settings_group(controls_panel)
+
+    data_panel = sidebar.expander("Data library", expanded=False)
+    with data_panel:
+        _render_examples_group(data_panel)
+        data_panel.divider()
+        render_targets_panel(expanded=False, sidebar=data_panel)
+        data_panel.divider()
+        _render_line_catalog_group(data_panel)
+        data_panel.divider()
+        _render_uploads_group(data_panel)
 
     overlay_tab, diff_tab, archive_tab, docs_tab = st.tabs(["Overlay", "Differential", "Archive", "Docs & Provenance"])
     with overlay_tab:
