@@ -36,3 +36,18 @@ def test_differential_form_has_single_submit_button():
 
     # The form should render without raising a DuplicateWidgetID error from
     # multiple submit buttons with identical labels/keys.
+
+    from collections import deque
+
+    button_nodes = []
+    queue: deque = deque([app._tree.root])
+    while queue:
+        node = queue.popleft()
+        node_type = getattr(node, "type", None)
+        if node_type == "button" and getattr(node, "form_id", None) == "differential_compute_form":
+            button_nodes.append(node)
+        children = getattr(node, "children", None)
+        if isinstance(children, dict):
+            queue.extend(children.values())
+
+    assert len(button_nodes) == 1

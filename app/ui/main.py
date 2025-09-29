@@ -2307,36 +2307,38 @@ def _render_differential_tab() -> None:
 
     sample_default = int(st.session_state.get("differential_sample_points", 2000))
 
-    with st.form("differential_compute_form"):
-        col_a, col_b = st.columns(2)
-        trace_a_id = col_a.selectbox(
-            "Trace A",
-            options,
-            index=options.index(default_a),
-            format_func=_trace_label,
-        )
-        trace_b_id = col_b.selectbox(
-            "Trace B",
-            options,
-            index=options.index(default_b),
-            format_func=_trace_label,
-        )
-        col_op, col_samples = st.columns(2)
-        operation_label = col_op.selectbox(
-            "Operation",
-            operation_labels,
-            index=operation_labels.index(default_operation),
-        )
-        sample_points = col_samples.slider(
-            "Resample points",
-            min_value=300,
-            max_value=8000,
-            step=100,
-            value=sample_default,
-        )
-        submitted = st.form_submit_button(
-            "Compute differential", use_container_width=True
-        )
+    form = st.form("differential_compute_form")
+    col_a, col_b = form.columns(2)
+    trace_a_id = col_a.selectbox(
+        "Trace A",
+        options,
+        index=options.index(default_a),
+        format_func=_trace_label,
+    )
+    trace_b_id = col_b.selectbox(
+        "Trace B",
+        options,
+        index=options.index(default_b),
+        format_func=_trace_label,
+    )
+    col_op, col_samples = form.columns(2)
+    operation_label = col_op.selectbox(
+        "Operation",
+        operation_labels,
+        index=operation_labels.index(default_operation),
+    )
+    sample_points = col_samples.slider(
+        "Resample points",
+        min_value=300,
+        max_value=8000,
+        step=100,
+        value=sample_default,
+    )
+    submitted = form.form_submit_button(
+        "Compute differential",
+        use_container_width=True,
+        key="differential_compute_submit",
+    )
 
 
     result = st.session_state.get("differential_result")
