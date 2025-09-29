@@ -11,7 +11,9 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 from urllib.parse import quote, urlparse
 
+
 from urllib.parse import urlparse
+
 
 import numpy as np
 import pandas as pd
@@ -400,10 +402,13 @@ def _process_ingest_queue() -> None:
                 continue
 
             response = requests.get(resolved_url, timeout=60)
+
+
             _add_overlay_from_url(url, label=label)
             continue
 
             response = requests.get(url, timeout=60)
+
             response.raise_for_status()
 
             filename = derived_name or f"overlay-{uuid.uuid4().hex[:8]}"
@@ -428,6 +433,9 @@ def _process_ingest_queue() -> None:
             ingest_info["source_url"] = url
             if resolved_url and resolved_url != url:
                 ingest_info.setdefault("resolved_url", resolved_url)
+
+
+
 
             ingest_info.setdefault("label", label)
             provenance["ingest"] = ingest_info
@@ -1478,7 +1486,7 @@ def _render_overlay_table(overlays: Sequence[OverlayTrace]) -> None:
     editor = st.data_editor(
         table,
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
         column_config={
             "Visible": st.column_config.CheckboxColumn(
                 "Visible", help="Toggle overlay visibility", default=True
@@ -2216,7 +2224,7 @@ def _render_differential_result(result: Optional[DifferentialResult]) -> None:
     if result is None:
         return
     fig = _build_differential_figure(result)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
     grid = np.asarray(result.grid_nm, dtype=float)
     if grid.size:
         st.caption(
@@ -2282,9 +2290,13 @@ def _render_differential_tab() -> None:
             step=100,
             value=sample_default,
         )
+
+        submitted = st.form_submit_button("Compute differential", width="stretch")
+
         submitted = st.form_submit_button(
             "Compute differential", use_container_width=True
         )
+
 
     result = st.session_state.get("differential_result")
     if submitted:

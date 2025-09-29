@@ -5,6 +5,10 @@
 - Ledger lock is controlled via the `duplicate_ledger_lock` session variable; the checkbox only reflects state and no longer mutates widget keys.
 - The main loop now processes `ingest_queue` items by downloading spectra and passing them through the local ingest pipeline.
 
+- Local ingest rejects metadata-only tables (<3 samples) so overlays plotted from MAST products stay astrophysically plausible.
+
+
+
 ## Add new targets via `targets.yaml`
 1. Append the target metadata to `targets.yaml`, filling in identifiers and any curated product manifests.
 2. Run `python tools/build_registry.py --roster targets.yaml --out data_registry` to regenerate the catalog and per-target manifests.

@@ -338,6 +338,8 @@ def ingest_local_file(name: str, content: bytes) -> Dict[str, object]:
                         raise dense_exc from last_error
                     raise dense_exc
                 parsed = fallback_payload
+
+
                 if not (_should_fallback_to_table(dense_exc) and len(segments) == 1):
                     raise
                 segment_name, segment_payload = segments[0]
@@ -345,6 +347,7 @@ def ingest_local_file(name: str, content: bytes) -> Dict[str, object]:
                     parsed = _parse_ascii_table(segment_name, segment_payload)
                 except Exception as fallback_exc:
                     raise fallback_exc from dense_exc
+ 
         else:
             if _should_use_dense_parser(processed_name, payload):
                 try:
@@ -371,6 +374,8 @@ def ingest_local_file(name: str, content: bytes) -> Dict[str, object]:
                     parsed["provenance"] = provenance
             else:
                 parsed = _parse_ascii_with_table(processed_name, payload)
+
+
                 if not _should_fallback_to_table(dense_exc):
                         raise
                 try:
@@ -379,6 +384,7 @@ def ingest_local_file(name: str, content: bytes) -> Dict[str, object]:
                         raise fallback_exc from dense_exc
                 else:
                         parsed = _parse_ascii_table(processed_name, payload)
+
     except Exception as exc:
         raise LocalIngestError(f"Failed to ingest {original_name}: {exc}") from exc
 
@@ -439,12 +445,21 @@ def ingest_local_file(name: str, content: bytes) -> Dict[str, object]:
         len(parsed.get("wavelength_nm") or []), metadata, flux_unit
     )
 
+    wavelengths = list(parsed.get("wavelength_nm") or [])
+    flux_values = list(parsed.get("flux") or [])
+
+    if len(wavelengths) < 3 or len(flux_values) < 3:
+        raise LocalIngestError(
+            f"{original_name} contains only {min(len(wavelengths), len(flux_values))} samples; "
+            "expected a spectral table rather than metadata."
+        )
+
     payload = {
         "label": label,
         "provider": "LOCAL",
         "summary": summary,
-        "wavelength_nm": parsed.get("wavelength_nm") or [],
-        "flux": parsed.get("flux") or [],
+        "wavelength_nm": wavelengths,
+        "flux": flux_values,
         "flux_unit": flux_unit,
         "flux_kind": parsed.get("flux_kind") or "relative",
         "metadata": metadata,
