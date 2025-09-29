@@ -1,16 +1,16 @@
+import io
+from textwrap import dedent
 from types import SimpleNamespace
 
 
 import numpy as np
+import pandas as pd
 
 import pytest
 
+from app.server.ingest_ascii import parse_ascii
 from app.ui import main
 from app.utils.downsample import build_downsample_tiers
-
-import pytest
-
-from app.ui import main
 
 
 
@@ -22,44 +22,49 @@ def reset_session_state(monkeypatch):
 
 
 def test_add_overlay_payload_handles_additional_traces(reset_session_state):
+    content = dedent(
+        """
+        Wavelength (nm),Flux (arb),Continuum Flux (arb),Velocity (km/s)
+        400,0.10,0.05,30
+        405,0.12,0.06,32
+        410,0.08,0.07,31
+        415,0.09,0.08,29
+        """
+    ).strip()
+
+    dataframe = pd.read_csv(io.StringIO(content))
+    parsed = parse_ascii(
+        dataframe,
+        content_bytes=content.encode("utf-8"),
+        column_labels=list(dataframe.columns),
+        filename="series.csv",
+    )
+
     payload = {
         "label": "Series",
-        "wavelength_nm": [400.0, 405.0, 410.0, 415.0],
-        "flux": [0.10, 0.12, 0.08, 0.09],
-        "flux_unit": "arb",
-        "flux_kind": "relative",
-        "kind": "spectrum",
+        "wavelength_nm": parsed["wavelength_nm"],
+        "flux": parsed["flux"],
+        "flux_unit": parsed["flux_unit"],
+        "flux_kind": parsed["flux_kind"],
+        "kind": parsed["kind"],
+        "axis": parsed["axis"],
         "provider": "LOCAL",
-        "summary": "4 samples",
-        "additional_traces": [
-            {
-                "label": "Balmer",
-                "wavelength_nm": [400.0, 405.0, 410.0, 415.0],
-                "flux": [0.05, 0.06, 0.07, 0.08],
-                "flux_unit": "arb",
-                "flux_kind": "relative",
-                "axis": "emission",
-            },
-            {
-                "label": "Sum",
-                "wavelength_nm": [400.0, 405.0, 410.0, 415.0],
-                "flux": [0.15, 0.18, 0.15, 0.17],
-                "flux_unit": "arb",
-                "flux_kind": "relative",
-                "axis": "emission",
-            },
-        ],
+        "summary": f"{len(parsed['wavelength_nm'])} samples",
+        "additional_traces": parsed.get("additional_traces", []),
     }
+
+    assert payload["additional_traces"]
+    assert {entry["label"] for entry in payload["additional_traces"]} == {"Continuum Flux (arb)"}
 
     added, message = main._add_overlay_payload(payload)
 
     assert added is True
-    assert "added 2 additional series" in message
+    assert "added 1 additional series" in message
 
     overlays = main._get_overlays()
-    assert len(overlays) == 3
+    assert len(overlays) == 2
     labels = {trace.label for trace in overlays}
-    assert labels == {"Series", "Balmer", "Sum"}
+    assert labels == {"Series", "Continuum Flux (arb)"}
 
 
 
