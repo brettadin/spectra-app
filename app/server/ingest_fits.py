@@ -361,6 +361,30 @@ def _extract_table_data(
     unit_missing = not (wavelength_unit_hint and str(wavelength_unit_hint).strip())
     assumed_unit: Optional[str] = None
 
+
+    if unit_missing:
+        if _ctype_is_spectral(axis_type) or _label_suggests_wavelength(wavelength_col):
+            resolved_unit = "nm"
+            assumed_unit = "nm"
+        else:
+            axis_display = _coerce_header_value(axis_type) if axis_type is not None else None
+            raise ValueError(
+                "FITS table column "
+                f"{wavelength_col!r} does not advertise a spectral axis "
+                f"(CTYPE1={axis_display!r})."
+            )
+    else:
+        resolved_unit = _normalise_wavelength_unit(wavelength_unit_hint)
+
+    if not _unit_is_wavelength(resolved_unit):
+        unit_display = _coerce_header_value(wavelength_unit_hint) if wavelength_unit_hint else None
+        axis_display = _coerce_header_value(axis_type) if axis_type is not None else None
+        raise ValueError(
+            "FITS table column "
+            f"{wavelength_col!r} uses unsupported spectral unit "
+            f"{unit_display!r} (CTYPE1={axis_display!r})."
+        )
+
     if unit_missing:
         if _ctype_is_spectral(axis_type) or _label_suggests_wavelength(wavelength_col):
             resolved_unit = "nm"
@@ -419,6 +443,17 @@ def _extract_table_data(
             "FITS table ingestion yielded no positive wavelength samples."
         )
 
+    positive_wavelength_mask = wavelength_nm > 0
+    positive_count = int(np.count_nonzero(positive_wavelength_mask))
+    dropped_nonpositive_nm = int(wavelength_nm.size - positive_count)
+    if positive_count == 0:
+        raise ValueError(
+            "FITS table ingestion yielded no positive wavelengths after conversion to nm."
+        )
+
+    wavelength_nm = wavelength_nm[positive_wavelength_mask]
+    flux_values = flux_values[positive_wavelength_mask]
+
     provenance: Dict[str, object] = {
         "table_columns": column_names,
         "column_mapping": {"wavelength": wavelength_col, "flux": flux_col},
@@ -449,6 +484,9 @@ def _extract_table_data(
     if dropped_nonpositive_source:
         provenance["dropped_nonpositive_wavenumbers"] = dropped_nonpositive_source
 
+
+    if dropped_nonpositive:
+        provenance["dropped_nonpositive_wavenumbers"] = dropped_nonpositive
     if dropped_nonpositive_nm:
         provenance["dropped_nonpositive_wavelengths"] = dropped_nonpositive_nm
 
@@ -672,11 +710,25 @@ def _ingest_image_hdu(
 
     wavelength_nm = np.array(to_nm(wavelengths_raw.tolist(), resolved_unit), dtype=float)
 
+
     base_valid = (~mask_flat) & np.isfinite(flux_array) & np.isfinite(wavelength_nm)
     positive_mask = wavelength_nm > 0
     dropped_nonpositive = int(np.count_nonzero(base_valid & (~positive_mask)))
     valid = base_valid & positive_mask
 
+
+    positive_mask = wavelength_nm > 0
+    positive_count = int(np.count_nonzero(positive_mask))
+    dropped_nonpositive = int(positive_mask.size - positive_count)
+    if positive_count == 0:
+        raise ValueError("FITS image ingestion yielded no positive-wavelength samples.")
+
+    valid = (
+        positive_mask
+        & (~mask_flat)
+        & np.isfinite(flux_array)
+        & np.isfinite(wavelength_nm)
+    )
     flux_array = flux_array[valid]
     wavelength_nm = wavelength_nm[valid]
     if flux_array.size == 0:
