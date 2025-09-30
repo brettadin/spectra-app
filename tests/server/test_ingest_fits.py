@@ -156,8 +156,6 @@ def test_parse_fits_accepts_convertible_units_without_spectral_ctype(tmp_path):
     expected_wavelength_nm = [100.0 + i * 0.1 for i in range(flux_values.size)]
     assert result["wavelength_nm"] == pytest.approx(expected_wavelength_nm)
 
-
-
 def test_parse_fits_rejects_table_with_nonspectral_units(tmp_path):
     time = np.array([0.0, 1.0, 2.0], dtype=float)
     flux = np.array([10.0, 11.0, 12.0], dtype=float)
@@ -207,6 +205,13 @@ def test_parse_fits_assumes_nm_for_wavelength_column_without_units(tmp_path):
     assert unit_resolution.get("assumed_from") == "column_name"
 
 
+def test_parse_fits_table_drops_nonpositive_wavelengths(tmp_path):
+    wavelengths = np.array([-10.0, 0.0, 500.0], dtype=float)
+    flux = np.array([1.0, 2.0, 3.0], dtype=float)
+
+    columns = [
+        fits.Column(name="WAVELENGTH", array=wavelengths, format="D", unit="nm"),
+
 def test_parse_fits_rejects_table_with_nonpositive_wavelengths(tmp_path):
     wavelengths = np.array([-50.0, -10.0, 0.0], dtype=float)
     flux = np.array([1.0, 2.0, 3.0], dtype=float)
@@ -218,6 +223,25 @@ def test_parse_fits_rejects_table_with_nonpositive_wavelengths(tmp_path):
 
     table_hdu = fits.BinTableHDU.from_columns(columns)
     hdul = fits.HDUList([fits.PrimaryHDU(), table_hdu])
+    fits_path = tmp_path / "table_with_nonpositive_wavelengths.fits"
+    hdul.writeto(fits_path, overwrite=True)
+    hdul.close()
+
+    result = parse_fits(str(fits_path))
+
+    assert result["wavelength_nm"] == [500.0]
+    assert result["flux"] == [3.0]
+    provenance = result["provenance"]
+    assert provenance.get("dropped_nonpositive_wavelengths") == 2
+
+
+def test_parse_fits_table_rejects_all_nonpositive_wavelengths(tmp_path):
+    wavelengths = np.array([-10.0, 0.0, -5.0], dtype=float)
+    flux = np.array([1.0, 2.0, 3.0], dtype=float)
+
+    columns = [
+        fits.Column(name="WAVELENGTH", array=wavelengths, format="D", unit="nm"),
+
     fits_path = tmp_path / "negative_wavelength_table.fits"
     hdul.writeto(fits_path, overwrite=True)
     hdul.close()
@@ -264,6 +288,7 @@ def test_parse_fits_rejects_table_with_negative_wavelengths_microns(tmp_path):
 
     table_hdu = fits.BinTableHDU.from_columns(columns)
     hdul = fits.HDUList([fits.PrimaryHDU(), table_hdu])
+    fits_path = tmp_path / "table_all_nonpositive.fits"
     fits_path = tmp_path / "negative_wavelength_micron_table.fits"
     hdul.writeto(fits_path, overwrite=True)
     hdul.close()
@@ -272,6 +297,7 @@ def test_parse_fits_rejects_table_with_negative_wavelengths_microns(tmp_path):
         parse_fits(str(fits_path))
 
     message = str(excinfo.value)
+    assert "no positive wavelength samples" in message.lower()
     assert "no positive wavelengths" in message
     assert "conversion to nm" in message
 
@@ -280,6 +306,10 @@ def test_parse_fits_rejects_image_with_nonpositive_wavelengths(tmp_path):
     flux_values = np.array([1.0, 2.0, 3.0], dtype=float)
 
     sci_header = fits.Header()
+    sci_header["CRVAL1"] = -1.0
+    sci_header["CDELT1"] = -1.0
+    sci_header["CRPIX1"] = 1.0
+    sci_header["CTYPE1"] = "AWAV"
     sci_header["CRVAL1"] = -5.0
     sci_header["CDELT1"] = 1.0
     sci_header["CRPIX1"] = 1.0
@@ -287,6 +317,7 @@ def test_parse_fits_rejects_image_with_nonpositive_wavelengths(tmp_path):
 
     sci_hdu = fits.ImageHDU(data=flux_values, header=sci_header, name="SCI")
     hdul = fits.HDUList([fits.PrimaryHDU(), sci_hdu])
+    fits_path = tmp_path / "image_all_nonpositive.fits"
     fits_path = tmp_path / "negative_wavelength_image.fits"
     hdul.writeto(fits_path, overwrite=True)
     hdul.close()
@@ -295,4 +326,5 @@ def test_parse_fits_rejects_image_with_nonpositive_wavelengths(tmp_path):
         parse_fits(str(fits_path))
 
     message = str(excinfo.value)
+    assert "no positive wavelength samples" in message.lower()
     assert "positive-wavelength" in message
