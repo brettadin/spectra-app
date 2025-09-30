@@ -116,12 +116,24 @@ class OverlayTrace:
                 ]
 
         if max_points is None:
+
             return wavelengths, flux_values, hover_values, True
 
         if wavelengths.size <= max_points:
             return wavelengths, flux_values, hover_values, True
 
-        min_points = max(64, max_points // 2)
+        try:
+            max_points_int = int(max_points)
+        except (TypeError, ValueError):
+            max_points_int = 0
+
+        if max_points_int <= 0:
+            return wavelengths, flux_values, hover_values, True
+
+        if wavelengths.size <= max_points_int:
+            return wavelengths, flux_values, hover_values, True
+
+        min_points = max(64, max_points_int // 2)
         for tier in sorted(self.downsample.keys()):
             tier_data = self.downsample[tier]
             tier_w = np.asarray(tier_data[0], dtype=float)
@@ -136,12 +148,12 @@ class OverlayTrace:
             tier_f = tier_f[tier_w_mask]
             if tier_w.size == 0:
                 continue
-            if tier_w.size >= max_points:
-                return tier_w[:max_points], tier_f[:max_points], None, False
+            if tier_w.size >= max_points_int:
+                return tier_w[:max_points_int], tier_f[:max_points_int], None, False
             if tier_w.size >= min_points:
                 return tier_w, tier_f, None, False
 
-        target_points = min(int(max_points), int(wavelengths.size))
+        target_points = min(max_points_int, int(wavelengths.size))
         downsampled = build_lttb_downsample(wavelengths, flux_values, target_points)
         sampled_w = np.asarray(downsampled.wavelength_nm, dtype=float)
         sampled_f = np.asarray(downsampled.flux, dtype=float)
