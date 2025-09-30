@@ -59,8 +59,12 @@ _UNIT_ALIASES: dict[str, str] = {
     "cm-1": "cm^-1",
     "1/cm": "cm^-1",
     "cm**-1": "cm^-1",
+    "cm⁻1": "cm^-1",
     "wavenumber": "cm^-1",
     "spatialfrequency": "cm^-1",
+    "wn": "cm^-1",
+    "kayser": "cm^-1",
+    "kaysers": "cm^-1",
 }
 
 

@@ -4,11 +4,13 @@ import io
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple, Union
 
+import re
+
 import numpy as np
 from astropy.io import fits
 
 from .ingest_ascii import checksum_bytes  # reuse checksum helper
-from .units import to_nm
+from .units import canonical_unit, to_nm
 
 
 HeaderInput = Union[str, Path, bytes]
@@ -314,9 +316,28 @@ def _extract_table_data(
     flux_unit_hint = flux_unit_column or flux_unit_header
 
     resolved_unit = _normalise_wavelength_unit(wavelength_unit_hint)
+
+    dropped_nonpositive = 0
+    if _is_wavenumber_unit(resolved_unit):
+        positive_mask = wavelength_values > 0
+        if not np.all(positive_mask):
+            dropped_nonpositive = int(
+                positive_mask.size - np.count_nonzero(positive_mask)
+            )
+            wavelength_values = wavelength_values[positive_mask]
+            flux_values = flux_values[positive_mask]
+        if wavelength_values.size == 0:
+            raise ValueError(
+                "FITS table ingestion yielded no positive wavenumber samples."
+            )
+
     try:
-        wavelength_nm = np.array(to_nm(wavelength_values.tolist(), resolved_unit), dtype=float)
-    except ValueError:
+        wavelength_nm = np.array(
+            to_nm(wavelength_values.tolist(), resolved_unit), dtype=float
+        )
+    except ValueError as exc:
+        if _is_wavenumber_unit(resolved_unit):
+            raise ValueError("Unable to convert wavenumber samples to nm.") from exc
         wavelength_nm = np.array(to_nm(wavelength_values.tolist(), "nm"), dtype=float)
         resolved_unit = "nm"
 
@@ -330,6 +351,9 @@ def _extract_table_data(
         "mask_applied": bool(wavelength_mask.any() or flux_mask.any()),
         "row_count": int(len(data)),
     }
+
+    if dropped_nonpositive:
+        provenance["dropped_nonpositive_wavenumbers"] = dropped_nonpositive
 
     if event_meta is not None:
         event_meta["derived_flux_unit"] = derived_flux_unit
@@ -362,18 +386,38 @@ def _normalise_wavelength_unit(unit: Optional[str], default: str = "nm") -> str:
     if not unit:
         return default
     text = str(unit).strip()
-    lowered = text.lower().replace("μ", "µ")
-    if "angstrom" in lowered or lowered in {"a", "å", "ångström", "ångstrom"}:
-        return "Å"
-    if lowered in {"nm", "nanometer", "nanometers"}:
-        return "nm"
-    if lowered in {"um", "µm", "micron", "microns", "micrometer", "micrometers"}:
-        return "µm"
-    if "cm" in lowered and "-1" in lowered:
+    if not text:
+        return default
+
+    candidates = [text]
+    if "(" in text and ")" in text:
+        candidates.append(re.sub(r"\(.*?\)", "", text).strip())
+    candidates.append(text.split()[0])
+
+    for candidate in candidates:
+        if not candidate:
+            continue
+        try:
+            return canonical_unit(candidate)
+        except ValueError:
+            continue
+
+    lowered = text.casefold().replace("μ", "µ")
+    condensed = lowered.replace(" ", "")
+    if "cm" in condensed and ("-1" in condensed or "⁻1" in condensed or "/" in condensed):
         return "cm^-1"
-    if lowered in {"cm^-1", "cm-1"}:
+    if any(token in condensed for token in ("wavenumber", "spatialfrequency", "kayser")):
         return "cm^-1"
     return text
+
+
+def _is_wavenumber_unit(unit: Optional[str]) -> bool:
+    if not unit:
+        return False
+    try:
+        return canonical_unit(str(unit)) == "cm^-1"
+    except ValueError:
+        return False
 
 
 

@@ -214,7 +214,7 @@ def render_example_browser_sheet(
                 if preview:
                     st.plotly_chart(
                         _sparkline(preview),
-                        width="stretch",
+                        use_container_width=True,
                         config={"displayModeBar": False},
                     )
                 elif not network_available:
