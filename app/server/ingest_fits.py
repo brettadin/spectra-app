@@ -427,35 +427,29 @@ def _extract_table_data(
 
     try:
         wavelength_quantity = to_nm(wavelength_values, resolved_unit)
-        wavelength_nm = np.asarray(wavelength_quantity.to_value(u.nm), dtype=float)
     except ValueError as exc:
         raise ValueError(
             f"Unable to convert values from unit {resolved_unit!r} to nm."
         ) from exc
 
-    positive_nm = wavelength_nm > 0
-    dropped_nonpositive_nm = 0
-    if not np.all(positive_nm):
-        dropped_nonpositive_nm = int(positive_nm.size - np.count_nonzero(positive_nm))
-        wavelength_nm = wavelength_nm[positive_nm]
-        flux_values = flux_values[positive_nm]
-
-    if wavelength_nm.size == 0:
+    wavelength_nm_values = np.asarray(wavelength_quantity.to_value(u.nm), dtype=float)
+    if wavelength_nm_values.size == 0:
         raise ValueError(
             "FITS table ingestion yielded no positive wavelength samples."
         )
 
-    positive_wavelength_mask = wavelength_nm > 0
-    positive_count = int(np.count_nonzero(positive_wavelength_mask))
+    positive_nm_mask = wavelength_nm_values > 0
+    positive_count = int(np.count_nonzero(positive_nm_mask))
+    dropped_nonpositive_nm = 0
     if positive_count == 0:
         raise ValueError(
-            "FITS table ingestion yielded no positive wavelengths after conversion to nm."
+            "FITS table ingestion yielded no positive wavelength samples after conversion to nm."
         )
-
-    if positive_count < wavelength_nm.size:
-        dropped_nonpositive_nm += int(wavelength_nm.size - positive_count)
-        wavelength_nm = wavelength_nm[positive_wavelength_mask]
-        flux_values = flux_values[positive_wavelength_mask]
+    if positive_count < wavelength_nm_values.size:
+        dropped_nonpositive_nm = int(wavelength_nm_values.size - positive_count)
+        wavelength_quantity = wavelength_quantity[positive_nm_mask]
+        wavelength_nm_values = wavelength_nm_values[positive_nm_mask]
+        flux_values = flux_values[positive_nm_mask]
 
     provenance: Dict[str, object] = {
         "table_columns": column_names,
@@ -495,13 +489,15 @@ def _extract_table_data(
         provenance["derived_flux_unit"] = derived_flux_unit
 
     return (
-        wavelength_nm,
+        wavelength_quantity,
         flux_values,
         resolved_unit,
         wavelength_unit_hint,
         flux_unit_hint,
         provenance,
     )
+
+
 def _coerce_header_value(value):
     if isinstance(value, bytes):
         try:
@@ -755,7 +751,7 @@ def _open_hdul(
 def _ingest_table_hdu(
     hdu: Union[fits.BinTableHDU, fits.TableHDU]
 ) -> Tuple[
-    np.ndarray,
+    Quantity,
     np.ndarray,
     str,
     Optional[str],
@@ -766,7 +762,7 @@ def _ingest_table_hdu(
     Dict[str, object],
 ]:
     (
-        wavelength_nm,
+        wavelength_quantity,
         flux_array,
         resolved_unit,
         reported_wavelength_unit,
@@ -790,7 +786,7 @@ def _ingest_table_hdu(
     provenance_details = dict(table_provenance)
     try:
         table_wcs_axis, table_wcs_meta = _compute_wavelengths(
-            wavelength_nm.size,
+            wavelength_quantity.size,
             hdu.header,
         )
     except ValueError:
@@ -813,7 +809,7 @@ def _ingest_table_hdu(
         provenance_details["wcs"] = table_wcs_meta
 
     return (
-        wavelength_nm,
+        wavelength_quantity,
         flux_array,
         resolved_unit,
         reported_wavelength_unit,
@@ -828,7 +824,7 @@ def _ingest_table_hdu(
 def _ingest_image_hdu(
     hdu,
 ) -> Tuple[
-    np.ndarray,
+    Quantity,
     np.ndarray,
     str,
     Optional[str],
@@ -862,7 +858,7 @@ def _ingest_image_hdu(
 
     try:
         wavelength_quantity = to_nm(axis_values, wavelength_axis)
-        wavelength_nm = np.asarray(
+        wavelength_nm_values = np.asarray(
             wavelength_quantity.to_value(u.nm), dtype=float
         ).reshape(-1)
     except ValueError as exc:
@@ -871,27 +867,17 @@ def _ingest_image_hdu(
             f"{resolved_unit!r} to nm."
         ) from exc
 
-
-    base_valid = (~mask_flat) & np.isfinite(flux_array) & np.isfinite(wavelength_nm)
-    positive_mask = wavelength_nm > 0
-    dropped_nonpositive = int(np.count_nonzero(base_valid & (~positive_mask)))
-    valid = base_valid & positive_mask
-
-
-    positive_mask = wavelength_nm > 0
+    base_valid = (~mask_flat) & np.isfinite(flux_array) & np.isfinite(wavelength_nm_values)
+    positive_mask = wavelength_nm_values > 0
     positive_count = int(np.count_nonzero(positive_mask))
-    dropped_nonpositive = int(positive_mask.size - positive_count)
+    dropped_nonpositive = int(wavelength_nm_values.size - positive_count)
     if positive_count == 0:
         raise ValueError("FITS image ingestion yielded no positive-wavelength samples.")
 
-    valid = (
-        positive_mask
-        & (~mask_flat)
-        & np.isfinite(flux_array)
-        & np.isfinite(wavelength_nm)
-    )
+    valid = base_valid & positive_mask
     flux_array = flux_array[valid]
-    wavelength_nm = wavelength_nm[valid]
+    wavelength_nm_values = wavelength_nm_values[valid]
+    wavelength_quantity = wavelength_quantity[valid]
     if flux_array.size == 0:
         raise ValueError("FITS ingestion yielded no positive wavelength samples.")
 
@@ -910,8 +896,8 @@ def _ingest_image_hdu(
 
     wcs_details = dict(wcs_meta)
     wcs_details["wavelength_range_nm"] = [
-        float(np.min(wavelength_nm)),
-        float(np.max(wavelength_nm)),
+        float(np.min(wavelength_nm_values)),
+        float(np.max(wavelength_nm_values)),
     ]
     provenance_details: Dict[str, object] = {"wcs": wcs_details}
     if dropped_nonpositive:
@@ -921,7 +907,7 @@ def _ingest_image_hdu(
     reported_wavelength_unit = hdu.header.get("CUNIT1") or hdu.header.get("XUNIT")
 
     return (
-        wavelength_nm,
+        wavelength_quantity,
         flux_array,
         resolved_unit,
         reported_wavelength_unit,
@@ -978,7 +964,7 @@ def parse_fits(content: HeaderInput, *, filename: Optional[str] = None) -> Dict[
         data_index, data_hdu, details = selected
 
         (
-            wavelength_nm,
+            wavelength_quantity,
             flux_array,
             resolved_unit,
             reported_wavelength_unit,
@@ -995,8 +981,11 @@ def parse_fits(content: HeaderInput, *, filename: Optional[str] = None) -> Dict[
         flux_unit_source = derived_flux_unit or flux_unit_hint
         flux_unit, flux_kind = _normalise_flux_unit(flux_unit_source)
 
-        range_min = float(np.min(wavelength_nm))
-        range_max = float(np.max(wavelength_nm))
+        wavelength_nm_values = np.asarray(
+            wavelength_quantity.to_value(u.nm), dtype=float
+        )
+        range_min = float(np.min(wavelength_nm_values))
+        range_max = float(np.max(wavelength_nm_values))
         metadata: Dict[str, object] = {
             "wavelength_range_nm": [range_min, range_max],
             "wavelength_effective_range_nm": [range_min, range_max],
@@ -1010,7 +999,8 @@ def parse_fits(content: HeaderInput, *, filename: Optional[str] = None) -> Dict[
         metadata.setdefault("wavelength_coverage_nm", [range_min, range_max])
 
         if flux_array.size >= 2:
-            metadata["wavelength_step_nm"] = float(wavelength_nm[1] - wavelength_nm[0])
+            step = wavelength_quantity[1] - wavelength_quantity[0]
+            metadata["wavelength_step_nm"] = float(step.to_value(u.nm))
 
         header_snapshot = _gather_metadata(header, HEADER_METADATA_KEYS.keys())
         for key, meta_key in HEADER_METADATA_KEYS.items():
@@ -1095,12 +1085,13 @@ def parse_fits(content: HeaderInput, *, filename: Optional[str] = None) -> Dict[
 
         axis = "emission"
 
-        wavelength_list = wavelength_nm.tolist()
+        wavelength_list = wavelength_nm_values.tolist()
         flux_list = flux_array.tolist()
         return {
             "label_hint": label_hint,
             "wavelength_nm": wavelength_list,
             "wavelength": {"values": wavelength_list, "unit": "nm"},
+            "wavelength_quantity": wavelength_quantity,
             "flux": flux_list,
             "flux_unit": flux_unit,
             "flux_kind": flux_kind,

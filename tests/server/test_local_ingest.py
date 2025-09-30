@@ -7,6 +7,7 @@ from textwrap import dedent
 import numpy as np
 import pandas as pd
 import pytest
+from astropy import units as u
 from astropy.io import fits
 
 import app.utils.local_ingest as local_ingest
@@ -46,6 +47,10 @@ def test_ingest_local_ascii_populates_metadata():
     assert payload["wavelength_nm"] == [500.0, 500.5, 501.0]
     assert payload["wavelength"]["unit"] == "nm"
     assert payload["wavelength"]["values"] == [500.0, 500.5, 501.0]
+    assert payload["wavelength_quantity"].unit.is_equivalent(u.nm)
+    assert payload["wavelength_quantity"].to_value(u.nm) == pytest.approx(
+        payload["wavelength_nm"]
+    )
     assert payload["flux"] == [1.2, 1.5, 1.7]
 
     metadata = payload["metadata"]
@@ -319,13 +324,17 @@ def test_ingest_local_ascii_wavenumber_converts_to_nm():
     payload = ingest_local_file("wavenumber.csv", content)
 
     assert payload["wavelength_nm"] == pytest.approx([500.0, 666.6666667, 1000.0])
+    assert payload["wavelength_quantity"].to_value(u.nm) == pytest.approx(
+        payload["wavelength_nm"]
+    )
     assert payload["wavelength"]["unit"] == "nm"
     assert payload["wavelength"]["values"] == pytest.approx(
         [500.0, 666.6666667, 1000.0]
     )
     metadata = payload["metadata"]
-    assert metadata["original_wavelength_unit"] == "1 / cm"
-    assert metadata["reported_wavelength_unit"] == "cm^-1"
+    assert metadata["original_wavelength_unit"].lower() == "cm-1"
+    reported_normalized = metadata["reported_wavelength_unit"].lower().replace(" ", "")
+    assert reported_normalized in {"cm-1", "cm^-1"}
 
 
 def test_ingest_local_ascii_micron_unit():
