@@ -116,6 +116,10 @@ class OverlayTrace:
                 ]
 
         if max_points is None:
+
+            return wavelengths, flux_values, hover_values, True
+
+        if wavelengths.size <= max_points:
             return wavelengths, flux_values, hover_values, True
 
         try:
