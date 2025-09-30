@@ -637,3 +637,29 @@ def test_parse_fits_table_wavenumber_retains_quantity(tmp_path):
     assert result["wavelength_nm"] == pytest.approx(expected_nm)
     _assert_wavelength_quantity(result, expected_nm)
     assert result["metadata"]["original_wavelength_unit"].lower() == "cm-1"
+
+
+def test_parse_fits_table_accepts_angstroms_alias(tmp_path):
+    wavelengths = np.array([4000.0, 4100.0, 4200.0], dtype=float)
+    flux = np.array([1.0, 2.0, 3.0], dtype=float)
+
+    columns = [
+        fits.Column(name="WAVELENGTH", array=wavelengths, format="D", unit="Angstroms"),
+        fits.Column(name="FLUX", array=flux, format="D"),
+    ]
+
+    table_hdu = fits.BinTableHDU.from_columns(columns, name="SPECTRUM")
+    table_hdu.header["CTYPE1"] = "WAVE"
+    table_hdu.header["CUNIT1"] = "Angstroms"
+
+    hdul = fits.HDUList([fits.PrimaryHDU(), table_hdu])
+    fits_path = tmp_path / "angstroms_alias_table.fits"
+    hdul.writeto(fits_path, overwrite=True)
+    hdul.close()
+
+    result = parse_fits(str(fits_path))
+
+    expected_nm = (wavelengths * u.AA).to_value(u.nm)
+    assert result["wavelength_nm"] == pytest.approx(expected_nm)
+    _assert_wavelength_quantity(result, expected_nm)
+    assert result["metadata"].get("original_wavelength_unit") == "Angstrom"

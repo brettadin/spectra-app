@@ -435,10 +435,6 @@ def _extract_table_data(
         ) from exc
 
 
-    positive_mask = wavelength_nm > 0
-    positive_count = int(np.count_nonzero(positive_mask))
-    dropped_nonpositive_nm = int(positive_mask.size - positive_count)
-
     resolved_unit = canonical_resolved_unit
 
     wavelength_nm_values = np.asarray(wavelength_quantity.to_value(u.nm), dtype=float)
@@ -456,10 +452,6 @@ def _extract_table_data(
             "FITS table ingestion yielded no positive wavelength samples after conversion to nm."
         )
 
-
-    if dropped_nonpositive_nm:
-        wavelength_nm = wavelength_nm[positive_mask]
-        flux_values = flux_values[positive_mask]
 
     if positive_count < wavelength_nm_values.size:
         dropped_nonpositive_nm = int(wavelength_nm_values.size - positive_count)
@@ -532,6 +524,45 @@ def _coerce_header_value(value):
     return value
 
 
+_WAVELENGTH_UNIT_LABEL_ALIASES = {
+    "angstrom": "Angstrom",
+    "angstroms": "Angstrom",
+    "ångström": "Angstrom",
+    "ångströms": "Angstrom",
+    "ångstrom": "Angstrom",
+    "ångstroms": "Angstrom",
+}
+
+
+def _resolve_wavelength_unit_alias(value: str) -> Optional[str]:
+    folded = value.casefold().strip()
+    if not folded:
+        return None
+
+    alias = _WAVELENGTH_UNIT_LABEL_ALIASES.get(folded)
+    if alias:
+        return alias
+
+    if folded.endswith("."):
+        trimmed = folded[:-1]
+        alias = _WAVELENGTH_UNIT_LABEL_ALIASES.get(trimmed)
+        if alias:
+            return alias
+        folded = trimmed
+
+    if folded.endswith("es"):
+        alias = _WAVELENGTH_UNIT_LABEL_ALIASES.get(folded[:-2])
+        if alias:
+            return alias
+
+    if folded.endswith("s"):
+        alias = _WAVELENGTH_UNIT_LABEL_ALIASES.get(folded[:-1])
+        if alias:
+            return alias
+
+    return None
+
+
 def _normalise_wavelength_unit(unit: Optional[str], default: str = "nm") -> str:
     if not unit:
         return default
@@ -544,13 +575,24 @@ def _normalise_wavelength_unit(unit: Optional[str], default: str = "nm") -> str:
         candidates.append(re.sub(r"\(.*?\)", "", text).strip())
     candidates.append(text.split()[0])
 
+    fallback_alias: Optional[str] = None
+
     for candidate in candidates:
         if not candidate:
             continue
-        try:
-            return canonical_unit(candidate)
-        except ValueError:
-            continue
+        alias = _resolve_wavelength_unit_alias(candidate)
+        if alias and fallback_alias is None:
+            fallback_alias = alias
+        for option in (candidate, alias):
+            if not option:
+                continue
+            try:
+                return canonical_unit(option)
+            except ValueError:
+                continue
+
+    if fallback_alias:
+        return fallback_alias
 
     lowered = text.casefold().replace("μ", "µ")
     condensed = lowered.replace(" ", "")

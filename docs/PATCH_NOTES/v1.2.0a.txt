@@ -1,0 +1,4 @@
+Spectra App v1.2.0a (REF 1.2.0-A02, 1.2.0-D01)
+- Normalise FITS ingestion to treat plural/aliased Angstrom labels as Angstrom.
+- Extend regression coverage and continuity docs for the hotfix.
+- Continuity docs: docs/brains/brains_v1.2.0a.md
