@@ -94,7 +94,7 @@ class OverlayTrace:
         self,
         viewport: Tuple[float | None, float | None],
         *,
-        max_points: int = 8000,
+        max_points: Optional[int] = 8000,
         include_hover: bool = True,
     ) -> Tuple[np.ndarray, np.ndarray, Optional[List[str]], bool]:
         wavelengths = np.asarray(self.wavelength_nm, dtype=float)
@@ -115,10 +115,21 @@ class OverlayTrace:
                     hover for hover, keep in zip(hover_values, mask.tolist()) if keep
                 ]
 
-        if wavelengths.size <= max_points:
+        if max_points is None:
             return wavelengths, flux_values, hover_values, True
 
-        min_points = max(64, max_points // 2)
+        try:
+            max_points_int = int(max_points)
+        except (TypeError, ValueError):
+            max_points_int = 0
+
+        if max_points_int <= 0:
+            return wavelengths, flux_values, hover_values, True
+
+        if wavelengths.size <= max_points_int:
+            return wavelengths, flux_values, hover_values, True
+
+        min_points = max(64, max_points_int // 2)
         for tier in sorted(self.downsample.keys()):
             tier_data = self.downsample[tier]
             tier_w = np.asarray(tier_data[0], dtype=float)
@@ -133,12 +144,12 @@ class OverlayTrace:
             tier_f = tier_f[tier_w_mask]
             if tier_w.size == 0:
                 continue
-            if tier_w.size >= max_points:
-                return tier_w[:max_points], tier_f[:max_points], None, False
+            if tier_w.size >= max_points_int:
+                return tier_w[:max_points_int], tier_f[:max_points_int], None, False
             if tier_w.size >= min_points:
                 return tier_w, tier_f, None, False
 
-        target_points = min(int(max_points), int(wavelengths.size))
+        target_points = min(max_points_int, int(wavelengths.size))
         downsampled = build_lttb_downsample(wavelengths, flux_values, target_points)
         sampled_w = np.asarray(downsampled.wavelength_nm, dtype=float)
         sampled_f = np.asarray(downsampled.flux, dtype=float)
@@ -162,7 +173,7 @@ class OverlayTrace:
             )
         selected_w, selected_f, _, _ = self.sample(
             viewport or (None, None),
-            max_points=max_points or len(self.wavelength_nm),
+            max_points=max_points,
             include_hover=False,
         )
         return TraceVectors(
@@ -322,6 +333,7 @@ def _ensure_session_state() -> None:
     st.session_state.setdefault("overlay_traces", [])
     st.session_state.setdefault("display_units", "nm")
     st.session_state.setdefault("display_mode", "Flux (raw)")
+    st.session_state.setdefault("display_full_resolution", False)
     st.session_state.setdefault("viewport_nm", (None, None))
     st.session_state.setdefault("auto_viewport", True)
     st.session_state.setdefault("normalization_mode", "unit")
@@ -353,6 +365,19 @@ def _ensure_session_state() -> None:
         st.session_state["duplicate_ledger"] = DuplicateLedger()
     if "similarity_cache" not in st.session_state:
         st.session_state["similarity_cache"] = SimilarityCache()
+
+
+def _is_full_resolution_enabled() -> bool:
+    session_state = getattr(st, "session_state", None)
+    if session_state is None:
+        return False
+    getter = getattr(session_state, "get", None)
+    if callable(getter):
+        return bool(getter("display_full_resolution", False))
+    try:
+        return bool(session_state["display_full_resolution"])
+    except (KeyError, TypeError):
+        return False
 
 
 MAST_DOWNLOAD_ENDPOINT = "https://mast.stsci.edu/api/v0.1/Download/file"
@@ -917,6 +942,13 @@ def _render_display_section(container: DeltaGenerator) -> None:
         "Flux scaling", display_mode_options, index=mode_index
     )
 
+    full_resolution = container.checkbox(
+        "Full resolution rendering",
+        value=bool(st.session_state.get("display_full_resolution", False)),
+        help="Render traces using all available points in the current viewport.",
+    )
+    st.session_state["display_full_resolution"] = bool(full_resolution)
+
     overlays = _get_overlays()
     target_overlays = [trace for trace in overlays if trace.visible] or overlays
     min_bound, max_bound = _infer_viewport_bounds(target_overlays)
@@ -1384,8 +1416,12 @@ def _build_overlay_figure(
 ) -> Tuple[go.Figure, str]:
     fig = go.Figure()
     axis_title = "Wavelength (nm)"
+    full_resolution = _is_full_resolution_enabled()
+    max_points = None if full_resolution else 12000
     reference_vectors = (
-        reference.to_vectors(max_points=12000, viewport=viewport) if reference else None
+        reference.to_vectors(max_points=max_points, viewport=viewport)
+        if reference
+        else None
     )
 
     for trace in overlays:
@@ -1407,7 +1443,7 @@ def _build_overlay_figure(
 
         sample_w, sample_flux, sample_hover, _ = trace.sample(
             viewport,
-            max_points=12000,
+            max_points=max_points,
             include_hover=True,
         )
         if sample_w.size == 0:
@@ -2065,8 +2101,10 @@ def _render_overlay_tab(version_info: Dict[str, str]) -> None:
         st.caption(f"Axis: {axis_title}")
 
     cache: SimilarityCache = st.session_state["similarity_cache"]
+    full_resolution = _is_full_resolution_enabled()
+    vector_max_points = None if full_resolution else 15000
     visible_vectors = [
-        trace.to_vectors(max_points=15000, viewport=effective_viewport)
+        trace.to_vectors(max_points=vector_max_points, viewport=effective_viewport)
         for trace in overlays
         if trace.visible
     ]
