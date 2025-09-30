@@ -26,7 +26,6 @@ from streamlit.delta_generator import DeltaGenerator
 from app.ui.targets import RegistryUnavailableError, render_targets_panel
 
 from app._version import get_version_info
-from app.archive_ui import ArchiveUI
 from app.export_manifest import build_manifest
 from app.server.differential import ratio, resample_to_common_grid, subtract
 from app.server.fetch_archives import FetchError, fetch_spectrum
@@ -2414,12 +2413,33 @@ def _render_differential_tab() -> None:
     _render_differential_result(result)
 
 
-def _render_archive_tab() -> None:
-    if not st.session_state.get("network_available", True):
-        st.info("Archive fetchers are unavailable while offline. Using local cache.")
-        return
-    controller = ArchiveUI(add_overlay=_add_overlay_payload)
-    controller.render()
+def _render_library_tab() -> None:
+    st.header("Data library")
+    st.caption(
+        "Browse curated examples, target manifests, line catalogs, and upload policies "
+        "from a single workspace panel."
+    )
+
+    examples_container = st.container()
+    _render_examples_group(examples_container)
+
+    st.divider()
+
+    targets_container = st.container()
+    try:
+        render_targets_panel(expanded=True, sidebar=targets_container)
+    except RegistryUnavailableError as exc:
+        targets_container.info(str(exc))
+
+    st.divider()
+
+    line_catalog_container = st.container()
+    _render_line_catalog_group(line_catalog_container)
+
+    st.divider()
+
+    uploads_container = st.container()
+    _render_uploads_group(uploads_container)
 
 
 def _render_docs_tab() -> None:
@@ -2522,32 +2542,15 @@ def render() -> None:
     controls_panel = sidebar.container()
     _render_settings_group(controls_panel)
 
-    data_panel = sidebar.expander("Data library", expanded=False)
-    registry_warning: Optional[str] = None
-    with data_panel:
-        _render_examples_group(data_panel)
-        data_panel.divider()
-        try:
-            render_targets_panel(expanded=False, sidebar=data_panel)
-        except RegistryUnavailableError as exc:
-            registry_warning = str(exc)
-            data_panel.info(registry_warning)
-        data_panel.divider()
-        _render_line_catalog_group(data_panel)
-        data_panel.divider()
-        _render_uploads_group(data_panel)
-    if registry_warning:
-        sidebar.warning(registry_warning)
-
-    overlay_tab, diff_tab, archive_tab, docs_tab = st.tabs(
-        ["Overlay", "Differential", "Archive", "Docs & Provenance"]
+    overlay_tab, diff_tab, library_tab, docs_tab = st.tabs(
+        ["Overlay", "Differential", "Library", "Docs & Provenance"]
     )
     with overlay_tab:
         _render_overlay_tab(version_info)
     with diff_tab:
         _render_differential_tab()
-    with archive_tab:
-        _render_archive_tab()
+    with library_tab:
+        _render_library_tab()
     with docs_tab:
         _render_docs_tab()
 
