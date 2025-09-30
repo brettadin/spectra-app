@@ -9,6 +9,45 @@ from astropy.units import imperial
 from astropy.units import UnitScaleError
 
 
+_UNIT_ALIAS_MAP = {
+    "angstrom": u.AA,
+    "angstroms": u.AA,
+    "ångström": u.AA,
+    "ångströms": u.AA,
+    "ångstrom": u.AA,
+    "ångstroms": u.AA,
+}
+
+
+def _resolve_unit_alias(text: str) -> u.UnitBase | None:
+    folded = text.casefold().strip()
+    if not folded:
+        return None
+
+    alias = _UNIT_ALIAS_MAP.get(folded)
+    if alias is not None:
+        return alias
+
+    if folded.endswith("."):
+        trimmed = folded[:-1]
+        alias = _UNIT_ALIAS_MAP.get(trimmed)
+        if alias is not None:
+            return alias
+        folded = trimmed
+
+    if folded.endswith("es"):
+        alias = _UNIT_ALIAS_MAP.get(folded[:-2])
+        if alias is not None:
+            return alias
+
+    if folded.endswith("s"):
+        alias = _UNIT_ALIAS_MAP.get(folded[:-1])
+        if alias is not None:
+            return alias
+
+    return None
+
+
 def _as_unit(unit: str | u.UnitBase | Quantity) -> u.UnitBase:
     """Coerce user input into an ``astropy`` unit instance."""
 
@@ -19,6 +58,10 @@ def _as_unit(unit: str | u.UnitBase | Quantity) -> u.UnitBase:
     text = str(unit).strip()
     if not text:
         raise ValueError("Empty unit provided")
+    alias = _resolve_unit_alias(text)
+    if alias is not None:
+        return alias
+
     lowered = text.lower()
     if lowered == "nm":
         return u.nm
