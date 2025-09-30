@@ -8,3 +8,4 @@ Spectra App — Patch Log (append-only)
 - v1.1.8 (REF 1.1.8-A01): switch UI timestamps to timezone-aware UTC output, normalise FITS flux unit parsing to silence UnitsWarning spam, and refresh the continuity collateral for the release.
 - v1.1.9: fix overlay button keys, respect ledger lock session state, wire the ingest queue into the overlay pipeline, reject metadata-like uploads, and refresh docs for the release.
 - v1.1.9: fix overlay button keys, respect ledger lock session state, wire the ingest queue into the overlay pipeline, and refresh docs for the release.
+- v1.2.0 (REF 1.2.0-A01 / 1.2.0-C01): patched FITS table ingestion to drop non-positive wavenumber samples safely, documented the runtime package set, and rolled continuity collateral for the release.

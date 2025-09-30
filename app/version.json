@@ -1,5 +1,5 @@
 {
-  "version": "v1.1.9",
-  "date_utc": "2025-09-28T23:00:00Z",
-  "summary": "Target overlays now use unique keys, honor ledger lock state, and ingest queued spectra directly into the viewer."
+  "version": "v1.2.0",
+  "date_utc": "2025-09-30T00:00:00Z",
+  "summary": "Fix FITS table ingestion for non-positive wavenumber samples and refresh runtime inventory."
 }

@@ -372,11 +372,18 @@ def test_parse_fits_table_drops_nonpositive_wavelengths(tmp_path):
     result = parse_fits(str(fits_path))
 
     assert result["wavelength_nm"] == [500.0]
+
+    assert result["flux"] == [3.0]
+    provenance = result["provenance"]
+    assert provenance.get("dropped_nonpositive_wavelengths") == 2
+    assert provenance.get("dropped_nonpositive_rows") == 2
+
     assert result["wavelength"]["unit"] == "nm"
     assert result["wavelength"]["values"] == [500.0]
     assert result["flux"] == [3.0]
     provenance = result["provenance"]
     assert provenance.get("dropped_nonpositive_wavelengths") == 2
+
 
 
 def test_parse_fits_rejects_table_with_nonpositive_wavelengths(tmp_path):
@@ -390,15 +397,44 @@ def test_parse_fits_rejects_table_with_nonpositive_wavelengths(tmp_path):
 
     table_hdu = fits.BinTableHDU.from_columns(columns)
     hdul = fits.HDUList([fits.PrimaryHDU(), table_hdu])
-    fits_path = tmp_path / "table_with_nonpositive_wavelengths.fits"
+    fits_path = tmp_path / "table_with_nonpositive_wavelengths_rejected.fits"
     hdul.writeto(fits_path, overwrite=True)
     hdul.close()
 
     with pytest.raises(ValueError) as excinfo:
         parse_fits(str(fits_path))
 
+    message = str(excinfo.value).lower()
+    assert "no positive wavelength" in message
+
+
+def test_parse_fits_table_filters_nonpositive_wavenumbers(tmp_path):
+    wavenumbers = np.array([20000.0, 0.0, -50.0], dtype=float)
+    flux = np.array([5.0, 6.0, 7.0], dtype=float)
+
+    columns = [
+        fits.Column(name="WAVENUM", array=wavenumbers, format="D", unit="cm-1"),
+        fits.Column(name="FLUX", array=flux, format="D"),
+    ]
+
+    table_hdu = fits.BinTableHDU.from_columns(columns)
+    hdul = fits.HDUList([fits.PrimaryHDU(), table_hdu])
+    fits_path = tmp_path / "wavenumber_table.fits"
+    hdul.writeto(fits_path, overwrite=True)
+    hdul.close()
+
+    with pytest.raises(ValueError) as excinfo:
+        parse_fits(str(fits_path))
+
+    assert result["wavelength_nm"] == [500.0]
+    assert result["flux"] == [5.0]
+    provenance = result["provenance"]
+    assert provenance.get("dropped_nonpositive_wavenumbers") == 2
+    assert provenance.get("dropped_nonpositive_rows") == 2
+
     message = str(excinfo.value)
     assert "no positive wavelength samples" in message.lower()
+
 
 
 def test_parse_fits_table_rejects_all_nonpositive_wavelengths(tmp_path):
@@ -409,6 +445,7 @@ def test_parse_fits_table_rejects_all_nonpositive_wavelengths(tmp_path):
         fits.Column(name="WAVELENGTH", array=wavelengths, format="D", unit="nm"),
         fits.Column(name="FLUX", array=flux, format="D"),
     ]
+
     table_hdu = fits.BinTableHDU.from_columns(columns)
     hdul = fits.HDUList([fits.PrimaryHDU(), table_hdu])
     fits_path = tmp_path / "negative_wavelength_table.fits"
@@ -464,7 +501,14 @@ def test_parse_fits_rejects_table_with_negative_wavelengths_microns(tmp_path):
         parse_fits(str(fits_path))
 
     message = str(excinfo.value)
+
+    normalised = message.lower().replace("-", " ")
+    assert "no positive wavelength" in normalised
+    assert "no positive wavelengths" in message
+    assert "conversion to nm" in message
+
     assert "no positive wavelength samples" in message.lower()
+
 
 
 def test_parse_fits_rejects_image_with_nonpositive_wavelengths(tmp_path):
@@ -491,7 +535,12 @@ def test_parse_fits_rejects_image_with_nonpositive_wavelengths(tmp_path):
         parse_fits(str(fits_path))
 
     message = str(excinfo.value)
+
+    normalised = message.lower().replace("-", " ")
+    assert "no positive wavelength" in normalised
+
     assert "no positive-wavelength samples" in message.lower()
+
     assert "positive-wavelength" in message
 
 
