@@ -9,6 +9,7 @@ from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
+from astropy import units as u
 
 from app.utils.downsample import build_downsample_tiers
 from .units import canonical_unit, to_nm
@@ -93,16 +94,6 @@ HEADER_ALIAS_MAP = {
 UNIT_PATTERN = re.compile(r"\(([^)]+)\)|\[([^\]]+)\]")
 RANGE_NUMERIC = re.compile(r"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?")
 
-
-LINEAR_SCALE_FACTORS = {
-    "Å": 0.1,
-    "µm": 1000.0,
-    "mm": 1_000_000.0,
-    "cm": 10_000_000.0,
-    "m": 1_000_000_000.0,
-    "pm": 0.001,
-    "in": 25_400_000.0,
-}
 
 _FLUX_LABEL_KEYWORDS = {
     "flux",
@@ -305,10 +296,10 @@ def _parse_range_value(value: str, default_unit: str) -> Optional[Tuple[float, f
         return None
     unit = _extract_unit_hint(value) or default_unit
     try:
-        converted = to_nm([low, high], unit)
+        converted = to_nm([low, high], unit).to_value(u.nm)
     except Exception:
         converted = [low, high]
-    low_nm, high_nm = float(min(converted)), float(max(converted))
+    low_nm, high_nm = float(np.min(converted)), float(np.max(converted))
     if not math.isfinite(low_nm) or not math.isfinite(high_nm):
         return None
     return low_nm, high_nm
@@ -318,18 +309,8 @@ def _convert_wavelengths_to_nm_array(values: np.ndarray, canonical_unit_name: st
     if values.size == 0:
         return np.asarray(values, dtype=float)
     canonical = canonical_unit(canonical_unit_name) if canonical_unit_name else "nm"
-    base = np.asarray(values, dtype=float)
-    if canonical == "nm":
-        return base
-    if canonical == "cm^-1":
-        converted = np.full(base.shape, np.nan, dtype=float)
-        nonzero = base != 0
-        converted[nonzero] = 1.0e7 / base[nonzero]
-        return converted
-    factor = LINEAR_SCALE_FACTORS.get(canonical)
-    if factor is not None:
-        return base * factor
-    return np.asarray(to_nm(base.tolist(), canonical), dtype=float)
+    converted = to_nm(np.asarray(values, dtype=float), canonical)
+    return np.asarray(converted.to_value(u.nm), dtype=float)
 
 
 def _collect_header_metadata(
@@ -622,17 +603,17 @@ def parse_ascii(
     }
 
     reported_wavelength_unit = wavelength_unit
+    wavelength_series = working[wavelength_col].to_numpy(dtype=float, copy=False)
     try:
-        wavelength_series = working[wavelength_col]
-        wavelength_nm = to_nm(wavelength_series.tolist(), wavelength_unit)
+        wavelength_nm = to_nm(wavelength_series, wavelength_unit)
     except ValueError:
-        wavelength_series = working[wavelength_col]
-        wavelength_nm = to_nm(wavelength_series.tolist(), assumed_unit)
+        wavelength_nm = to_nm(wavelength_series, assumed_unit)
         provenance.setdefault("unit_inference", {})["fallback"] = assumed_unit
         wavelength_unit = assumed_unit
+    wavelength_nm_values = np.asarray(wavelength_nm.to_value(u.nm), dtype=float)
     metadata.setdefault("reported_wavelength_unit", reported_wavelength_unit)
 
-    flux_values = working[flux_col].tolist()
+    flux_values = working[flux_col].to_numpy(dtype=float, copy=False)
     flux_unit_label = header_flux_hint or metadata.get("flux_unit")
     label_flux_unit = _extract_flux_unit_from_label(flux_col)
     if label_flux_unit:
@@ -640,12 +621,18 @@ def parse_ascii(
     flux_unit, flux_kind = _normalise_flux_unit(flux_unit_label)
     metadata["flux_unit"] = flux_unit
 
-    metadata["wavelength_range_nm"] = [float(min(wavelength_nm)), float(max(wavelength_nm))]
+    metadata["wavelength_range_nm"] = [
+        float(np.nanmin(wavelength_nm_values)),
+        float(np.nanmax(wavelength_nm_values)),
+    ]
     metadata.setdefault("wavelength_effective_range_nm", metadata["wavelength_range_nm"])
     if flux_unit_label and not metadata.get("reported_flux_unit"):
         metadata["reported_flux_unit"] = flux_unit_label
 
-    data_range = [float(min(wavelength_nm)), float(max(wavelength_nm))]
+    data_range = [
+        float(np.nanmin(wavelength_nm_values)),
+        float(np.nanmax(wavelength_nm_values)),
+    ]
     metadata.setdefault("data_wavelength_range_nm", data_range)
     metadata.setdefault("wavelength_range_nm", data_range)
     metadata.setdefault(
@@ -656,7 +643,7 @@ def parse_ascii(
         metadata["original_wavelength_unit"] = canonical_unit(wavelength_unit)
     except ValueError:
         metadata["original_wavelength_unit"] = wavelength_unit
-    metadata.setdefault("points", len(wavelength_nm))
+    metadata.setdefault("points", int(wavelength_nm_values.size))
 
     provenance_units: Dict[str, object] = {"wavelength_converted_to": "nm", "flux_unit": flux_unit}
     if wavelength_unit:
@@ -671,7 +658,7 @@ def parse_ascii(
 
     axis = _normalise_axis(axis_hint) or "emission"
 
-    provenance["samples"] = len(wavelength_nm)
+    provenance["samples"] = int(wavelength_nm_values.size)
     provenance.setdefault("unit_inference", {})["resolved"] = wavelength_unit
 
     conversions: Dict[str, object] = {}
@@ -687,7 +674,7 @@ def parse_ascii(
     label_hint = next((candidate for candidate in label_candidates if candidate), None)
 
     numeric_valid = numeric.loc[working.index].copy()
-    numeric_valid["__wavelength_nm"] = list(float(value) for value in wavelength_nm)
+    numeric_valid["__wavelength_nm"] = wavelength_nm_values
 
     additional_traces: List[Dict[str, object]] = []
     for column in column_labels:
@@ -723,6 +710,7 @@ def parse_ascii(
             {
                 "label": str(column),
                 "wavelength_nm": wavelengths_extra,
+                "wavelength": {"values": wavelengths_extra, "unit": "nm"},
                 "flux": flux_extra,
                 "flux_unit": flux_unit,
                 "flux_kind": flux_kind,
@@ -741,8 +729,9 @@ def parse_ascii(
 
     payload: Dict[str, object] = {
         "label_hint": label_hint,
-        "wavelength_nm": [float(value) for value in wavelength_nm],
-        "flux": [float(value) for value in flux_values],
+        "wavelength_nm": wavelength_nm_values.tolist(),
+        "wavelength": {"values": wavelength_nm_values.tolist(), "unit": "nm"},
+        "flux": np.asarray(flux_values, dtype=float).tolist(),
         "flux_unit": flux_unit,
         "flux_kind": flux_kind,
         "metadata": metadata,
@@ -993,9 +982,10 @@ def parse_ascii_segments(
 
     payload = {
         "label_hint": label_hint,
-        "wavelength_nm": [float(value) for value in wavelength_nm.tolist()],
-        "flux": [float(value) for value in flux_array.tolist()],
-        "auxiliary": [float(value) for value in auxiliary_values.tolist()] if auxiliary_values is not None else None,
+        "wavelength_nm": wavelength_nm.tolist(),
+        "wavelength": {"values": wavelength_nm.tolist(), "unit": "nm"},
+        "flux": flux_array.tolist(),
+        "auxiliary": auxiliary_values.tolist() if auxiliary_values is not None else None,
         "flux_unit": flux_unit,
         "flux_kind": flux_kind,
         "metadata": metadata,
