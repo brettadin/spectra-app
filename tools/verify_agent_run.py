@@ -1,34 +1,49 @@
+# tools/verify_agent_run.py
 import json, sys, pathlib, re, datetime as dt
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-errors = []
-notes = []
+errors, notes = [], []
 
 # ---------- 1) version bump & patch notes ----------
-# Try both common locations for version.json
-v_candidates = [ROOT / "version.json", ROOT / "app" / "version.json"]
+v_candidates = [ROOT / "app" / "version.json", ROOT / "version.json"]
 vfile = next((p for p in v_candidates if p.exists()), None)
 
+raw_v = None
 if not vfile:
-    errors.append(f"version.json missing (checked: {', '.join(str(p) for p in v_candidates)})")
-    v = None
+    errors.append(f"version.json missing (checked: {', '.join(map(str, v_candidates))})")
 else:
     try:
-        v = json.loads(vfile.read_text(encoding="utf-8"))["version"]
-        notes.append(f"Using version from {vfile}: v{v}")
+        raw_v = json.loads(vfile.read_text(encoding="utf-8"))["version"]
+        notes.append(f"Using version from {vfile}: {raw_v}")
     except Exception as e:
         errors.append(f"version.json invalid at {vfile}: {e}")
-        v = None
 
-# Patch notes: support both 'PATCH_NOTES_vX.Y.Z.md' and 'vX.Y.Z.md'
-if v:
-    pn_dir = ROOT / "docs" / "patch_notes"
-    patterns = [f"PATCH_NOTES_v{v}.md", f"v{v}.md"]
-    pn = [p for pat in patterns for p in pn_dir.glob(pat)]
-    if not pn:
-        errors.append(f"patch notes missing for v{v} in {pn_dir} (looked for: {', '.join(patterns)})")
+# normalize: strip all leading v/V, e.g., vv1.2.0a -> 1.2.0a
+def normalize(v: str) -> str:
+    return re.sub(r'^[vV]+', '', v.strip())
+
+core_v = normalize(raw_v) if raw_v else None
+
+# find patch notes
+if core_v:
+    pn_dirs = [ROOT / "docs" / "patch_notes", ROOT / "docs" / "PATCH_NOTES"]
+    pn_found = []
+    patterns = [
+        f"PATCH_NOTES_v{core_v}.md",
+        f"PATCH_NOTES_{core_v}.md",
+        f"v{core_v}.md",
+        f"{core_v}.md",
+    ]
+    for d in pn_dirs:
+        if not d.exists():
+            continue
+        for pat in patterns:
+            pn_found.extend(d.glob(pat))
+    if not pn_found:
+        looked = "; ".join(f"{d}:[{', '.join(patterns)}]" for d in pn_dirs if d.exists())
+        errors.append(f"patch notes missing for v{core_v} ({looked or 'no patch_notes dirs present'})")
     else:
-        notes.append(f"Found patch notes: {', '.join(str(p) for p in pn)}")
+        notes.append("Found patch notes: " + ", ".join(map(str, pn_found)))
 
 # ---------- 2) ai_log for today ----------
 today = dt.date.today().isoformat()
@@ -46,24 +61,23 @@ else:
     notes.append("ui_contract.json present")
 
 # ---------- 4) ai_log must include at least one citation ----------
-# Accept either: a full URL (http/https) OR a mirrored meta reference line like:
-# 'docs/mirrored/<lib>/<page>.meta.json' or a URL shown in search_server results
 if logfile.exists():
     text = logfile.read_text(encoding="utf-8")
     has_http = re.search(r"https?://", text) is not None
-    has_meta = re.search(r"docs/mirrored/.+\.meta\.json", text) is not None
+    has_meta = re.search(r"docs/mirrored/.+?\.meta\.json", text) is not None
     if not (has_http or has_meta):
+        snippet = text[:240].replace("\n", " ")
         errors.append(
-            "ai_log has no citations to mirrored docs. "
-            "Include at least one URL (https://...) OR a path to a mirrored .meta.json."
+            "ai_log has no citations to mirrored docs. Include at least one URL "
+            "(https://...) OR a path to a mirrored .meta.json."
         )
+        notes.append(f"ai_log snippet (first 240 chars): {snippet!r}")
 
 # ---------- Exit ----------
 if errors:
     print("VERIFIER FAIL:")
     for e in errors:
         print(" -", e)
-    # also print helpful notes so the human knows what *did* work
     if notes:
         print("\nINFO:")
         for n in notes:

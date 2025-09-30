@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.0a",
+  "version": "1.2.0a",
   "date_utc": "2025-09-30T12:00:00Z",
   "summary": "Normalise Angstrom aliases during FITS ingestion and refresh continuity collateral."
 }
