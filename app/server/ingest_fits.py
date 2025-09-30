@@ -231,6 +231,7 @@ def _unit_is_wavelength(unit: Optional[str]) -> bool:
     return True
 
 
+
 def _label_suggests_wavelength(name: str) -> bool:
     label = name.strip().lower()
     if not label:

@@ -157,6 +157,7 @@ def test_parse_fits_accepts_convertible_units_without_spectral_ctype(tmp_path):
     assert result["wavelength_nm"] == pytest.approx(expected_wavelength_nm)
 
 
+
 def test_parse_fits_rejects_table_with_nonspectral_units(tmp_path):
     time = np.array([0.0, 1.0, 2.0], dtype=float)
     flux = np.array([10.0, 11.0, 12.0], dtype=float)
