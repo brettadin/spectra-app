@@ -629,3 +629,52 @@ def test_ingest_local_fits_event_table_bins_counts():
     assert provenance["units"]["flux_input"] == "pixel"
     assert provenance["units"]["flux_derived"] == "count"
     assert provenance["conversions"]["flux_unit"] == {"from": "pixel", "to": "count"}
+
+def test_ingest_local_fits_time_series_preserves_axis_metadata():
+    time = np.array([0.0, 1.5, 3.25, 4.0], dtype=float)
+    flux = np.array([10.0, 11.0, 12.0, 11.5], dtype=float)
+
+    columns = [
+        fits.Column(name="TIME", array=time, format="D", unit="BJD - 2457000, days"),
+        fits.Column(name="SAP_FLUX", array=flux, format="D", unit="e-/s"),
+    ]
+
+    table_hdu = fits.BinTableHDU.from_columns(columns, name="LIGHTCURVE")
+    hdul = fits.HDUList([fits.PrimaryHDU(), table_hdu])
+
+    bio = io.BytesIO()
+    hdul.writeto(bio)
+    hdul.close()
+
+    payload = ingest_local_file("lightcurve.fits", bio.getvalue())
+
+    assert payload["axis_kind"] == "time"
+    assert payload["wavelength_nm"] == pytest.approx(time.tolist())
+
+    wavelength_axis = payload["wavelength"]
+    assert wavelength_axis["kind"] == "time"
+    assert wavelength_axis["unit"] == "day"
+    assert wavelength_axis["values"] == pytest.approx(time.tolist())
+    assert wavelength_axis.get("frame") == "BJD"
+    assert wavelength_axis.get("offset") == pytest.approx(2457000.0)
+
+    time_payload = payload.get("time")
+    assert isinstance(time_payload, dict)
+    assert time_payload.get("unit") == "day"
+    assert time_payload.get("kind") == "time"
+    assert time_payload.get("values") == pytest.approx(time.tolist())
+
+    metadata = payload["metadata"]
+    assert metadata["axis_kind"] == "time"
+    assert metadata["time_unit"] == "day"
+    assert metadata["time_range"] == [pytest.approx(time.min()), pytest.approx(time.max())]
+    assert metadata["time_original_unit"].startswith("BJD")
+    assert metadata["points"] == len(time)
+
+    provenance_units = payload["provenance"].get("units", {})
+    assert provenance_units.get("time_converted_to") == "day"
+
+    summary = payload.get("summary")
+    assert isinstance(summary, str)
+    assert "4 samples" in summary
+
