@@ -4,7 +4,7 @@ import json, sys, pathlib, re, datetime as dt
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 errors, notes = [], []
 
-#  1 version bump & patch notes 
+# , 1 version bump & patch notes 
 v_candidates = [ROOT / "app" / "version.json", ROOT / "version.json"]
 vfile = next((p for p in v_candidates if p.exists()), None)
 
@@ -45,7 +45,7 @@ if core_v:
     else:
         notes.append("Found patch notes: " + ", ".join(map(str, pn_found)))
 
-#  2 ai_log for today 
+# ,  2 ai_log for today 
 today = dt.date.today().isoformat()
 logfile = ROOT / "docs" / "ai_log" / f"{today}.md"
 if not logfile.exists():
@@ -53,14 +53,14 @@ if not logfile.exists():
 else:
     notes.append(f"Found ai_log: {logfile}")
 
-#  3 UI contract present 
+# ,  3 UI contract present 
 uicontract = ROOT / "docs" / "ui_contract.json"
 if not uicontract.exists():
     errors.append("docs/ui_contract.json missing")
 else:
     notes.append("ui_contract.json present")
 
-#  4 ai_log must include at least one citation 
+# ,  4 ai_log must include at least one citation 
 if logfile.exists():
     text = logfile.read_text(encoding="utf-8")
     has_http = re.search(r"https?://", text) is not None
@@ -73,7 +73,7 @@ if logfile.exists():
         )
         notes.append(f"ai_log snippet (first 240 chars): {snippet!r}")
 
-#  Exit 
+# ,  Exit 
 if errors:
     print("VERIFIER FAIL:")
     for e in errors:
