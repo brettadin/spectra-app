@@ -72,6 +72,7 @@ class OverlayTrace:
     flux_unit: str = "arb"
     flux_kind: str = "relative"
     axis: str = "emission"
+    axis_kind: str = "wavelength"
     downsample: Dict[int, Tuple[Tuple[float, ...], Tuple[float, ...]]] = field(
         default_factory=dict
     )
@@ -555,6 +556,7 @@ def _add_overlay(
     provenance: Optional[Dict[str, object]] = None,
     hover: Optional[Sequence[str]] = None,
     axis: Optional[str] = None,
+    axis_kind: Optional[str] = None,
     downsample: Optional[Mapping[int, Mapping[str, Sequence[float]]]] = None,
     cache_dataset_id: Optional[str] = None,
 ) -> Tuple[bool, str]:
@@ -632,6 +634,7 @@ def _add_overlay(
         flux_unit=str(flux_unit or "arb"),
         flux_kind=str(flux_kind or "relative"),
         axis=str(axis or "emission"),
+        axis_kind=str(axis_kind or metadata.get("axis_kind") if metadata else "wavelength"),
         downsample=downsample_map,
         cache_dataset_id=cache_dataset_id,
     )
@@ -673,6 +676,8 @@ def _add_overlay_payload(payload: Dict[str, object]) -> Tuple[bool, str]:
         provenance=payload.get("provenance"),
         hover=payload.get("hover"),
         axis=payload.get("axis"),
+        axis_kind=payload.get("axis_kind")
+        or ((payload.get("metadata") or {}).get("axis_kind") if isinstance(payload.get("metadata"), Mapping) else None),
         downsample=payload.get("downsample"),
         cache_dataset_id=payload.get("cache_dataset_id"),
     )
@@ -698,6 +703,17 @@ def _add_overlay_payload(payload: Dict[str, object]) -> Tuple[bool, str]:
                 provenance=entry.get("provenance") or payload.get("provenance"),
                 hover=entry.get("hover"),
                 axis=entry.get("axis") or payload.get("axis"),
+                axis_kind=entry.get("axis_kind")
+                or (
+                    (entry.get("metadata") or {}).get("axis_kind")
+                    if isinstance(entry.get("metadata"), Mapping)
+                    else None
+                )
+                or (
+                    (payload.get("metadata") or {}).get("axis_kind")
+                    if isinstance(payload.get("metadata"), Mapping)
+                    else None
+                ),
                 downsample=entry.get("downsample"),
                 cache_dataset_id=entry.get("cache_dataset_id")
                 or payload.get("cache_dataset_id"),
@@ -1298,7 +1314,14 @@ def _effective_viewport(
 def _extract_metadata_range(
     metadata: Dict[str, object],
 ) -> Optional[Tuple[float, float]]:
-    for key in ("wavelength_effective_range_nm", "wavelength_range_nm"):
+    axis_kind = None
+    if isinstance(metadata, Mapping):
+        axis_kind = metadata.get("axis_kind")
+    if axis_kind == "time":
+        keys = ("data_time_range", "time_range")
+    else:
+        keys = ("wavelength_effective_range_nm", "wavelength_range_nm")
+    for key in keys:
         value = metadata.get(key) if metadata else None
         if isinstance(value, (list, tuple)) and len(value) == 2:
             try:
@@ -1333,6 +1356,38 @@ def _convert_wavelength(series: pd.Series, unit: str) -> Tuple[pd.Series, str]:
         safe = values.replace(0, np.nan)
         return 1e7 / safe, "Wavenumber (cm⁻¹)"
     return values, "Wavelength (nm)"
+
+
+def _convert_time_axis(series: pd.Series, trace: OverlayTrace) -> Tuple[pd.Series, str]:
+    values = pd.to_numeric(series, errors="coerce")
+    metadata = trace.metadata or {}
+    provenance = trace.provenance or {}
+    units_meta = provenance.get("units") if isinstance(provenance, Mapping) else {}
+    unit_label = None
+    if isinstance(metadata, Mapping):
+        unit_label = (
+            metadata.get("time_original_unit")
+            or metadata.get("reported_time_unit")
+            or metadata.get("time_unit")
+        )
+        if not unit_label:
+            unit_label = metadata.get("axis_unit")
+    if not unit_label and isinstance(units_meta, Mapping):
+        unit_label = (
+            units_meta.get("time_original_unit")
+            or units_meta.get("time_reported")
+            or units_meta.get("time_converted_to")
+        )
+    axis_title = f"Time ({unit_label})" if unit_label else "Time"
+    return values, axis_title
+
+
+def _convert_axis_series(
+    series: pd.Series, trace: OverlayTrace, display_units: str
+) -> Tuple[pd.Series, str]:
+    if getattr(trace, "axis_kind", "wavelength") == "time":
+        return _convert_time_axis(series, trace)
+    return _convert_wavelength(series, display_units)
 
 
 def _normalize_hover_values(
@@ -1429,8 +1484,8 @@ def _build_overlay_figure(
             df = _filter_viewport(df, viewport)
             if df.empty:
                 continue
-            converted, axis_title = _convert_wavelength(
-                df["wavelength_nm"], display_units
+            converted, axis_title = _convert_axis_series(
+                df["wavelength_nm"], trace, display_units
             )
             df = df.assign(wavelength=converted, flux=df["flux"].astype(float))
             hover_values = _normalize_hover_values(df.get("hover"))
@@ -1469,7 +1524,9 @@ def _build_overlay_figure(
             sample_flux = np.asarray(values_trace - values_ref, dtype=float)
             sample_hover = None
 
-        converted, axis_title = _convert_wavelength(pd.Series(sample_w), display_units)
+        converted, axis_title = _convert_axis_series(
+            pd.Series(sample_w), trace, display_units
+        )
         flux_array = np.asarray(sample_flux, dtype=float)
 
         if display_mode != "Flux (raw)":
@@ -1619,12 +1676,60 @@ def _normalise_wavelength_range(meta: Dict[str, object]) -> str:
     return "—"
 
 
+def _format_axis_range(trace: OverlayTrace, meta: Mapping[str, object]) -> str:
+    axis_kind = str(trace.axis_kind or meta.get("axis_kind") or "wavelength").lower()
+    if axis_kind == "time":
+        range_candidates = [meta.get("data_time_range"), meta.get("time_range")]
+        for candidate in range_candidates:
+            if isinstance(candidate, (list, tuple)) and len(candidate) == 2:
+                try:
+                    low = float(candidate[0])
+                    high = float(candidate[1])
+                except (TypeError, ValueError):
+                    continue
+                if not math.isfinite(low) or not math.isfinite(high):
+                    continue
+                unit = (
+                    meta.get("time_original_unit")
+                    or meta.get("reported_time_unit")
+                    or meta.get("time_unit")
+                )
+                if not unit:
+                    units_meta = trace.provenance.get("units") if isinstance(trace.provenance, Mapping) else {}
+                    if isinstance(units_meta, Mapping):
+                        unit = (
+                            units_meta.get("time_original_unit")
+                            or units_meta.get("time_reported")
+                            or units_meta.get("time_converted_to")
+                        )
+                suffix = f" {unit}" if unit else ""
+                return f"{low:.4f} – {high:.4f}{suffix}"
+        return "—"
+
+    range_candidates = [
+        meta.get("wavelength_effective_range_nm"),
+        meta.get("wavelength_range_nm"),
+    ]
+    for candidate in range_candidates:
+        if isinstance(candidate, (list, tuple)) and len(candidate) == 2:
+            try:
+                low = float(candidate[0])
+                high = float(candidate[1])
+            except (TypeError, ValueError):
+                continue
+            if not math.isfinite(low) or not math.isfinite(high):
+                continue
+            return f"{low:.2f} – {high:.2f} nm"
+    return "—"
+
+
 def _build_metadata_summary_rows(
     overlays: Sequence[OverlayTrace],
 ) -> List[Dict[str, object]]:
     rows: List[Dict[str, object]] = []
     for trace in overlays:
         meta = {str(k).lower(): v for k, v in (trace.metadata or {}).items()}
+        axis_range = _format_axis_range(trace, meta)
         rows.append(
             {
                 "Label": trace.label,
@@ -1636,7 +1741,7 @@ def _build_metadata_summary_rows(
                 or meta.get("date_obs")
                 or meta.get("observation_date")
                 or "—",
-                "Range (nm)": _normalise_wavelength_range(meta),
+                "Axis range": axis_range,
                 "Resolution": meta.get("resolution_native")
                 or meta.get("resolution")
                 or "—",

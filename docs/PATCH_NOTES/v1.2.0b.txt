@@ -1,0 +1,17 @@
+Spectra App — Patch Notes v1.2.0b
+=================================
+
+Highlights
+----------
+- Teach FITS ingestion to treat TIME columns with BJD/MJD/second units as time-series axes instead of rejecting them as non-spectral data.
+- Update overlay rendering and metadata summaries so time axes surface their native units/ranges alongside flux.
+- Add regression coverage for light-curve ingestion and UI metadata formatting.
+
+Verification
+------------
+- pytest tests/server/test_ingest_fits.py::test_parse_fits_accepts_time_series_units
+- pytest tests/ui/test_metadata_summary.py
+
+Continuity
+----------
+- Bumped to v1.2.0b and refreshed: docs/brains/brains_v1.2.0b.md, docs/patch_notes/v1.2.0b.md, docs/ai_handoff/AI_HANDOFF_PROMPT_v1.2.0b.md, docs/ai_log/2025-09-30.md, PATCHLOG.txt.

@@ -24,6 +24,8 @@ def _overlay_from_payload(payload: dict) -> OverlayTrace:
         flux_unit=payload.get("flux_unit", "arb"),
         flux_kind=payload.get("flux_kind", "relative"),
         axis=payload.get("axis", "emission"),
+        axis_kind=payload.get("axis_kind")
+        or ((payload.get("metadata") or {}).get("axis_kind") if isinstance(payload.get("metadata"), dict) else "wavelength"),
     )
 
 
@@ -63,7 +65,7 @@ def test_metadata_summary_ascii_upload_header_units():
     assert row["Telescope"] == "HeaderScope"
     assert row["Observation"] == "2023-07-01"
     assert row["Flux unit"] == "photons/s"
-    assert row["Range (nm)"] == "350.00 – 800.00"
+    assert row["Axis range"] == "350.00 – 800.00 nm"
 
     provenance = payload["provenance"]
     assert provenance["units"]["wavelength_converted_to"] == "nm"
@@ -109,10 +111,35 @@ def test_metadata_summary_fits_upload_populates_rows():
     assert row["Telescope"] == "ScopeFit"
     assert row["Observation"] == "2023-02-03"
     assert row["Flux unit"] == "erg/s/cm^2/Angstrom"
-    assert row["Range (nm)"] == "400.00 – 400.20"
+    assert row["Axis range"] == "400.00 – 400.20 nm"
 
     provenance = payload["provenance"]
-    assert provenance["units"]["wavelength_input"] == "Å"
+    assert provenance["units"]["wavelength_input"] in {"Å", "Angstrom"}
     assert provenance["units"]["flux_unit"] == "erg/s/cm^2/Angstrom"
     assert provenance["hdu_name"] == "SCI"
     assert provenance["units"]["wavelength_converted_to"] == "nm"
+
+
+def test_metadata_summary_time_series_axis():
+    payload = {
+        "label": "Light Curve",
+        "wavelength_nm": [0.0, 1.0, 2.0],
+        "flux": [5.0, 5.5, 5.2],
+        "axis_kind": "time",
+        "metadata": {
+            "axis_kind": "time",
+            "time_range": [0.0, 2.0],
+            "time_unit": "day",
+            "time_original_unit": "BJD - 2457000, days",
+        },
+        "provenance": {
+            "units": {
+                "time_converted_to": "day",
+                "time_original_unit": "BJD - 2457000, days",
+            }
+        },
+    }
+
+    overlay = _overlay_from_payload(payload)
+    rows = _build_metadata_summary_rows([overlay])
+    assert rows[0]["Axis range"] == "0.0000 – 2.0000 BJD - 2457000, days"

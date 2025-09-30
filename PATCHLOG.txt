@@ -10,3 +10,4 @@ Spectra App — Patch Log (append-only)
 - v1.1.9: fix overlay button keys, respect ledger lock session state, wire the ingest queue into the overlay pipeline, and refresh docs for the release.
 - v1.2.0 (REF 1.2.0-A01 / 1.2.0-C01): patched FITS table ingestion to drop non-positive wavenumber samples safely, documented the runtime package set, and rolled continuity collateral for the release.
 - v1.2.0a (REF 1.2.0-A02 / 1.2.0-D01): normalised Angstrom aliases in FITS ingestion, extended regression coverage, and refreshed continuity docs for the hotfix.
+- v1.2.0b (REF 1.2.0b-A01 / 1.2.0b-D01): taught FITS table ingestion to recognise time-series axes, updated overlay/metadata UX to label time units, refreshed regression coverage, and rolled continuity docs for the release.
