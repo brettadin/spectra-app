@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 from astropy.io import fits
 
 from app.server.ingest_fits import parse_fits
@@ -109,3 +110,165 @@ def test_parse_fits_collapses_image_data(tmp_path):
     collapse_meta = result["provenance"].get("image_collapse", {})
     assert collapse_meta.get("original_shape") == [2, 4]
     assert collapse_meta.get("collapsed_axes") == [0]
+
+
+def test_parse_fits_rejects_nonspectral_image_axis(tmp_path):
+    flux_values = np.array([1.0, 2.0, 3.0], dtype=float)
+
+    sci_header = fits.Header()
+    sci_header["CRVAL1"] = -1.0
+    sci_header["CDELT1"] = 1.0
+    sci_header["CRPIX1"] = 1.0
+    sci_header["CTYPE1"] = "RA---TAN"
+
+    sci_hdu = fits.ImageHDU(data=flux_values, header=sci_header, name="SCI")
+    hdul = fits.HDUList([fits.PrimaryHDU(), sci_hdu])
+    fits_path = tmp_path / "ra_axis_image.fits"
+    hdul.writeto(fits_path, overwrite=True)
+    hdul.close()
+
+    with pytest.raises(ValueError) as excinfo:
+        parse_fits(str(fits_path))
+
+    message = str(excinfo.value)
+    assert "does not describe a spectral axis" in message
+    assert "CTYPE1='RA---TAN'" in message
+
+
+def test_parse_fits_accepts_convertible_units_without_spectral_ctype(tmp_path):
+    flux_values = np.array([1.0, 2.0, 3.0], dtype=float)
+
+    sci_header = fits.Header()
+    sci_header["CRVAL1"] = 1000.0
+    sci_header["CDELT1"] = 1.0
+    sci_header["CRPIX1"] = 1.0
+    sci_header["CTYPE1"] = "LINEAR"
+    sci_header["CUNIT1"] = "angstrom"
+
+    sci_hdu = fits.ImageHDU(data=flux_values, header=sci_header, name="SCI")
+    hdul = fits.HDUList([fits.PrimaryHDU(), sci_hdu])
+    fits_path = tmp_path / "linear_angstrom.fits"
+    hdul.writeto(fits_path, overwrite=True)
+    hdul.close()
+
+    result = parse_fits(str(fits_path))
+
+    expected_wavelength_nm = [100.0 + i * 0.1 for i in range(flux_values.size)]
+    assert result["wavelength_nm"] == pytest.approx(expected_wavelength_nm)
+
+
+def test_parse_fits_rejects_table_with_nonspectral_units(tmp_path):
+    time = np.array([0.0, 1.0, 2.0], dtype=float)
+    flux = np.array([10.0, 11.0, 12.0], dtype=float)
+
+    columns = [
+        fits.Column(name="TIME", array=time, format="D", unit="BJD - 2457000, days"),
+        fits.Column(name="SAP_FLUX", array=flux, format="D", unit="e-/s"),
+    ]
+
+    table_hdu = fits.BinTableHDU.from_columns(columns)
+    hdul = fits.HDUList([fits.PrimaryHDU(), table_hdu])
+    fits_path = tmp_path / "tess_like_lightcurve.fits"
+    hdul.writeto(fits_path, overwrite=True)
+    hdul.close()
+
+    with pytest.raises(ValueError) as excinfo:
+        parse_fits(str(fits_path))
+
+    message = str(excinfo.value)
+    assert "TIME" in message
+    assert "BJD" in message
+
+
+def test_parse_fits_assumes_nm_for_wavelength_column_without_units(tmp_path):
+    wavelengths = np.array([400.0, 500.0, 600.0], dtype=float)
+    flux = np.array([1.0, 2.0, 3.0], dtype=float)
+
+    columns = [
+        fits.Column(name="WAVE", array=wavelengths, format="D"),
+        fits.Column(name="FLUX", array=flux, format="D"),
+    ]
+
+    table_hdu = fits.BinTableHDU.from_columns(columns)
+    hdul = fits.HDUList([fits.PrimaryHDU(), table_hdu])
+    fits_path = tmp_path / "unitless_wavelength_table.fits"
+    hdul.writeto(fits_path, overwrite=True)
+    hdul.close()
+
+    result = parse_fits(str(fits_path))
+
+    assert result["wavelength_nm"] == wavelengths.tolist()
+    assert result["metadata"]["original_wavelength_unit"] == "nm"
+    assert result["metadata"].get("reported_wavelength_unit") is None
+
+    unit_resolution = result["provenance"].get("wavelength_unit_resolution", {})
+    assert unit_resolution.get("assumed") == "nm"
+    assert unit_resolution.get("assumed_from") == "column_name"
+
+
+def test_parse_fits_table_drops_nonpositive_wavelengths(tmp_path):
+    wavelengths = np.array([-10.0, 0.0, 500.0], dtype=float)
+    flux = np.array([1.0, 2.0, 3.0], dtype=float)
+
+    columns = [
+        fits.Column(name="WAVELENGTH", array=wavelengths, format="D", unit="nm"),
+        fits.Column(name="FLUX", array=flux, format="D"),
+    ]
+
+    table_hdu = fits.BinTableHDU.from_columns(columns)
+    hdul = fits.HDUList([fits.PrimaryHDU(), table_hdu])
+    fits_path = tmp_path / "table_with_nonpositive_wavelengths.fits"
+    hdul.writeto(fits_path, overwrite=True)
+    hdul.close()
+
+    result = parse_fits(str(fits_path))
+
+    assert result["wavelength_nm"] == [500.0]
+    assert result["flux"] == [3.0]
+    provenance = result["provenance"]
+    assert provenance.get("dropped_nonpositive_wavelengths") == 2
+
+
+def test_parse_fits_table_rejects_all_nonpositive_wavelengths(tmp_path):
+    wavelengths = np.array([-10.0, 0.0, -5.0], dtype=float)
+    flux = np.array([1.0, 2.0, 3.0], dtype=float)
+
+    columns = [
+        fits.Column(name="WAVELENGTH", array=wavelengths, format="D", unit="nm"),
+        fits.Column(name="FLUX", array=flux, format="D"),
+    ]
+
+    table_hdu = fits.BinTableHDU.from_columns(columns)
+    hdul = fits.HDUList([fits.PrimaryHDU(), table_hdu])
+    fits_path = tmp_path / "table_all_nonpositive.fits"
+    hdul.writeto(fits_path, overwrite=True)
+    hdul.close()
+
+    with pytest.raises(ValueError) as excinfo:
+        parse_fits(str(fits_path))
+
+    message = str(excinfo.value)
+    assert "no positive wavelength samples" in message.lower()
+
+
+def test_parse_fits_rejects_image_with_nonpositive_wavelengths(tmp_path):
+    flux_values = np.array([1.0, 2.0, 3.0], dtype=float)
+
+    sci_header = fits.Header()
+    sci_header["CRVAL1"] = -1.0
+    sci_header["CDELT1"] = -1.0
+    sci_header["CRPIX1"] = 1.0
+    sci_header["CTYPE1"] = "AWAV"
+    sci_header["CUNIT1"] = "nm"
+
+    sci_hdu = fits.ImageHDU(data=flux_values, header=sci_header, name="SCI")
+    hdul = fits.HDUList([fits.PrimaryHDU(), sci_hdu])
+    fits_path = tmp_path / "image_all_nonpositive.fits"
+    hdul.writeto(fits_path, overwrite=True)
+    hdul.close()
+
+    with pytest.raises(ValueError) as excinfo:
+        parse_fits(str(fits_path))
+
+    message = str(excinfo.value)
+    assert "no positive wavelength samples" in message.lower()
