@@ -1,0 +1,149 @@
+# Curated sources for local doc mirroring and indexing.
+# Versions are "auto" so your runtime.json can pin exact lib versions at build time.
+
+- name: astropy
+  version: auto
+  base_url: https://docs.astropy.org/en/latest/
+  keep:
+    - config
+    - constants
+    - convolution
+    - coordinates
+    - cosmology
+    - environment_variables
+    - glossary
+    - io/ascii
+    - io/fits
+    - io/misc
+    - io/overview
+    - io/registry
+    - io/typing
+    - io/unified
+    - io/unified_image
+    - io/unified_table
+    - io/votable
+    - logging
+    - modeling
+    - nddata
+    - samp
+    - stats
+    - table
+    - time
+    - timeseries
+    - uncertainty
+    - units
+    - utils/iers
+    - utils
+    - visualization
+    - warnings
+    - wcs
+
+- name: astroquery
+  version: auto
+  base_url: https://astroquery.readthedocs.io/en/latest/
+  keep:
+    - cadc/cadc
+    - casda/casda
+    - linelists/cdms/cdms
+    - alma/alma
+    - esa/hsa/hsa
+    - besancon/besancon
+    - esa/euclid/euclid
+    - esa/integral/integral
+    - esa/iso/iso
+    - esa/jwst/jwst
+    - esa/xmm_newton/xmm_newton
+    - esasky/esasky
+    - eso/eso
+    - image_cutouts/first/first
+    - gaia/gaia
+    - gama/gama
+    - gemini/gemini
+    - esa/hubble/hubble
+    - hips2fits/hips2fits
+    - hitran/hitran
+    - heasarc/heasarc
+    - ipac/irsa/most/most
+    - ipac/irsa/irsa_dust/irsa_dust
+    - ipac/irsa/ibe/ibe
+    - ipac/irsa/irsa/irsa
+    - jplspec/jplspec
+    - atomic/atomic
+    - mast/mast
+    - mast/mast_missions
+    - mast/mast_catalog
+    - mast/mast_cut
+    - mast/mast_mastquery
+    - mast/mast_obsquery
+    - mocserver/mocserver
+    - magpis/magpis
+    - nasa_ads/nasa_ads
+    - ipac/ned/ned
+    - nist/nist
+    - nvas/nvas
+    - simbad/simbad
+    - skyview/skyview
+    - splatalogue/splatalogue
+    - svo_fps/svo_fps
+    - ukidss/ukidss
+    - vamdc/vamdc
+    - vizier/vizier
+    - vo_conesearch/vo_conesearch
+    - vsa/vsa
+    - mpc/mpc
+    - xmatch/xmatch
+
+- name: nist_dimspec
+  version: auto
+  base_url: https://pages.nist.gov/dimspec/docs/
+  keep:
+    - instructions
+    - technical-details
+    - conclusions
+    - references
+    - table-explorer-home
+    - dimspec-qc-home
+    - msmatch-home
+
+- name: nist_asd_help
+  version: auto
+  base_url: https://physics.nist.gov/PhysRefData/ASD/Html/
+  keep:
+    - help
+    - lineshelp
+    - levelshelp
+    - iehelp
+    - libshelp
+
+- name: jwst_docs
+  version: auto
+  base_url: https://jwst-docs.stsci.edu/
+  keep:
+    - accessing-jwst-data
+    - accessing-jwst-data/jwst-science-data-overview
+    - accessing-jwst-data/jwst-science-data-overview/jwst-time-definitions
+    - accessing-jwst-data/mast-web-access
+    - accessing-jwst-data/mast-api-access
+    - accessing-jwst-data/exclusive-access-period
+    - accessing-jwst-data/citing-jwst-data
+    - accessing-jwst-data/simulated-jwst-data
+    - jwst-other-tools
+
+- name: mast_api
+  version: auto
+  base_url: https://mast.stsci.edu/api/v0/
+  keep:
+    - ""                     # index
+    - _services
+    - class_mashup_1_1_mashup_request
+    - md_result_formats
+    - pyex
+    - MastApiTutorial
+
+- name: stsci_archive
+  version: auto
+  base_url: https://archive.stsci.edu/
+  keep:
+    - data_format
+    - fits_coordinates
+    - publishing/doi
