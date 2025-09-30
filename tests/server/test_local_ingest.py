@@ -7,6 +7,7 @@ from textwrap import dedent
 import numpy as np
 import pandas as pd
 import pytest
+from astropy import units as u
 from astropy.io import fits
 
 import app.utils.local_ingest as local_ingest
@@ -44,6 +45,12 @@ def test_ingest_local_ascii_populates_metadata():
     assert payload["flux_unit"] == "10^-16 erg/s/cm^2/Å"
     assert payload["flux_kind"] == "absolute"
     assert payload["wavelength_nm"] == [500.0, 500.5, 501.0]
+    assert payload["wavelength"]["unit"] == "nm"
+    assert payload["wavelength"]["values"] == [500.0, 500.5, 501.0]
+    assert payload["wavelength_quantity"].unit.is_equivalent(u.nm)
+    assert payload["wavelength_quantity"].to_value(u.nm) == pytest.approx(
+        payload["wavelength_nm"]
+    )
     assert payload["flux"] == [1.2, 1.5, 1.7]
 
     metadata = payload["metadata"]
@@ -246,9 +253,9 @@ def test_parse_ascii_segments_converts_angstrom_to_nm():
 
     assert parsed["wavelength_nm"] == pytest.approx([500.0, 500.5])
     metadata = parsed["metadata"]
-    assert metadata["original_wavelength_unit"] == "Å"
+    assert metadata["original_wavelength_unit"] == "Angstrom"
     units = parsed["provenance"].get("units", {})
-    assert units.get("wavelength_input") == "Å"
+    assert units.get("wavelength_input") in {"Angstrom", "Å"}
     assert units.get("wavelength_reported") == "Angstrom"
     assert units.get("wavelength_converted_to") == "nm"
 
@@ -317,9 +324,37 @@ def test_ingest_local_ascii_wavenumber_converts_to_nm():
     payload = ingest_local_file("wavenumber.csv", content)
 
     assert payload["wavelength_nm"] == pytest.approx([500.0, 666.6666667, 1000.0])
+    assert payload["wavelength_quantity"].to_value(u.nm) == pytest.approx(
+        payload["wavelength_nm"]
+    )
+    assert payload["wavelength"]["unit"] == "nm"
+    assert payload["wavelength"]["values"] == pytest.approx(
+        [500.0, 666.6666667, 1000.0]
+    )
     metadata = payload["metadata"]
-    assert metadata["original_wavelength_unit"] == "cm^-1"
-    assert metadata["reported_wavelength_unit"] == "cm^-1"
+    assert metadata["original_wavelength_unit"].lower() == "cm-1"
+    reported_normalized = metadata["reported_wavelength_unit"].lower().replace(" ", "")
+    assert reported_normalized in {"cm-1", "cm^-1"}
+
+
+def test_ingest_local_ascii_micron_unit():
+    content = dedent(
+        """
+        # Target: InfraredSource
+        Wavelength (micron),Flux
+        0.5,10
+        0.75,12
+        1.0,14
+        """
+    ).encode("utf-8")
+
+    payload = ingest_local_file("infrared.csv", content)
+
+    expected_nm = [500.0, 750.0, 1000.0]
+    assert payload["wavelength_nm"] == pytest.approx(expected_nm)
+    assert payload["wavelength"]["unit"] == "nm"
+    assert payload["wavelength"]["values"] == pytest.approx(expected_nm)
+    assert payload["flux"] == [10.0, 12.0, 14.0]
 
 
 def test_ingest_local_ascii_gzip_round_trip():
@@ -516,7 +551,7 @@ def test_ingest_local_fits_enriches_metadata():
     assert metadata["wavelength_step_nm"] == pytest.approx(0.2)
     assert metadata["reported_flux_unit"] == "Jy"
     assert metadata["reported_wavelength_unit"] == "Angstrom"
-    assert metadata["original_wavelength_unit"] == "Å"
+    assert metadata["original_wavelength_unit"] == "Angstrom"
 
     provenance = payload["provenance"]
     assert provenance["format"] == "fits"
@@ -544,7 +579,7 @@ def test_ingest_local_fits_table_handles_columns():
     assert payload["flux_unit"] == "Jy"
 
     metadata = payload["metadata"]
-    assert metadata["original_wavelength_unit"] == "Å"
+    assert metadata["original_wavelength_unit"] == "Angstrom"
     assert metadata["reported_wavelength_unit"] == "Angstrom"
     assert metadata["points"] == 3
 

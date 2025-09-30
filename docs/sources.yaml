@@ -1,0 +1,145 @@
+- name: astropy
+  version: auto
+  base_url: https://docs.astropy.org/en/latest/
+  keep:
+    - config
+    - constants
+    - convolution
+    - coordinates
+    - cosmology
+    - environment_variables.html
+    - glossary.html
+    - io/ascii
+    - io/fits
+    - io/misc.html
+    - io/overview.html
+    - io/registry.html
+    - io/typing.html
+    - io/unified.html
+    - io/unified_image.html
+    - io/unified_table.html
+    - io/votable
+    - logging.html
+    - modeling
+    - nddata
+    - samp
+    - stats
+    - table
+    - time
+    - timeseries
+    - uncertainty
+    - units
+    - utils/iers.html
+    - utils
+    - visualization
+    - warnings.html
+    - wcs
+
+- name: astroquery
+  version: auto
+  base_url: https://astroquery.readthedocs.io/en/latest/
+  keep:
+    - cadc/cadc.html
+    - casda/casda.html
+    - linelists/cdms/cdms.html
+    - alma/alma.html
+    - esa/hsa/hsa.html
+    - besancon/besancon.html
+    - esa/euclid/euclid.html
+    - esa/integral/integral.html
+    - esa/iso/iso.html
+    - esa/jwst/jwst.html
+    - esa/xmm_newton/xmm_newton.html
+    - esasky/esasky.html
+    - eso/eso.html
+    - image_cutouts/first/first.html
+    - gaia/gaia.html
+    - gama/gama.html
+    - gemini/gemini.html
+    - esa/hubble/hubble.html
+    - hips2fits/hips2fits.html
+    - hitran/hitran.html
+    - heasarc/heasarc.html
+    - ipac/irsa/most.html
+    - ipac/irsa/irsa_dust/irsa_dust.html
+    - ipac/irsa/ibe/ibe.html
+    - ipac/irsa/irsa.html
+    - jplspec/jplspec.html
+    - atomic/atomic.html
+    - mast/mast.html
+    - mast/mast_missions.html
+    - mast/mast_catalog.html
+    - mast/mast_cut.html
+    - mast/mast_mastquery.html
+    - mast/mast_obsquery.html
+    - mocserver/mocserver.html
+    - magpis/magpis.html
+    - nasa_ads/nasa_ads.html
+    - ipac/ned/ned.html
+    - nist/nist.html
+    - nvas/nvas.html
+    - simbad/simbad.html
+    - skyview/skyview.html
+    - splatalogue/splatalogue.html
+    - svo_fps/svo_fps.html
+    - ukidss/ukidss.html
+    - vamdc/vamdc.html
+    - vizier/vizier.html
+    - vo_conesearch/vo_conesearch.html
+    - vsa/vsa.html
+    - mpc/mpc.html
+    - xmatch/xmatch.html
+
+- name: nist_dimspec
+  version: auto
+  base_url: https://pages.nist.gov/dimspec/docs/
+  keep:
+    - instructions.html
+    - technical-details.html
+    - conclusions.html
+    - references.html
+    - table-explorer-home.html
+    - dimspec-qc-home.html
+    - msmatch-home.html
+
+- name: nist_asd_help
+  version: auto
+  base_url: https://physics.nist.gov/PhysRefData/ASD/Html/
+  keep:
+    - help.html
+    - lineshelp.html
+    - levelshelp.html
+    - iehelp.html
+    - libshelp.html
+
+- name: jwst_docs
+  version: auto
+  base_url: https://jwst-docs.stsci.edu/
+  keep:
+    - accessing-jwst-data
+    - accessing-jwst-data/jwst-science-data-overview
+    - accessing-jwst-data/jwst-science-data-overview/jwst-time-definitions
+    - accessing-jwst-data/mast-web-access
+    - accessing-jwst-data/mast-api-access
+    - accessing-jwst-data/exclusive-access-period
+    - accessing-jwst-data/citing-jwst-data
+    - accessing-jwst-data/simulated-jwst-data
+    - jwst-other-tools
+
+- name: mast_api
+  version: auto
+  base_url: https://mast.stsci.edu/api/v0/
+  keep:
+    - _services.html
+    - class_mashup_1_1_mashup_request.html
+    - md_result_formats.html
+    - pyex.html
+    - MastApiTutorial.html
+
+- name: stsci_archive
+  version: auto
+  base_url: https://archive.stsci.edu/
+  keep:
+    - data_format.html
+    - fits_coordinates.html
+    - publishing/doi

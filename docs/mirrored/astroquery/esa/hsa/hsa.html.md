@@ -1,0 +1,9 @@
+```
+>>> from astroquery.esa.hsa import HSA
+>>>
+>>> HSA.get_tables()
+INFO: Retrieving tables... [astroquery.utils.tap.core]
+INFO: Parsing tables... [astroquery.utils.tap.core]
+INFO: Done. [astroquery.utils.tap.core]
+['hpdp.latest_observation_hpdp', 'hpdp.vizier_links', 'hpdp.unique_observation_hpdp', 'hpdp.latest_unique_observation_requests', 'hpdp.files', 'hpdp.latest_requests', 'public.dual', 'public.image_formats', 'tap_schema.tables', 'tap_schema.columns', 'tap_schema.keys', 'tap_schema.schemas', 'tap_schema.key_columns', 'hsa.observation_science', 'hsa.proposal_coauthor', 'hsa.proposal_observation', 'hsa.instrument', 'hsa.observing_mode_per_instrument', 'hsa.spire_spectral_feature_finder_catalogue', 'hsa.hifi_spectral_line_smoothed', 'hsa.publication', 'hsa.quality_flag', 'hsa.v_active_observation', 'hsa.proposal_info', 'hsa.pacs_point_source_070', 'hsa.observing_mode', 'hsa.proposal', 'hsa.proposal_pi_user', 'hsa.spire_point_source_350', 'hsa.spire_point_source_250', 'hsa.v_publication', 'hsa.spire_point_source_500', 'hsa.pacs_point_source_100', 'hsa.v_proposal_observation', 'hsa.hifi_spectral_line_native', 'hsa.pacs_point_source_160', 'hsa.ancillary', 'hsa.metadata_expert_panels', 'pubtool.institutions', 'pubtool.v_first_pub_date', 'pubtool.v_first_pub_date_single', 'pubtool.archival_type', 'pubtool.publication', 'pubtool.publication_details', 'pubtool.authors_institutions', 'pubtool.publication_observation', 'pubtool.authors', 'updp2.latest_observation_updp', 'updp2.vizier_links', 'updp2.latest_unique_observation_requests', 'updp2.files', 'updp2.latest_requests', 'updp2.unique_observation_updp']
+```

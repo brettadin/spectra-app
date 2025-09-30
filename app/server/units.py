@@ -1,117 +1,95 @@
 from __future__ import annotations
 
-from typing import Callable, Iterable, List
+from typing import Iterable, Tuple
+
+import numpy as np
+from astropy import units as u
+from astropy.units import Quantity
+from astropy.units import imperial
+from astropy.units import UnitScaleError
 
 
-def _normalise_lookup_key(unit: str) -> str:
-    cleaned = unit.strip()
-    if not cleaned:
+def _as_unit(unit: str | u.UnitBase | Quantity) -> u.UnitBase:
+    """Coerce user input into an ``astropy`` unit instance."""
+
+    if isinstance(unit, Quantity):
+        return unit.unit
+    if isinstance(unit, u.UnitBase):
+        return unit
+    text = str(unit).strip()
+    if not text:
         raise ValueError("Empty unit provided")
-    return cleaned.casefold().replace("μ", "µ")
+    lowered = text.lower()
+    if lowered == "nm":
+        return u.nm
+    try:
+        parsed = u.Unit(text)
+        if parsed == u.nmi and lowered == "nm":
+            return u.nm
+        return parsed
+    except Exception:
+        with imperial.enable():
+            try:
+                return u.Unit(text)
+            except Exception:
+                pass
+        try:
+            return u.Unit(lowered)
+        except Exception as exc:  # pragma: no cover - astropy specific
+            with imperial.enable():
+                try:
+                    return u.Unit(lowered)
+                except Exception as imperial_exc:
+                    raise ValueError(f"Unsupported wavelength unit: {unit}") from imperial_exc
 
 
-_UNIT_ALIASES: dict[str, str] = {
-    "nm": "nm",
-    "nanometer": "nm",
-    "nanometers": "nm",
-    "nanometre": "nm",
-    "nanometres": "nm",
-    "nan": "nm",
-    "angstrom": "Å",
-    "ångström": "Å",
-    "ångstrom": "Å",
-    "å": "Å",
-    "a": "Å",
-    "aa": "Å",
-    "ang": "Å",
-    "µm": "µm",
-    "um": "µm",
-    "micron": "µm",
-    "microns": "µm",
-    "micrometer": "µm",
-    "micrometers": "µm",
-    "micrometre": "µm",
-    "micrometres": "µm",
-    "millimeter": "mm",
-    "millimetre": "mm",
-    "millimeters": "mm",
-    "millimetres": "mm",
-    "mm": "mm",
-    "centimeter": "cm",
-    "centimetre": "cm",
-    "centimeters": "cm",
-    "centimetres": "cm",
-    "cm": "cm",
-    "meter": "m",
-    "metre": "m",
-    "meters": "m",
-    "metres": "m",
-    "m": "m",
-    "pm": "pm",
-    "picometer": "pm",
-    "picometre": "pm",
-    "picometers": "pm",
-    "picometres": "pm",
-    "in": "in",
-    "inch": "in",
-    "inches": "in",
-    "cm^-1": "cm^-1",
-    "cm-1": "cm^-1",
-    "1/cm": "cm^-1",
-    "cm**-1": "cm^-1",
-    "cm⁻1": "cm^-1",
-    "wavenumber": "cm^-1",
-    "spatialfrequency": "cm^-1",
-    "wn": "cm^-1",
-    "kayser": "cm^-1",
-    "kaysers": "cm^-1",
-}
+def resolve_unit(unit: str | u.UnitBase | Quantity) -> Tuple[u.UnitBase, str]:
+    """Return a parsed unit and its canonical string label."""
+
+    parsed = _as_unit(unit)
+    try:
+        canonical = parsed.to_string(format="fits")
+    except UnitScaleError:
+        canonical = parsed.to_string()
+    return parsed, canonical
 
 
-def _canonicalise(unit: str) -> str:
-    lookup = _normalise_lookup_key(unit)
-    if lookup in _UNIT_ALIASES:
-        return _UNIT_ALIASES[lookup]
-    raise ValueError(f"Unsupported wavelength unit: {unit}")
+def quantity_from(
+    values: Iterable[float], unit: str | u.UnitBase | Quantity
+) -> Tuple[Quantity, str]:
+    """Return a quantity constructed from ``values`` and its canonical unit."""
+
+    parsed_unit, canonical = resolve_unit(unit)
+    try:
+        quantity = u.Quantity(values, parsed_unit, copy=False)
+    except ValueError:
+        quantity = u.Quantity(values, parsed_unit)
+    return quantity, canonical
 
 
-_LINEAR_SCALE: dict[str, float] = {
-    "nm": 1.0,
-    "Å": 0.1,
-    "µm": 1000.0,
-    "mm": 1_000_000.0,
-    "cm": 10_000_000.0,
-    "m": 1_000_000_000.0,
-    "pm": 0.001,
-    "in": 25_400_000.0,
-}
+def to_nm(
+    values: Iterable[float], unit: str | u.UnitBase | Quantity
+) -> Tuple[Quantity, str]:
+    """Convert the provided values into nanometres and return the canonical unit."""
+
+    quantity, canonical = quantity_from(values, unit)
+
+    try:
+        converted = quantity.to(u.nm)
+    except u.UnitConversionError:
+        if quantity.unit.is_equivalent(u.m**-1) and np.any(
+            np.asarray(quantity.value) == 0.0
+        ):
+            raise ValueError("Cannot convert a zero wavenumber to wavelength")
+        try:
+            converted = quantity.to(u.nm, equivalencies=u.spectral())
+        except Exception as exc:  # pragma: no cover - astropy specific
+            raise ValueError(f"Unsupported wavelength unit: {unit}") from exc
+
+    return converted, canonical
 
 
-def _convert_linear(values: Iterable[float], scale: float) -> List[float]:
-    return [float(value) * scale for value in values]
+def canonical_unit(unit: str | u.UnitBase | Quantity) -> str:
+    """Return the canonical string representation for a unit value."""
 
-
-def _cm_to_nm(value: float) -> float:
-    if value == 0:
-        raise ValueError("Cannot convert a zero wavenumber to wavelength")
-    return 1.0e7 / float(value)
-
-
-_SPECIAL_CONVERTERS: dict[str, Callable[[Iterable[float]], List[float]]] = {
-    "cm^-1": lambda vals: [_cm_to_nm(float(value)) for value in vals],
-}
-
-
-def to_nm(values: Iterable[float], unit: str) -> List[float]:
-    canonical = canonical_unit(unit)
-    if canonical in _LINEAR_SCALE:
-        return _convert_linear(values, _LINEAR_SCALE[canonical])
-    if canonical in _SPECIAL_CONVERTERS:
-        converter = _SPECIAL_CONVERTERS[canonical]
-        return converter(values)
-    raise ValueError(f"Unsupported wavelength unit: {unit}")
-
-
-def canonical_unit(unit: str) -> str:
-    canonical = _canonicalise(unit)
-    return canonical
+    return resolve_unit(unit)[1]

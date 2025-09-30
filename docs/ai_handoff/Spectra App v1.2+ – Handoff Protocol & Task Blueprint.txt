@@ -1,0 +1,125 @@
+## Spectra App v1.2+ – Handoff Protocol & Task Blueprint
+
+**Important:** This document supersedes the earlier “Master AI Protocol (v1.2+)” and incorporates all current known tasks. Follow these instructions and record all work in detail.
+
+---
+
+### ✅ Core Responsibilities
+
+1. **Check the environment**
+
+   * Inspect `docs/runtime.json` for installed library versions (Astropy, Astroquery, etc.). Compare against the actual environment (via pip, conda, etc.).
+   * If versions differ, update `docs/runtime.json`, mirror docs for new versions, and note the changes in patch notes and brains.
+
+2. **Search before coding**
+
+   * Always query the local docs index via `tools/search_server.py` before implementing library calls or changes.
+   * Use slugs from `docs/sources.yaml` and prefer mirrored docs over external sources. Cite the URL from the `.meta.json` for each doc used.
+
+3. **Record everything**
+
+   * Create (or append to) `docs/ai_log/YYYY-MM-DD.md` on every run. Include the task description, docs consulted, code touched, and decisions made.
+   * Use new REF codes for each notable change, referencing the patch version (e.g., `1.2.0-A01`, `1.2.0-A02`).
+
+4. **Update continuity artifacts**
+
+   * Bump `app/version.json` and add a new `docs/patch_notes/PATCH_NOTES_vX.Y.Z.md` plus the txt summary.
+   * Add a new brains entry under `docs/brains/` with REF codes explaining design choices, what changed, and why.
+   * Update `docs/brains/brains_INDEX.md` and `PATCHLOG.txt`.
+
+5. **Respect the UI Contract**
+
+   * Sidebar must show Examples, Display mode, Display units, and Duplicate scope.
+   * Tabs must include Overlay, Differential, and Docs.
+   * Version badge must display correctly.
+   * Unit toggles must remain idempotent; no derived traces should duplicate or clutter legend labels.
+
+---
+
+### 🐞 Outstanding Bug‑Fix Tasks
+
+These come from prior patch notes and follow‑ups. Address each thoroughly:
+
+* **v1.1.9 follow‑ups** – Monitor overlay ingestion warnings and capture failure URLs for regression tests. Prepare for Plotly layout API changes by keeping layout helpers isolated in `app/ui/main.py`.
+* **v1.1.8 follow‑up** – Implement SIMBAD resolver work that remained outstanding. This likely means finishing the resolver-based search flow described in the ingestion plan. Also centralize FITS unit parsing into a shared utility and audit for any remaining `utcfromtimestamp()` usage across the codebase.
+* **v1.1.6b follow‑ups** – Evaluate moving unit conversion helpers into a dedicated module, and capture instrument/integration metadata in the solar example metadata.
+* **v1.1.6 follow‑ups** – Broaden DOI coverage beyond the two seeded Zenodo datasets, extract shared spectral parsing helpers into a common module, and integrate ESO/DOI fetchers into export provenance manifests for better audit coverage.
+* **v1.1.5a backlog** – Finish authoring `AI_HANDOFF_PROMPT_v1.1.5a.md` reflecting the continuity manifest, expand provider cache directories with real data recipes, and extend the continuity table script to surface patch dependencies automatically.
+
+---
+
+### 🔧 Ingestion & Resolver Tasks (v1.2 focus)
+
+From the ingestion plan and SIMBAD integration docs, implement:
+
+1. **SIMBAD resolver with caching** – Build a `search_targets()` helper using `astroquery.simbad.Simbad` to normalize target names and store results in `data/providers/simbad/` with hashed filenames. Cache negative lookups and return structured suggestions to the UI.
+2. **Archive fetch workflow** – Extend `fetch_archives.fetch_spectrum()` to use the SIMBAD resolver payload and auto-select the appropriate archive (CALSPEC via MAST, ESO, etc.). Record resolver metadata (RA/Dec, canonical IDs) in the provenance block.
+3. **MAST CALSPEC ingestion** – Use `astroquery.mast` to fetch CALSPEC spectra (HLSP). Normalize wavelength to nm, convert flux to `F_lambda`, merge STIS/NICMOS segments, and record DOIs.
+4. **ESO and HARPS ingestion** – Query ESO TAP for X-shooter and HARPS spectra, download FITS, resample arms to a common nm grid, and include radial-velocity metadata.
+5. **IRSA (CASSIS) ingestion** – Implement `irsa.py` to fetch Spitzer IRS spectra via IPAC or CASSIS and convert to nm, handling order stitching and unit conversions.
+6. **Normalization helper** – Create a shared helper to take a FITS HDU and return `(wavelength_nm, flux, uncertainty)` along with original units, ensuring consistent baseline conversion.
+7. **Provenance block** – Populate `fetch_provenance` with archive name, instrument, program IDs, access URLs, DOIs, citation text, fetch timestamp, file hashes, SIMBAD metadata, and any resampling decisions.
+8. **Testing** – Extend `scripts/fetch_samples.py` to prefetch one spectrum per provider and add unit tests for unit conversion, provenance population, caching behavior, and the resolver-based search flow.
+9. **Future work** – Stage planetary overlay integration (Exoplanet Archive, synthetic models) in phases, but note this may belong to v1.3+.
+
+---
+
+### 🔍 Library Consistency & Runtime Checks
+
+1. **Verify installed vs. documented versions** – Use pip or conda to list installed versions. Compare with `docs/runtime.json`; update this file if mismatches exist.
+2. **Re-mirror docs when versions change** – If `runtime.json` updates, adjust `docs/sources.yaml` to point to the new library versions (e.g., Astropy 6.0 → 6.1), run `tools/mirror_docs.py`, and rebuild the index with `tools/build_index.py`.
+3. **Update patch notes and brains** – Document all version changes and library differences. Note any API modifications in patch notes and REF codes.
+4. **Run `Verify-Project.ps1` and `pytest`** – Before merging changes, run verification scripts to ensure provider caches, continuity links, and UI contract remain valid.
+5. **Lint and type check** – Ensure the codebase passes `flake8` or similar linting (if configured) to avoid stray character bugs and import issues noted in provenance docs.
+
+---
+
+### 🧠 Documentation & Logging
+
+* **AI Log** – For each session, write a new `docs/ai_log/<YYYY-MM-DD>.md` entry. Include a summary of actions, docs consulted (with citations), code updates, test runs, and any bugs discovered.
+* **Brains** – For each significant change or new feature, append a new `docs/brains/brains_vX.Y.Z.md` entry with REF codes and a detailed explanation of what changed, why, where in the code, how it was implemented, and how it was verified.
+* **Patch notes** – Add a new markdown file in `docs/patch_notes/` and a corresponding txt file in `docs/PATCH_NOTES/` summarizing changes, especially for library upgrades, ingestion modules, UI modifications, and bug fixes.
+* **Handoff prompt** – Write a new AI handoff prompt under `docs/ai_handoff/` summarizing the current state and tasks to be continued in future versions. Cross-link this with the new brains and patch notes.
+
+---
+
+### 📋 Version & REF Code Conventions
+
+* **Versions**: Start v1.2.0 with the first patch in this series. Use semantic versioning (major.minor.patch). Each commit or patch must increment the version and attach a REF code (e.g., `1.2.0-A01`).
+* **REF codes**: Format as `<version>-<letter><sequence>`. Use distinct letters for different work streams (A for bug fixes, B for ingestion integration, C for library upgrades, etc.). Each REF entry must be documented in patch notes and brains.
+
+---
+
+### 🚦 Task Tracking & Workflow
+
+1. **Identify tasks**: Use the follow-up lists from previous versions as your backlog. Open tasks include SIMBAD resolver completion, library consistency checks, ingestion implementation, unit conversion refactoring, documentation catch-up, bug monitoring, etc.
+2. **Prioritize**: Tackle blocking tasks (e.g., ingestion features) first, then backlog items like refactoring unit helpers or caching improvements.
+3. **Implement**: Write code, tests, and docs in small increments. After each logical change, update version and REF docs and run the verifier.
+4. **Verify & log**: Run `pytest`, `Verify-Project.ps1`, and the data ingestion tests. If all pass, update the ai_log and push.
+5. **Repeat**: Continue until all tasks in this blueprint are addressed. New tasks discovered during implementation should be recorded with new REF codes and added to the backlog.
+
+---
+
+### 🛑 Guardrails & Forbidden Changes
+
+* **Never break old imports**: The provenance system and shims must remain intact.
+* **Do not remove required UI controls or tabs**: Always include Examples, Display mode, Display units, Duplicate scope; and tabs Overlay, Differential, Docs.
+* **Do not mix Fν and Fλ units on the same axis** or hide labels.
+* **Never overwrite or delete old brains/patch notes**: Always append new versions.
+* **Do not bypass the provenance log**: Every fetch must write provenance to the export manifest.
+
+---
+
+### 📚 References for Implementation
+
+* v1.1.9 patch notes follow-up tasks.
+* v1.1.8 follow-up considerations in brains.
+* v1.1.6b follow-up considerations.
+* v1.1.6 follow-up ideas.
+* v1.1.5a backlog items.
+* Ingestion and SIMBAD integration details.
+* Provenance best practices and observed failures.
+
+---
+
+By following this expanded protocol, future agents will systematically address known bugs, implement planned ingestion features, maintain library version consistency, and ensure continuous documentation and provenance tracking.
