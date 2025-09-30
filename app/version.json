@@ -1,5 +1,11 @@
 {
+
+  "version": "v1.2.0b",
+  "date_utc": "2025-09-30T18:00:00Z",
+  "summary": "Add FITS time-series ingestion support and update UI metadata for time axes."
+
   "version": "1.2.0a",
   "date_utc": "2025-09-30T12:00:00Z",
   "summary": "Normalise Angstrom aliases during FITS ingestion and refresh continuity collateral."
+
 }

@@ -302,9 +302,9 @@ def test_parse_fits_accepts_convertible_units_without_spectral_ctype(tmp_path):
     assert result["wavelength"]["unit"] == "nm"
     assert result["wavelength"]["values"] == pytest.approx(expected_wavelength_nm)
 
-def test_parse_fits_rejects_table_with_nonspectral_units(tmp_path):
-    time = np.array([0.0, 1.0, 2.0], dtype=float)
-    flux = np.array([10.0, 11.0, 12.0], dtype=float)
+def test_parse_fits_accepts_time_series_units(tmp_path):
+    time = np.array([0.0, 1.5, 3.25, 4.0], dtype=float)
+    flux = np.array([10.0, 11.0, 12.0, 11.5], dtype=float)
 
     columns = [
         fits.Column(name="TIME", array=time, format="D", unit="BJD - 2457000, days"),
@@ -317,12 +317,33 @@ def test_parse_fits_rejects_table_with_nonspectral_units(tmp_path):
     hdul.writeto(fits_path, overwrite=True)
     hdul.close()
 
-    with pytest.raises(ValueError) as excinfo:
-        parse_fits(str(fits_path))
+    result = parse_fits(str(fits_path))
 
-    message = str(excinfo.value)
-    assert "TIME" in message
-    assert "BJD" in message
+    assert result["axis_kind"] == "time"
+    assert result["metadata"]["axis_kind"] == "time"
+    assert result["metadata"]["time_unit"] == "day"
+    assert "BJD" in result["metadata"].get("time_original_unit", "")
+
+    time_values = np.asarray(result["wavelength_nm"], dtype=float)
+    assert time_values == pytest.approx(time)
+
+    time_payload = result.get("time")
+    assert isinstance(time_payload, dict)
+    assert time_payload.get("unit") == "day"
+    assert time_payload.get("kind") == "time"
+
+    quantity = result.get("wavelength_quantity")
+    assert quantity is not None
+    assert quantity.unit.is_equivalent(u.day)
+    assert quantity.to_value(u.day) == pytest.approx(time)
+
+    provenance_units = result["provenance"].get("units", {})
+    assert provenance_units.get("time_converted_to") == "day"
+    assert "wavelength_converted_to" not in provenance_units
+
+    metadata = result["metadata"]
+    assert metadata.get("time_range") == [pytest.approx(time.min()), pytest.approx(time.max())]
+    assert metadata.get("points") == len(time)
 
 
 def test_parse_fits_assumes_nm_for_wavelength_column_without_units(tmp_path):

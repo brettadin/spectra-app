@@ -197,6 +197,100 @@ def _mask_to_bool(mask, size: int) -> np.ndarray:
     return padded
 
 
+_TIME_LABEL_TOKENS = {
+    "time",
+    "mjd",
+    "bjd",
+    "hjd",
+    "btjd",
+    "tjd",
+    "phase",
+}
+
+
+_TIME_FRAME_PATTERN = re.compile(r"\b([bhmt]jd)\b", re.IGNORECASE)
+
+
+_TIME_UNIT_MAP = {
+    "s": ("s", u.s),
+    "sec": ("s", u.s),
+    "second": ("s", u.s),
+    "seconds": ("s", u.s),
+    "ms": ("ms", u.ms),
+    "millisecond": ("ms", u.ms),
+    "milliseconds": ("ms", u.ms),
+    "min": ("min", u.min),
+    "mins": ("min", u.min),
+    "minute": ("min", u.min),
+    "minutes": ("min", u.min),
+    "hr": ("hour", u.hour),
+    "hrs": ("hour", u.hour),
+    "hour": ("hour", u.hour),
+    "hours": ("hour", u.hour),
+    "day": ("day", u.day),
+    "days": ("day", u.day),
+    "d": ("day", u.day),
+}
+
+
+def _label_suggests_time(name: str) -> bool:
+    lowered = name.strip().lower()
+    if not lowered:
+        return False
+    return any(token in lowered for token in _TIME_LABEL_TOKENS)
+
+
+def _parse_time_unit_hint(unit_text: Optional[str]) -> Optional[Dict[str, object]]:
+    if not unit_text:
+        return None
+
+    cleaned = str(unit_text).strip()
+    if not cleaned:
+        return None
+
+    lowered = cleaned.lower()
+    frame_match = _TIME_FRAME_PATTERN.search(lowered)
+    frame = frame_match.group(1).upper() if frame_match else None
+    offset: Optional[float] = None
+
+    if frame_match:
+        # Look for an offset pattern like "BJD - 2457000"
+        pattern = re.compile(
+            rf"{re.escape(frame_match.group(0))}\s*[+-]\s*([0-9]+(?:\.[0-9]+)?)",
+            re.IGNORECASE,
+        )
+        offset_match = pattern.search(lowered)
+        if offset_match:
+            try:
+                offset = float(offset_match.group(1))
+            except ValueError:  # pragma: no cover - defensive
+                offset = None
+
+    for token, (label, unit) in _TIME_UNIT_MAP.items():
+        if re.search(rf"\b{re.escape(token)}\b", lowered):
+            return {
+                "kind": "time",
+                "canonical_unit": label,
+                "astropy_unit": unit,
+                "original_unit": cleaned,
+                "frame": frame,
+                "offset": offset,
+            }
+
+    if frame is not None:
+        # Julian date style strings without an explicit unit imply days.
+        return {
+            "kind": "time",
+            "canonical_unit": "day",
+            "astropy_unit": u.day,
+            "original_unit": cleaned,
+            "frame": frame,
+            "offset": offset,
+        }
+
+    return None
+
+
 _SPECTRAL_AXIS_PREFIXES = {
     "FREQ",
     "WAVE",
@@ -364,101 +458,147 @@ def _extract_table_data(
     unit_missing = not (wavelength_unit_hint and str(wavelength_unit_hint).strip())
     assumed_unit: Optional[str] = None
 
-
-    if unit_missing:
-        if _ctype_is_spectral(axis_type) or _label_suggests_wavelength(wavelength_col):
-            resolved_unit = "nm"
-            assumed_unit = "nm"
-        else:
-            axis_display = _coerce_header_value(axis_type) if axis_type is not None else None
-            raise ValueError(
-                "FITS table column "
-                f"{wavelength_col!r} does not advertise a spectral axis "
-                f"(CTYPE1={axis_display!r})."
-            )
-    else:
-        resolved_unit = _normalise_wavelength_unit(wavelength_unit_hint)
-
-    if not _unit_is_wavelength(resolved_unit):
-        unit_display = _coerce_header_value(wavelength_unit_hint) if wavelength_unit_hint else None
-        axis_display = _coerce_header_value(axis_type) if axis_type is not None else None
-        raise ValueError(
-            "FITS table column "
-            f"{wavelength_col!r} uses unsupported spectral unit "
-            f"{unit_display!r} (CTYPE1={axis_display!r})."
-        )
-
-    if unit_missing:
-        if _ctype_is_spectral(axis_type) or _label_suggests_wavelength(wavelength_col):
-            resolved_unit = "nm"
-            assumed_unit = "nm"
-        else:
-            axis_display = _coerce_header_value(axis_type) if axis_type is not None else None
-            raise ValueError(
-                "FITS table column "
-                f"{wavelength_col!r} does not advertise a spectral axis "
-                f"(CTYPE1={axis_display!r})."
-            )
-    else:
-        resolved_unit = _normalise_wavelength_unit(wavelength_unit_hint)
-
-    if not _unit_is_wavelength(resolved_unit):
-        unit_display = _coerce_header_value(wavelength_unit_hint) if wavelength_unit_hint else None
-        axis_display = _coerce_header_value(axis_type) if axis_type is not None else None
-        raise ValueError(
-            "FITS table column "
-            f"{wavelength_col!r} uses unsupported spectral unit "
-            f"{unit_display!r} (CTYPE1={axis_display!r})."
-        )
-
+    axis_kind = "wavelength"
+    axis_details: Dict[str, object] = {"kind": axis_kind}
     dropped_nonpositive_source = 0
-    if _is_wavenumber_unit(resolved_unit):
-        positive_mask = wavelength_values > 0
-        if not np.all(positive_mask):
-            dropped_nonpositive_source = int(
-                positive_mask.size - np.count_nonzero(positive_mask)
-            )
-            wavelength_values = wavelength_values[positive_mask]
-            flux_values = flux_values[positive_mask]
-        if wavelength_values.size == 0:
-            raise ValueError(
-                "FITS table ingestion yielded no positive wavenumber samples."
-            )
-
-    try:
-        wavelength_quantity, canonical_resolved_unit = to_nm(
-            wavelength_values, resolved_unit
-        )
-    except ValueError as exc:
-        raise ValueError(
-            f"Unable to convert values from unit {resolved_unit!r} to nm."
-        ) from exc
-
-
-    resolved_unit = canonical_resolved_unit
-
-    wavelength_nm_values = np.asarray(wavelength_quantity.to_value(u.nm), dtype=float)
-    if wavelength_nm_values.size == 0:
-        raise ValueError(
-            "FITS table ingestion yielded no positive wavelength samples."
-        )
-
-    positive_nm_mask = wavelength_nm_values > 0
-    positive_count = int(np.count_nonzero(positive_nm_mask))
     dropped_nonpositive_nm = 0
 
-    if positive_count == 0:
-        raise ValueError(
-            "FITS table ingestion yielded no positive wavelength samples after conversion to nm."
+    time_info: Optional[Dict[str, object]] = None
+    time_source: Optional[str] = None
+    for candidate, source in (
+        (wavelength_unit_hint, "column"),
+        (header_unit_hint, "header"),
+        (axis_type, "ctype1"),
+    ):
+        parsed = _parse_time_unit_hint(candidate)
+        if parsed:
+            time_info = parsed
+            time_source = source
+            break
+
+    if time_info is None and _label_suggests_time(wavelength_col):
+        original_hint = (
+            _coerce_header_value(wavelength_unit_hint)
+            if wavelength_unit_hint
+            else _coerce_header_value(header_unit_hint)
         )
+        time_info = {
+            "canonical_unit": "day",
+            "original_unit": original_hint or "day",
+            "frame": None,
+            "offset": None,
+            "assumed": "day",
+        }
+        time_source = "column_label"
 
+    if time_info is not None:
+        axis_kind = "time"
+        axis_details = {
+            "kind": axis_kind,
+            "canonical_unit": time_info.get("canonical_unit"),
+            "original_unit": time_info.get("original_unit"),
+            "frame": time_info.get("frame"),
+            "offset": time_info.get("offset"),
+            "source": time_source,
+        }
+        if "assumed" in time_info:
+            axis_details["assumed"] = time_info["assumed"]
+            assumed_unit = time_info["assumed"]
+        time_unit = time_info.get("astropy_unit", u.day)
+        resolved_unit = axis_details.get("canonical_unit") or "day"
+        axis_quantity = u.Quantity(wavelength_values, time_unit, copy=False)
+        wavelength_quantity = axis_quantity
+        wavelength_nm_values = np.asarray(axis_quantity.to_value(time_unit), dtype=float)
+    else:
+        if unit_missing:
+            if _ctype_is_spectral(axis_type) or _label_suggests_wavelength(
+                wavelength_col
+            ):
+                resolved_unit = "nm"
+                assumed_unit = "nm"
+            else:
+                axis_display = (
+                    _coerce_header_value(axis_type) if axis_type is not None else None
+                )
+                raise ValueError(
+                    "FITS table column "
+                    f"{wavelength_col!r} does not advertise a spectral axis "
+                    f"(CTYPE1={axis_display!r})."
+                )
+        else:
+            resolved_unit = _normalise_wavelength_unit(wavelength_unit_hint)
 
-    if positive_count < wavelength_nm_values.size:
-        dropped_nonpositive_nm = int(wavelength_nm_values.size - positive_count)
-        wavelength_quantity = wavelength_quantity[positive_nm_mask]
-        wavelength_nm_values = wavelength_nm_values[positive_nm_mask]
-        flux_values = flux_values[positive_nm_mask]
+        if not _unit_is_wavelength(resolved_unit):
+            unit_display = (
+                _coerce_header_value(wavelength_unit_hint) if wavelength_unit_hint else None
+            )
+            axis_display = (
+                _coerce_header_value(axis_type) if axis_type is not None else None
+            )
+            raise ValueError(
+                "FITS table column "
+                f"{wavelength_col!r} uses unsupported spectral unit "
+                f"{unit_display!r} (CTYPE1={axis_display!r})."
+            )
 
+        dropped_nonpositive_source = 0
+        if _is_wavenumber_unit(resolved_unit):
+            positive_mask = wavelength_values > 0
+            if not np.all(positive_mask):
+                dropped_nonpositive_source = int(
+                    positive_mask.size - np.count_nonzero(positive_mask)
+                )
+                wavelength_values = wavelength_values[positive_mask]
+                flux_values = flux_values[positive_mask]
+            if wavelength_values.size == 0:
+                raise ValueError(
+                    "FITS table ingestion yielded no positive wavenumber samples."
+                )
+
+        try:
+            wavelength_quantity, canonical_resolved_unit = to_nm(
+                wavelength_values, resolved_unit
+            )
+        except ValueError as exc:
+            raise ValueError(
+                f"Unable to convert values from unit {resolved_unit!r} to nm."
+            ) from exc
+
+        resolved_unit = canonical_resolved_unit
+
+        wavelength_nm_values = np.asarray(
+            wavelength_quantity.to_value(u.nm), dtype=float
+        )
+        if wavelength_nm_values.size == 0:
+            raise ValueError(
+                "FITS table ingestion yielded no positive wavelength samples."
+            )
+
+        positive_nm_mask = wavelength_nm_values > 0
+        positive_count = int(np.count_nonzero(positive_nm_mask))
+        dropped_nonpositive_nm = 0
+
+        if positive_count == 0:
+            raise ValueError(
+                "FITS table ingestion yielded no positive wavelength samples after conversion to nm."
+            )
+
+        if positive_count < wavelength_nm_values.size:
+            dropped_nonpositive_nm = int(
+                wavelength_nm_values.size - positive_count
+            )
+            wavelength_quantity = wavelength_quantity[positive_nm_mask]
+            wavelength_nm_values = wavelength_nm_values[positive_nm_mask]
+            flux_values = flux_values[positive_nm_mask]
+
+        axis_details = {
+            "kind": axis_kind,
+            "canonical_unit": resolved_unit,
+            "original_unit": _coerce_header_value(wavelength_unit_hint)
+            if wavelength_unit_hint
+            else _coerce_header_value(header_unit_hint),
+            "source": "column" if column_unit_hint else "header",
+        }
 
     provenance: Dict[str, object] = {
         "table_columns": column_names,
@@ -472,28 +612,47 @@ def _extract_table_data(
     }
 
     unit_resolution: Dict[str, object] = {
-        "column": _coerce_header_value(column_unit_hint) if column_unit_hint else None,
-        "header": _coerce_header_value(header_unit_hint) if header_unit_hint else None,
+        "kind": axis_kind,
+        "column": _coerce_header_value(column_unit_hint)
+        if column_unit_hint
+        else None,
+        "header": _coerce_header_value(header_unit_hint)
+        if header_unit_hint
+        else None,
         "resolved": resolved_unit,
     }
     if axis_type is not None:
         unit_resolution["axis_type"] = _coerce_header_value(axis_type)
     if assumed_unit is not None:
         unit_resolution["assumed"] = assumed_unit
-        if _ctype_is_spectral(axis_type):
-            unit_resolution["assumed_from"] = "ctype1"
-        else:
-            unit_resolution["assumed_from"] = "column_name"
+        if axis_kind == "wavelength":
+            if _ctype_is_spectral(axis_type):
+                unit_resolution["assumed_from"] = "ctype1"
+            elif _label_suggests_wavelength(wavelength_col):
+                unit_resolution["assumed_from"] = "column_name"
+        elif axis_details.get("source"):
+            unit_resolution["assumed_from"] = axis_details["source"]
+    if axis_details.get("source"):
+        unit_resolution["source"] = axis_details["source"]
+    if axis_details.get("original_unit"):
+        unit_resolution["original"] = axis_details["original_unit"]
+    if axis_details.get("frame"):
+        unit_resolution["frame"] = axis_details["frame"]
+    if axis_details.get("offset") is not None:
+        unit_resolution["offset"] = axis_details["offset"]
 
-    provenance["wavelength_unit_resolution"] = unit_resolution
+    provenance["axis_unit_resolution"] = unit_resolution
+    if axis_kind == "wavelength":
+        provenance["wavelength_unit_resolution"] = unit_resolution
 
-    total_dropped_nonpositive = dropped_nonpositive_source + dropped_nonpositive_nm
-    if dropped_nonpositive_source:
-        provenance["dropped_nonpositive_wavenumbers"] = dropped_nonpositive_source
-    if dropped_nonpositive_nm:
-        provenance["dropped_nonpositive_wavelengths"] = dropped_nonpositive_nm
-    if total_dropped_nonpositive:
-        provenance["dropped_nonpositive_rows"] = total_dropped_nonpositive
+    if axis_kind == "wavelength":
+        total_dropped_nonpositive = dropped_nonpositive_source + dropped_nonpositive_nm
+        if dropped_nonpositive_source:
+            provenance["dropped_nonpositive_wavenumbers"] = dropped_nonpositive_source
+        if dropped_nonpositive_nm:
+            provenance["dropped_nonpositive_wavelengths"] = dropped_nonpositive_nm
+        if total_dropped_nonpositive:
+            provenance["dropped_nonpositive_rows"] = total_dropped_nonpositive
 
     if event_meta is not None:
         event_meta["derived_flux_unit"] = derived_flux_unit
@@ -507,6 +666,7 @@ def _extract_table_data(
         wavelength_unit_hint,
         flux_unit_hint,
         provenance,
+        axis_details,
     )
 
 
@@ -897,9 +1057,14 @@ def _ingest_table_hdu(
         reported_wavelength_unit,
         flux_unit_hint,
         table_provenance,
+        axis_details,
     ) = _extract_table_data(hdu)
 
-    unit_resolution = table_provenance.get("wavelength_unit_resolution", {})
+    axis_kind = axis_details.get("kind", "wavelength") if isinstance(axis_details, dict) else "wavelength"
+
+    unit_resolution = table_provenance.get("axis_unit_resolution") or table_provenance.get(
+        "wavelength_unit_resolution", {}
+    )
     unit_inference = {
         "column": unit_resolution.get("column"),
         "header": unit_resolution.get("header"),
@@ -913,26 +1078,27 @@ def _ingest_table_hdu(
     mask_flag = bool(table_provenance.get("mask_applied", False))
 
     provenance_details = dict(table_provenance)
-    try:
-        table_wcs_axis, table_wcs_meta = _compute_wavelengths(
-            wavelength_quantity.size,
-            hdu.header,
-        )
-    except ValueError:
-        table_wcs_axis = None
-    else:
-        table_wcs_meta = dict(table_wcs_meta)
-        table_wcs_meta.setdefault("unit", canonical_unit(table_wcs_axis))
+    if axis_kind == "wavelength":
         try:
-            converted = _convert_wcs_axis_to_wavelength(table_wcs_axis, hdu.header)
-            converted_values = np.asarray(converted.to_value(u.nm), dtype=float)
-            table_wcs_meta["wavelength_range_nm"] = [
-                float(np.min(converted_values)),
-                float(np.max(converted_values)),
-            ]
+            table_wcs_axis, table_wcs_meta = _compute_wavelengths(
+                wavelength_quantity.size,
+                hdu.header,
+            )
         except ValueError:
-            table_wcs_meta["conversion_failed"] = True
-        provenance_details["wcs"] = table_wcs_meta
+            table_wcs_axis = None
+        else:
+            table_wcs_meta = dict(table_wcs_meta)
+            table_wcs_meta.setdefault("unit", canonical_unit(table_wcs_axis))
+            try:
+                converted = _convert_wcs_axis_to_wavelength(table_wcs_axis, hdu.header)
+                converted_values = np.asarray(converted.to_value(u.nm), dtype=float)
+                table_wcs_meta["wavelength_range_nm"] = [
+                    float(np.min(converted_values)),
+                    float(np.max(converted_values)),
+                ]
+            except ValueError:
+                table_wcs_meta["conversion_failed"] = True
+            provenance_details["wcs"] = table_wcs_meta
 
     return (
         wavelength_quantity,
@@ -944,6 +1110,7 @@ def _ingest_table_hdu(
         mask_flag,
         "table",
         provenance_details,
+        axis_details,
     )
 
 
@@ -1031,6 +1198,15 @@ def _ingest_image_hdu(
         provenance_details["image_collapse"] = collapse_meta
     reported_wavelength_unit = hdu.header.get("CUNIT1") or hdu.header.get("XUNIT")
 
+    axis_details = {
+        "kind": "wavelength",
+        "canonical_unit": resolved_unit,
+        "original_unit": _coerce_header_value(reported_wavelength_unit)
+        if reported_wavelength_unit
+        else _coerce_header_value(unit_inference.get("header")),
+        "source": "header",
+    }
+
     return (
         wavelength_quantity,
         flux_array,
@@ -1041,6 +1217,7 @@ def _ingest_image_hdu(
         mask_flag,
         "image",
         provenance_details,
+        axis_details,
     )
 
 
@@ -1098,6 +1275,7 @@ def parse_fits(content: HeaderInput, *, filename: Optional[str] = None) -> Dict[
             mask_flag,
             data_mode,
             provenance_details,
+            axis_details,
         ) = details
 
         header = data_hdu.header
@@ -1106,36 +1284,99 @@ def parse_fits(content: HeaderInput, *, filename: Optional[str] = None) -> Dict[
         flux_unit_source = derived_flux_unit or flux_unit_hint
         flux_unit, flux_kind = _normalise_flux_unit(flux_unit_source)
 
-        wavelength_nm_values = np.asarray(
-            wavelength_quantity.to_value(u.nm), dtype=float
-        )
-        range_min = float(np.min(wavelength_nm_values))
-        range_max = float(np.max(wavelength_nm_values))
-        metadata: Dict[str, object] = {
-            "wavelength_range_nm": [range_min, range_max],
-            "wavelength_effective_range_nm": [range_min, range_max],
-            "data_wavelength_range_nm": [range_min, range_max],
-            "points": int(flux_array.size),
-            "flux_unit": flux_unit,
-            "reported_flux_unit": _coerce_header_value(flux_unit_hint) if flux_unit_hint else None,
-            "reported_wavelength_unit": _coerce_header_value(reported_wavelength_unit) if reported_wavelength_unit else None,
-        }
-        metadata["original_wavelength_unit"] = resolved_unit
-        metadata.setdefault("wavelength_coverage_nm", [range_min, range_max])
+        axis_details = axis_details or {}
+        axis_kind = axis_details.get("kind", "wavelength")
 
-        if flux_array.size >= 2:
-            step = wavelength_quantity[1] - wavelength_quantity[0]
-            metadata["wavelength_step_nm"] = float(step.to_value(u.nm))
+        if axis_kind == "time":
+            canonical_unit = axis_details.get("canonical_unit") or resolved_unit or "day"
+            try:
+                axis_unit = u.Unit(canonical_unit)  # type: ignore[arg-type]
+            except Exception:
+                axis_unit = u.day
+                canonical_unit = "day"
+            axis_values = np.asarray(
+                wavelength_quantity.to_value(axis_unit), dtype=float
+            )
+            if axis_values.size == 0:
+                raise ValueError("FITS table ingestion yielded no time samples.")
+            range_min = float(np.min(axis_values))
+            range_max = float(np.max(axis_values))
+            metadata = {
+                "axis_kind": axis_kind,
+                "points": int(flux_array.size),
+                "flux_unit": flux_unit,
+                "reported_flux_unit": _coerce_header_value(flux_unit_hint)
+                if flux_unit_hint
+                else None,
+                "time_range": [range_min, range_max],
+                "data_time_range": [range_min, range_max],
+                "time_unit": canonical_unit,
+            }
+            if axis_details.get("original_unit"):
+                metadata["time_original_unit"] = axis_details["original_unit"]
+            if axis_details.get("frame"):
+                metadata["time_frame"] = axis_details["frame"]
+            if axis_details.get("offset") is not None:
+                metadata["time_offset"] = axis_details["offset"]
+            if axis_details.get("source"):
+                metadata["time_unit_source"] = axis_details["source"]
+            if reported_wavelength_unit:
+                metadata["reported_time_unit"] = _coerce_header_value(
+                    reported_wavelength_unit
+                )
+            axis_payload_unit = canonical_unit
+        else:
+            axis_unit = u.nm
+            axis_values = np.asarray(
+                wavelength_quantity.to_value(axis_unit), dtype=float
+            )
+            if axis_values.size == 0:
+                raise ValueError(
+                    "FITS ingestion yielded no positive wavelength samples."
+                )
+            range_min = float(np.min(axis_values))
+            range_max = float(np.max(axis_values))
+            metadata = {
+                "axis_kind": axis_kind,
+                "wavelength_range_nm": [range_min, range_max],
+                "wavelength_effective_range_nm": [range_min, range_max],
+                "data_wavelength_range_nm": [range_min, range_max],
+                "points": int(flux_array.size),
+                "flux_unit": flux_unit,
+                "reported_flux_unit": _coerce_header_value(flux_unit_hint)
+                if flux_unit_hint
+                else None,
+                "reported_wavelength_unit": _coerce_header_value(
+                    reported_wavelength_unit
+                )
+                if reported_wavelength_unit
+                else None,
+            }
+            metadata["original_wavelength_unit"] = resolved_unit
+            metadata.setdefault("wavelength_coverage_nm", [range_min, range_max])
+            if flux_array.size >= 2:
+                step = wavelength_quantity[1] - wavelength_quantity[0]
+                try:
+                    metadata["wavelength_step_nm"] = float(step.to_value(u.nm))
+                except Exception:
+                    pass
+            axis_payload_unit = "nm"
 
         header_snapshot = _gather_metadata(header, HEADER_METADATA_KEYS.keys())
         for key, meta_key in HEADER_METADATA_KEYS.items():
             value = header_snapshot.get(key)
             if value is None:
                 continue
+            if axis_kind == "time" and meta_key == "wavelength_axis_type":
+                metadata.setdefault("time_axis_type", value)
+                continue
             metadata.setdefault(meta_key, value)
 
-        metadata.setdefault("wavelength_axis_type", header.get("CTYPE1"))
-        metadata.setdefault("spectral_reference", header.get("SPECSYS"))
+        if axis_kind == "time":
+            metadata.setdefault("time_axis_type", header.get("CTYPE1"))
+        else:
+            metadata.setdefault("wavelength_axis_type", header.get("CTYPE1"))
+            metadata.setdefault("spectral_reference", header.get("SPECSYS"))
 
         label_candidates: List[str] = []
         for field in ("target", "source"):
@@ -1160,17 +1401,36 @@ def parse_fits(content: HeaderInput, *, filename: Optional[str] = None) -> Dict[
         if filtered_unit_inference:
             provenance["unit_inference"] = filtered_unit_inference
         provenance.update(provenance_details)
+        provenance["axis_kind"] = axis_kind
 
         if payload is not None:
             provenance["checksum"] = checksum_bytes(payload)
         if inferred_name:
             provenance["filename"] = inferred_name
 
-        provenance_units: Dict[str, object] = {"wavelength_converted_to": "nm", "flux_unit": flux_unit}
-        if resolved_unit:
-            provenance_units["wavelength_input"] = resolved_unit
-        if reported_wavelength_unit:
-            provenance_units["wavelength_reported"] = _coerce_header_value(reported_wavelength_unit)
+        provenance_units: Dict[str, object] = {"flux_unit": flux_unit}
+        if axis_kind == "time":
+            provenance_units["time_converted_to"] = axis_payload_unit
+            if resolved_unit:
+                provenance_units["time_input"] = resolved_unit
+            if axis_details.get("original_unit"):
+                provenance_units["time_original_unit"] = axis_details["original_unit"]
+            if axis_details.get("frame"):
+                provenance_units["time_frame"] = axis_details["frame"]
+            if axis_details.get("offset") is not None:
+                provenance_units["time_offset"] = axis_details["offset"]
+            if reported_wavelength_unit:
+                provenance_units["time_reported"] = _coerce_header_value(
+                    reported_wavelength_unit
+                )
+        else:
+            provenance_units["wavelength_converted_to"] = "nm"
+            if resolved_unit:
+                provenance_units["wavelength_input"] = resolved_unit
+            if reported_wavelength_unit:
+                provenance_units["wavelength_reported"] = _coerce_header_value(
+                    reported_wavelength_unit
+                )
         if flux_unit_hint:
             provenance_units["flux_input"] = _coerce_header_value(flux_unit_hint)
         if derived_flux_unit:
@@ -1178,7 +1438,13 @@ def parse_fits(content: HeaderInput, *, filename: Optional[str] = None) -> Dict[
         provenance["units"] = provenance_units
 
         conversions: Dict[str, object] = {}
-        if resolved_unit and str(resolved_unit).lower() != "nm":
+        if axis_kind == "time":
+            if resolved_unit and axis_payload_unit and str(resolved_unit) != str(axis_payload_unit):
+                conversions["time_unit"] = {
+                    "from": resolved_unit,
+                    "to": axis_payload_unit,
+                }
+        elif resolved_unit and str(resolved_unit).lower() != "nm":
             conversions["wavelength_unit"] = {"from": resolved_unit, "to": "nm"}
         if flux_unit_hint and str(flux_unit_hint) != flux_unit:
             conversions["flux_unit"] = {
@@ -1210,12 +1476,28 @@ def parse_fits(content: HeaderInput, *, filename: Optional[str] = None) -> Dict[
 
         axis = "emission"
 
-        wavelength_list = wavelength_nm_values.tolist()
+        axis_values_list = axis_values.tolist()
         flux_list = flux_array.tolist()
+        axis_payload: Dict[str, object] = {
+            "values": axis_values_list,
+            "unit": axis_payload_unit,
+            "kind": axis_kind,
+        }
+        if axis_kind == "time":
+            if axis_details.get("original_unit"):
+                axis_payload["original_unit"] = axis_details["original_unit"]
+            if axis_details.get("frame"):
+                axis_payload["frame"] = axis_details["frame"]
+            if axis_details.get("offset") is not None:
+                axis_payload["offset"] = axis_details["offset"]
+
+        payload_time = axis_payload if axis_kind == "time" else None
+
         return {
             "label_hint": label_hint,
-            "wavelength_nm": wavelength_list,
-            "wavelength": {"values": wavelength_list, "unit": "nm"},
+            "wavelength_nm": axis_values_list,
+            "axis_values": axis_values_list,
+            "wavelength": axis_payload,
             "wavelength_quantity": wavelength_quantity,
             "flux": flux_list,
             "flux_unit": flux_unit,
@@ -1223,6 +1505,8 @@ def parse_fits(content: HeaderInput, *, filename: Optional[str] = None) -> Dict[
             "metadata": metadata,
             "provenance": provenance,
             "axis": axis,
+            "axis_kind": axis_kind,
+            "time": payload_time,
             "kind": "spectrum",
         }
     finally:
