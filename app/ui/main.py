@@ -436,13 +436,6 @@ def _process_ingest_queue() -> None:
                 continue
 
             response = requests.get(resolved_url, timeout=60)
-
-
-            _add_overlay_from_url(url, label=label)
-            continue
-
-            response = requests.get(url, timeout=60)
-
             response.raise_for_status()
 
             filename = derived_name or f"overlay-{uuid.uuid4().hex[:8]}"
