@@ -1,8 +1,45 @@
 import numpy as np
 import pytest
+from astropy import units as u
 from astropy.io import fits
+from astropy.wcs import WCS
 
 from app.server.ingest_fits import parse_fits
+
+
+def _expected_wavelengths_from_header(header: fits.Header, size: int) -> np.ndarray:
+    wcs = WCS(header)
+    pixel = np.arange(size, dtype=float)
+    world = wcs.all_pix2world(pixel, 0)
+    if isinstance(world, (list, tuple)):
+        world_values = np.asarray(world[0], dtype=float)
+    else:
+        world_values = np.asarray(world, dtype=float)
+    unit = wcs.world_axis_units[0] or header.get("CUNIT1") or ""
+    quantity = u.Quantity(world_values, u.Unit(unit) if unit else u.dimensionless_unscaled)
+    converted = quantity.to(u.nm, equivalencies=u.spectral())
+    return np.asarray(converted.value, dtype=float)
+
+
+def _write_wcs_spectrum(
+    tmp_path,
+    *,
+    name: str,
+    data: np.ndarray,
+    header_values: dict,
+):
+    header = fits.Header()
+    for key, value in header_values.items():
+        header[key] = value
+
+    image_hdu = fits.ImageHDU(data=data, header=header, name=name)
+    hdul = fits.HDUList([fits.PrimaryHDU(), image_hdu])
+
+    path = tmp_path / f"{name.lower()}.fits"
+    hdul.writeto(path, overwrite=True)
+    hdul.close()
+
+    return path, header
 
 
 def test_parse_fits_uses_first_data_extension(tmp_path):
@@ -358,3 +395,73 @@ def test_parse_fits_rejects_image_with_nonpositive_wavelengths(tmp_path):
     message = str(excinfo.value)
     assert "no positive-wavelength samples" in message.lower()
     assert "positive-wavelength" in message
+
+
+def test_parse_fits_resolves_wcs_pc_matrix(tmp_path):
+    data = np.array([1.0, 2.0, 3.0, 4.0], dtype=float)
+    header_values = {
+        "EXTNAME": "PCWCS",
+        "WCSAXES": 1,
+        "CRPIX1": 1.0,
+        "PC1_1": 2.0,
+        "CDELT1": 5e-10,
+        "CUNIT1": "nm",
+        "CTYPE1": "WAVE",
+        "CRVAL1": 4e-07,
+        "MJDREF": 0.0,
+        "LATPOLE": 90.0,
+    }
+
+    path, header = _write_wcs_spectrum(
+        tmp_path,
+        name="PCWCS",
+        data=data,
+        header_values=header_values,
+    )
+
+    result = parse_fits(str(path))
+    expected = _expected_wavelengths_from_header(header, data.size)
+
+    assert result["wavelength_nm"] == pytest.approx(expected)
+    assert result["wavelength"]["values"] == pytest.approx(expected)
+    assert result["metadata"]["original_wavelength_unit"] == "m"
+
+    wcs_meta = result["provenance"].get("wcs", {})
+    assert wcs_meta.get("ctype") == "WAVE"
+    assert wcs_meta.get("unit") == "m"
+    assert wcs_meta.get("pc_matrix") == [[2.0]]
+    assert "wavelength_range_nm" in wcs_meta
+
+
+def test_parse_fits_handles_logarithmic_dispersion(tmp_path):
+    data = np.array([5.0, 6.0, 7.0, 8.0, 9.0], dtype=float)
+    header_values = {
+        "EXTNAME": "LOGWCS",
+        "WCSAXES": 1,
+        "CRPIX1": 1.0,
+        "CDELT1": 1e-11,
+        "CUNIT1": "Angstrom",
+        "CTYPE1": "AWAV-LOG",
+        "CRVAL1": 4e-10,
+        "MJDREF": 0.0,
+        "LATPOLE": 90.0,
+    }
+
+    path, header = _write_wcs_spectrum(
+        tmp_path,
+        name="LOGWCS",
+        data=data,
+        header_values=header_values,
+    )
+
+    result = parse_fits(str(path))
+    expected = _expected_wavelengths_from_header(header, data.size)
+
+    assert result["wavelength_nm"] == pytest.approx(expected)
+    assert result["wavelength"]["values"] == pytest.approx(expected)
+    assert result["metadata"]["original_wavelength_unit"] == "m"
+
+    wcs_meta = result["provenance"].get("wcs", {})
+    assert wcs_meta.get("ctype") == "AWAV-LOG"
+    assert wcs_meta.get("unit") == "m"
+    assert "wavelength_range_nm" in wcs_meta
