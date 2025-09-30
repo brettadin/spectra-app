@@ -176,7 +176,14 @@ def _extract_table_data(
         "row_count": int(len(data)),
     }
 
-    return wavelength_nm, flux_values, resolved_unit, wavelength_unit_hint, flux_unit_hint, provenance
+    return (
+        wavelength_nm,
+        flux_values,
+        resolved_unit,
+        wavelength_unit_hint,
+        flux_unit_hint,
+        provenance,
+    )
 def _coerce_header_value(value):
     if isinstance(value, bytes):
         try:
@@ -280,6 +287,116 @@ def _open_hdul(
     return hdul, filename, payload
 
 
+def _ingest_table_hdu(
+    hdu: Union[fits.BinTableHDU, fits.TableHDU]
+) -> Tuple[
+    np.ndarray,
+    np.ndarray,
+    str,
+    Optional[str],
+    Optional[str],
+    Dict[str, object],
+    bool,
+    str,
+    Dict[str, object],
+]:
+    (
+        wavelength_nm,
+        flux_array,
+        resolved_unit,
+        reported_wavelength_unit,
+        flux_unit_hint,
+        table_provenance,
+    ) = _extract_table_data(hdu)
+
+    unit_inference = {
+        "column": _coerce_header_value(reported_wavelength_unit)
+        if reported_wavelength_unit
+        else None,
+        "resolved": resolved_unit,
+    }
+
+    mask_flag = bool(table_provenance.get("mask_applied", False))
+
+    return (
+        wavelength_nm,
+        flux_array,
+        resolved_unit,
+        reported_wavelength_unit,
+        flux_unit_hint,
+        unit_inference,
+        mask_flag,
+        "table",
+        table_provenance,
+    )
+
+
+def _ingest_image_hdu(
+    hdu,
+) -> Tuple[
+    np.ndarray,
+    np.ndarray,
+    str,
+    Optional[str],
+    Optional[str],
+    Dict[str, object],
+    bool,
+    str,
+    Dict[str, object],
+]:
+    masked = np.ma.array(hdu.data)
+    flux_array = _ensure_1d(np.array(np.ma.getdata(masked), dtype=float))
+    mask_array = np.ma.getmaskarray(masked)
+    if mask_array is np.ma.nomask or np.isscalar(mask_array):
+        mask_flat = np.zeros_like(flux_array, dtype=bool)
+    else:
+        mask_flat = np.array(mask_array, dtype=bool).reshape(flux_array.shape)
+
+    if flux_array.size == 0:
+        raise ValueError("FITS data array is empty.")
+
+    wavelengths_raw, wcs_meta = _compute_wavelengths(flux_array.size, hdu.header)
+    resolved_unit = _normalise_wavelength_unit(
+        hdu.header.get("CUNIT1") or hdu.header.get("XUNIT")
+    )
+
+    wavelength_nm = np.array(to_nm(wavelengths_raw.tolist(), resolved_unit), dtype=float)
+
+    valid = (~mask_flat) & np.isfinite(flux_array) & np.isfinite(wavelength_nm)
+    flux_array = flux_array[valid]
+    wavelength_nm = wavelength_nm[valid]
+    if flux_array.size == 0:
+        raise ValueError("FITS ingestion yielded no valid samples after masking.")
+
+    flux_unit_hint = (
+        hdu.header.get("BUNIT")
+        or hdu.header.get("BUNIT1")
+        or hdu.header.get("FLUXUNIT")
+    )
+    unit_inference = {
+        "header": _coerce_header_value(
+            hdu.header.get("CUNIT1") or hdu.header.get("XUNIT")
+        ),
+        "resolved": resolved_unit,
+    }
+    mask_flag = bool(mask_flat.any())
+
+    provenance_details = {"wcs": wcs_meta}
+    reported_wavelength_unit = hdu.header.get("CUNIT1") or hdu.header.get("XUNIT")
+
+    return (
+        wavelength_nm,
+        flux_array,
+        resolved_unit,
+        reported_wavelength_unit,
+        flux_unit_hint,
+        unit_inference,
+        mask_flag,
+        "image",
+        provenance_details,
+    )
+
+
 def _gather_metadata(header, keys: Sequence[str]) -> Dict[str, object]:
     metadata: Dict[str, object] = {}
     for key in keys:
@@ -295,72 +412,48 @@ def parse_fits(content: HeaderInput, *, filename: Optional[str] = None) -> Dict[
 
     hdul, inferred_name, payload = _open_hdul(content, filename_hint=filename)
     try:
-        data_hdu = None
-        data_index = None
+        selected: Optional[Tuple[int, object, Tuple[object, ...]]] = None
+        errors: List[str] = []
+
         for idx, hdu in enumerate(hdul):
-            if getattr(hdu, "data", None) is not None:
-                data_hdu = hdu
-                data_index = idx
-                break
-        if data_hdu is None:
+            if getattr(hdu, "data", None) is None:
+                continue
+
+            try:
+                if isinstance(hdu, (fits.BinTableHDU, fits.TableHDU)):
+                    details = _ingest_table_hdu(hdu)
+                else:
+                    details = _ingest_image_hdu(hdu)
+            except Exception as exc:  # pragma: no cover - defensive aggregation
+                errors.append(f"HDU {idx} ({type(hdu).__name__}): {exc}")
+                continue
+
+            selected = (idx, hdu, details)
+            break
+
+        if selected is None:
+            if errors:
+                raise ValueError(
+                    "Unable to ingest FITS content from any HDU. "
+                    + "; ".join(errors)
+                )
             raise ValueError("No array data found in FITS file.")
 
+        data_index, data_hdu, details = selected
+
+        (
+            wavelength_nm,
+            flux_array,
+            resolved_unit,
+            reported_wavelength_unit,
+            flux_unit_hint,
+            unit_inference,
+            mask_flag,
+            data_mode,
+            provenance_details,
+        ) = details
+
         header = data_hdu.header
-
-        if isinstance(data_hdu, (fits.BinTableHDU, fits.TableHDU)):
-            (
-                wavelength_nm,
-                flux_array,
-                resolved_unit,
-                reported_wavelength_unit,
-                flux_unit_hint,
-                table_provenance,
-            ) = _extract_table_data(data_hdu)
-            unit_inference = {
-                "column": _coerce_header_value(reported_wavelength_unit) if reported_wavelength_unit else None,
-                "resolved": resolved_unit,
-            }
-            mask_flag = bool(table_provenance.get("mask_applied", False))
-            data_mode = "table"
-            provenance_details = table_provenance
-        else:
-            masked = np.ma.array(data_hdu.data)
-            flux_array = _ensure_1d(np.array(np.ma.getdata(masked), dtype=float))
-            mask_array = np.ma.getmaskarray(masked)
-            if mask_array is np.ma.nomask or np.isscalar(mask_array):
-                mask_flat = np.zeros_like(flux_array, dtype=bool)
-            else:
-                mask_flat = np.array(mask_array, dtype=bool).reshape(flux_array.shape)
-
-            if flux_array.size == 0:
-                raise ValueError("FITS data array is empty.")
-
-            wavelengths_raw, wcs_meta = _compute_wavelengths(flux_array.size, header)
-            resolved_unit = _normalise_wavelength_unit(header.get("CUNIT1") or header.get("XUNIT"))
-
-            wavelength_nm = np.array(to_nm(wavelengths_raw.tolist(), resolved_unit), dtype=float)
-
-            valid = (~mask_flat) & np.isfinite(flux_array) & np.isfinite(wavelength_nm)
-            flux_array = flux_array[valid]
-            wavelength_nm = wavelength_nm[valid]
-            if flux_array.size == 0:
-                raise ValueError("FITS ingestion yielded no valid samples after masking.")
-
-            flux_unit_hint = (
-                header.get("BUNIT")
-                or header.get("BUNIT1")
-                or header.get("FLUXUNIT")
-            )
-            unit_inference = {
-                "header": _coerce_header_value(header.get("CUNIT1") or header.get("XUNIT")),
-                "resolved": resolved_unit,
-            }
-            mask_flag = bool(mask_flat.any())
-            data_mode = "image"
-            provenance_details = {
-                "wcs": wcs_meta,
-            }
-            reported_wavelength_unit = header.get("CUNIT1") or header.get("XUNIT")
 
         flux_unit, flux_kind = _normalise_flux_unit(flux_unit_hint)
 
