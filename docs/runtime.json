@@ -1,0 +1,11 @@
+{
+  "python": "3.11.9",
+  "platform": "Windows-10-10.0.26100-SP0",
+  "libs": {
+    "astropy": "7.1.0",
+    "astroquery": "0.4.10",
+    "numpy": "2.3.3",
+    "scipy": "1.16.2",
+    "pandas": "2.3.2"
+  }
+}
