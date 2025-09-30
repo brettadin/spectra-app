@@ -473,12 +473,21 @@ def ingest_local_file(name: str, content: bytes) -> Dict[str, object]:
             "expected a spectral table rather than metadata."
         )
 
+    wavelength_axis = parsed.get("wavelength")
+    if isinstance(wavelength_axis, Mapping):
+        wavelength_payload: Dict[str, object] = dict(wavelength_axis)
+        wavelength_payload.setdefault("values", wavelengths)
+    elif wavelength_axis is not None:
+        wavelength_payload = {"values": wavelengths, "unit": str(wavelength_axis)}
+    else:
+        wavelength_payload = {"values": wavelengths, "unit": "nm"}
+
     payload = {
         "label": label,
         "provider": "LOCAL",
         "summary": summary,
         "wavelength_nm": wavelengths,
-        "wavelength": {"values": wavelengths, "unit": "nm"},
+        "wavelength": wavelength_payload,
         "wavelength_quantity": parsed.get("wavelength_quantity"),
         "flux": flux_values,
         "flux_unit": flux_unit,
@@ -490,6 +499,16 @@ def ingest_local_file(name: str, content: bytes) -> Dict[str, object]:
         "downsample": parsed.get("downsample"),
         "cache_dataset_id": metadata.get("cache_dataset_id"),
     }
+
+    axis_kind = parsed.get("axis_kind")
+    if axis_kind is not None:
+        payload["axis_kind"] = axis_kind
+
+    time_payload = parsed.get("time")
+    if isinstance(time_payload, Mapping):
+        payload["time"] = dict(time_payload)
+    elif time_payload is not None:
+        payload["time"] = time_payload
 
     additional = parsed.get("additional_traces")
     if isinstance(additional, list) and additional:
