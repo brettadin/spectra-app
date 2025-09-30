@@ -205,3 +205,47 @@ def test_parse_fits_assumes_nm_for_wavelength_column_without_units(tmp_path):
     unit_resolution = result["provenance"].get("wavelength_unit_resolution", {})
     assert unit_resolution.get("assumed") == "nm"
     assert unit_resolution.get("assumed_from") == "column_name"
+
+
+def test_parse_fits_rejects_table_with_nonpositive_wavelengths(tmp_path):
+    wavelengths = np.array([-50.0, -10.0, 0.0], dtype=float)
+    flux = np.array([1.0, 2.0, 3.0], dtype=float)
+
+    columns = [
+        fits.Column(name="WAVE", array=wavelengths, format="D", unit="nm"),
+        fits.Column(name="FLUX", array=flux, format="D"),
+    ]
+
+    table_hdu = fits.BinTableHDU.from_columns(columns)
+    hdul = fits.HDUList([fits.PrimaryHDU(), table_hdu])
+    fits_path = tmp_path / "negative_wavelength_table.fits"
+    hdul.writeto(fits_path, overwrite=True)
+    hdul.close()
+
+    with pytest.raises(ValueError) as excinfo:
+        parse_fits(str(fits_path))
+
+    message = str(excinfo.value)
+    assert "positive-wavelength" in message
+
+
+def test_parse_fits_rejects_image_with_nonpositive_wavelengths(tmp_path):
+    flux_values = np.array([1.0, 2.0, 3.0], dtype=float)
+
+    sci_header = fits.Header()
+    sci_header["CRVAL1"] = -5.0
+    sci_header["CDELT1"] = 1.0
+    sci_header["CRPIX1"] = 1.0
+    sci_header["CUNIT1"] = "nm"
+
+    sci_hdu = fits.ImageHDU(data=flux_values, header=sci_header, name="SCI")
+    hdul = fits.HDUList([fits.PrimaryHDU(), sci_hdu])
+    fits_path = tmp_path / "negative_wavelength_image.fits"
+    hdul.writeto(fits_path, overwrite=True)
+    hdul.close()
+
+    with pytest.raises(ValueError) as excinfo:
+        parse_fits(str(fits_path))
+
+    message = str(excinfo.value)
+    assert "positive-wavelength" in message

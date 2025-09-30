@@ -408,6 +408,15 @@ def _extract_table_data(
             f"Unable to convert values from unit {resolved_unit!r} to nm."
         ) from exc
 
+    positive_mask = wavelength_nm > 0
+    dropped_nonpositive_nm = int(positive_mask.size - np.count_nonzero(positive_mask))
+    if dropped_nonpositive_nm:
+        wavelength_nm = wavelength_nm[positive_mask]
+        flux_values = flux_values[positive_mask]
+
+    if wavelength_nm.size == 0:
+        raise ValueError("FITS table ingestion yielded no positive-wavelength samples.")
+
     provenance: Dict[str, object] = {
         "table_columns": column_names,
         "column_mapping": {"wavelength": wavelength_col, "flux": flux_col},
@@ -437,6 +446,8 @@ def _extract_table_data(
 
     if dropped_nonpositive:
         provenance["dropped_nonpositive_wavenumbers"] = dropped_nonpositive
+    if dropped_nonpositive_nm:
+        provenance["dropped_nonpositive_wavelengths"] = dropped_nonpositive_nm
 
     if event_meta is not None:
         event_meta["derived_flux_unit"] = derived_flux_unit
@@ -658,7 +669,18 @@ def _ingest_image_hdu(
 
     wavelength_nm = np.array(to_nm(wavelengths_raw.tolist(), resolved_unit), dtype=float)
 
-    valid = (~mask_flat) & np.isfinite(flux_array) & np.isfinite(wavelength_nm)
+    positive_mask = wavelength_nm > 0
+    positive_count = int(np.count_nonzero(positive_mask))
+    dropped_nonpositive = int(positive_mask.size - positive_count)
+    if positive_count == 0:
+        raise ValueError("FITS image ingestion yielded no positive-wavelength samples.")
+
+    valid = (
+        positive_mask
+        & (~mask_flat)
+        & np.isfinite(flux_array)
+        & np.isfinite(wavelength_nm)
+    )
     flux_array = flux_array[valid]
     wavelength_nm = wavelength_nm[valid]
     if flux_array.size == 0:
@@ -678,6 +700,8 @@ def _ingest_image_hdu(
     mask_flag = bool(mask_flat.any())
 
     provenance_details: Dict[str, object] = {"wcs": wcs_meta}
+    if dropped_nonpositive:
+        provenance_details["dropped_nonpositive_wavelengths"] = dropped_nonpositive
     if collapse_meta:
         provenance_details["image_collapse"] = collapse_meta
     reported_wavelength_unit = hdu.header.get("CUNIT1") or hdu.header.get("XUNIT")
