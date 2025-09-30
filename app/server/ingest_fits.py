@@ -231,6 +231,15 @@ def _unit_is_wavelength(unit: Optional[str]) -> bool:
     return True
 
 
+
+def _label_suggests_wavelength(name: str) -> bool:
+    label = name.strip().lower()
+    if not label:
+        return False
+    tokens = ("wave", "lam", "freq", "wn", "ener")
+    return any(token in label for token in tokens)
+
+
 def _detect_table_columns(names: Sequence[str]) -> Tuple[str, str]:
     if len(names) < 2:
         raise ValueError("FITS table must contain at least two columns for wavelength and flux")
@@ -239,8 +248,7 @@ def _detect_table_columns(names: Sequence[str]) -> Tuple[str, str]:
     flux = names[1]
 
     for name in names:
-        label = name.lower()
-        if any(token in label for token in ("wave", "lam", "freq", "wn")):
+        if _label_suggests_wavelength(name):
             wavelength = name
             break
 
@@ -315,11 +323,9 @@ def _extract_table_data(
     wave_idx = column_index_map[wavelength_col]
     flux_idx = column_index_map[flux_col]
 
-    wavelength_unit_hint = (
-        _column_unit(hdu, wave_idx)
-        or hdu.header.get("CUNIT1")
-        or hdu.header.get("XUNIT")
-    )
+    column_unit_hint = _column_unit(hdu, wave_idx)
+    header_unit_hint = hdu.header.get("CUNIT1") or hdu.header.get("XUNIT")
+    wavelength_unit_hint = column_unit_hint or header_unit_hint
 
     flux_unit_column = _column_unit(hdu, flux_idx)
     flux_unit_header = (
@@ -352,7 +358,32 @@ def _extract_table_data(
 
     flux_unit_hint = flux_unit_column or flux_unit_header
 
-    resolved_unit = _normalise_wavelength_unit(wavelength_unit_hint)
+    axis_type = hdu.header.get("CTYPE1")
+    unit_missing = not (wavelength_unit_hint and str(wavelength_unit_hint).strip())
+    assumed_unit: Optional[str] = None
+
+    if unit_missing:
+        if _ctype_is_spectral(axis_type) or _label_suggests_wavelength(wavelength_col):
+            resolved_unit = "nm"
+            assumed_unit = "nm"
+        else:
+            axis_display = _coerce_header_value(axis_type) if axis_type is not None else None
+            raise ValueError(
+                "FITS table column "
+                f"{wavelength_col!r} does not advertise a spectral axis "
+                f"(CTYPE1={axis_display!r})."
+            )
+    else:
+        resolved_unit = _normalise_wavelength_unit(wavelength_unit_hint)
+
+    if not _unit_is_wavelength(resolved_unit):
+        unit_display = _coerce_header_value(wavelength_unit_hint) if wavelength_unit_hint else None
+        axis_display = _coerce_header_value(axis_type) if axis_type is not None else None
+        raise ValueError(
+            "FITS table column "
+            f"{wavelength_col!r} uses unsupported spectral unit "
+            f"{unit_display!r} (CTYPE1={axis_display!r})."
+        )
 
     dropped_nonpositive = 0
     if _is_wavenumber_unit(resolved_unit):
@@ -373,10 +404,9 @@ def _extract_table_data(
             to_nm(wavelength_values.tolist(), resolved_unit), dtype=float
         )
     except ValueError as exc:
-        if _is_wavenumber_unit(resolved_unit):
-            raise ValueError("Unable to convert wavenumber samples to nm.") from exc
-        wavelength_nm = np.array(to_nm(wavelength_values.tolist(), "nm"), dtype=float)
-        resolved_unit = "nm"
+        raise ValueError(
+            f"Unable to convert values from unit {resolved_unit!r} to nm."
+        ) from exc
 
     provenance: Dict[str, object] = {
         "table_columns": column_names,
@@ -388,6 +418,22 @@ def _extract_table_data(
         "mask_applied": bool(wavelength_mask.any() or flux_mask.any()),
         "row_count": int(len(data)),
     }
+
+    unit_resolution: Dict[str, object] = {
+        "column": _coerce_header_value(column_unit_hint) if column_unit_hint else None,
+        "header": _coerce_header_value(header_unit_hint) if header_unit_hint else None,
+        "resolved": resolved_unit,
+    }
+    if axis_type is not None:
+        unit_resolution["axis_type"] = _coerce_header_value(axis_type)
+    if assumed_unit is not None:
+        unit_resolution["assumed"] = assumed_unit
+        if _ctype_is_spectral(axis_type):
+            unit_resolution["assumed_from"] = "ctype1"
+        else:
+            unit_resolution["assumed_from"] = "column_name"
+
+    provenance["wavelength_unit_resolution"] = unit_resolution
 
     if dropped_nonpositive:
         provenance["dropped_nonpositive_wavenumbers"] = dropped_nonpositive
@@ -550,12 +596,16 @@ def _ingest_table_hdu(
         table_provenance,
     ) = _extract_table_data(hdu)
 
+    unit_resolution = table_provenance.get("wavelength_unit_resolution", {})
     unit_inference = {
-        "column": _coerce_header_value(reported_wavelength_unit)
-        if reported_wavelength_unit
-        else None,
-        "resolved": resolved_unit,
+        "column": unit_resolution.get("column"),
+        "header": unit_resolution.get("header"),
+        "resolved": unit_resolution.get("resolved", resolved_unit),
+        "axis_type": unit_resolution.get("axis_type"),
     }
+    if "assumed" in unit_resolution:
+        unit_inference["assumed"] = unit_resolution["assumed"]
+        unit_inference["assumed_from"] = unit_resolution.get("assumed_from")
 
     mask_flag = bool(table_provenance.get("mask_applied", False))
 

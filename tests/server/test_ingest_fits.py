@@ -155,3 +155,53 @@ def test_parse_fits_accepts_convertible_units_without_spectral_ctype(tmp_path):
 
     expected_wavelength_nm = [100.0 + i * 0.1 for i in range(flux_values.size)]
     assert result["wavelength_nm"] == pytest.approx(expected_wavelength_nm)
+
+
+
+def test_parse_fits_rejects_table_with_nonspectral_units(tmp_path):
+    time = np.array([0.0, 1.0, 2.0], dtype=float)
+    flux = np.array([10.0, 11.0, 12.0], dtype=float)
+
+    columns = [
+        fits.Column(name="TIME", array=time, format="D", unit="BJD - 2457000, days"),
+        fits.Column(name="SAP_FLUX", array=flux, format="D", unit="e-/s"),
+    ]
+
+    table_hdu = fits.BinTableHDU.from_columns(columns)
+    hdul = fits.HDUList([fits.PrimaryHDU(), table_hdu])
+    fits_path = tmp_path / "tess_like_lightcurve.fits"
+    hdul.writeto(fits_path, overwrite=True)
+    hdul.close()
+
+    with pytest.raises(ValueError) as excinfo:
+        parse_fits(str(fits_path))
+
+    message = str(excinfo.value)
+    assert "TIME" in message
+    assert "BJD" in message
+
+
+def test_parse_fits_assumes_nm_for_wavelength_column_without_units(tmp_path):
+    wavelengths = np.array([400.0, 500.0, 600.0], dtype=float)
+    flux = np.array([1.0, 2.0, 3.0], dtype=float)
+
+    columns = [
+        fits.Column(name="WAVE", array=wavelengths, format="D"),
+        fits.Column(name="FLUX", array=flux, format="D"),
+    ]
+
+    table_hdu = fits.BinTableHDU.from_columns(columns)
+    hdul = fits.HDUList([fits.PrimaryHDU(), table_hdu])
+    fits_path = tmp_path / "unitless_wavelength_table.fits"
+    hdul.writeto(fits_path, overwrite=True)
+    hdul.close()
+
+    result = parse_fits(str(fits_path))
+
+    assert result["wavelength_nm"] == wavelengths.tolist()
+    assert result["metadata"]["original_wavelength_unit"] == "nm"
+    assert result["metadata"].get("reported_wavelength_unit") is None
+
+    unit_resolution = result["provenance"].get("wavelength_unit_resolution", {})
+    assert unit_resolution.get("assumed") == "nm"
+    assert unit_resolution.get("assumed_from") == "column_name"
