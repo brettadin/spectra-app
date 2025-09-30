@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+from ..units import resolve_unit
+
 try:  # pragma: no cover - import guard executed at runtime
     import astropy.units as u
     from astroquery.nist import Nist
@@ -629,21 +631,18 @@ def fetch(
         ion_stage=ion_stage,
     )
 
-    unit_normalised = wavelength_unit.strip().lower() if wavelength_unit else "nm"
-    if unit_normalised in {"ang", "angstrom", "ångström", "å", "aa"}:
-        unit = u.AA
-    elif unit_normalised in {"um", "µm", "micron", "micrometer", "micrometre"}:
-        unit = u.um
-    else:
-        unit = u.nm
+    try:
+        unit, canonical_wavelength_unit = resolve_unit(wavelength_unit or "nm")
+    except ValueError:
+        unit, canonical_wavelength_unit = resolve_unit("nm")
 
     lower = lower_wavelength if lower_wavelength is not None else DEFAULT_LOWER_WAVELENGTH_NM
     upper = upper_wavelength if upper_wavelength is not None else DEFAULT_UPPER_WAVELENGTH_NM
     if lower > upper:
         lower, upper = upper, lower
 
-    min_wav = lower * unit
-    max_wav = upper * unit
+    min_wav = u.Quantity(lower, unit)
+    max_wav = u.Quantity(upper, unit)
 
     try:
         table = Nist.query(
@@ -730,7 +729,7 @@ def fetch(
                 "linename": spectrum,
                 "lower_wavelength": float(lower),
                 "upper_wavelength": float(upper),
-                "wavelength_unit": str(unit),
+                "wavelength_unit": canonical_wavelength_unit,
                 "wavelength_type": wavelength_type,
                 "use_ritz": use_ritz,
             },
@@ -769,7 +768,7 @@ def fetch(
             "linename": spectrum,
             "lower_wavelength": float(lower),
             "upper_wavelength": float(upper),
-            "wavelength_unit": str(unit),
+            "wavelength_unit": canonical_wavelength_unit,
             "wavelength_type": wavelength_type,
             "use_ritz": use_ritz,
         },
