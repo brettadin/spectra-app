@@ -9,6 +9,8 @@ import re
 import numpy as np
 from astropy import units as u
 from astropy.io import fits
+from astropy.units import Quantity
+from astropy.wcs import WCS
 
 from .ingest_ascii import checksum_bytes  # reuse checksum helper
 from .units import canonical_unit, to_nm
@@ -570,36 +572,163 @@ def _normalise_flux_unit(unit: Optional[str]) -> Tuple[str, str]:
 def _compute_wavelengths(
     size: int,
     header,
-) -> Tuple[np.ndarray, Dict[str, Optional[float]]]:
-    crval1 = header.get("CRVAL1")
-    cdelt1 = header.get("CDELT1", header.get("CD1_1"))
-    crpix1 = header.get("CRPIX1", 1.0)
-    missing = [
-        key
-        for key, value in (("CRVAL1", crval1), ("CDELT1", cdelt1))
-        if value is None
-    ]
-    if missing:
-        joined = ", ".join(missing)
-        raise ValueError(
-            f"Missing WCS keyword(s) {joined} in FITS header for spectral axis."
-        )
+) -> Tuple[Quantity, Dict[str, object]]:
+    """Derive a spectral axis from the FITS header using WCS."""
 
-    try:
-        crval1 = float(crval1)
-        cdelt1 = float(cdelt1)
-        crpix1 = float(crpix1)
-    except (TypeError, ValueError) as exc:
-        raise ValueError("Invalid WCS keyword value in FITS header.") from exc
+    alternate_keys = [""]
+    pattern = re.compile(r"^CTYPE\d+([A-Z])$")
+    for key in header.keys():
+        match = pattern.match(str(key))
+        if match:
+            candidate = match.group(1)
+            if candidate not in alternate_keys:
+                alternate_keys.append(candidate)
 
-    pix = np.arange(size, dtype=float)
-    wavelengths = crval1 + (pix - (crpix1 - 1.0)) * cdelt1
-    meta = {
-        "crval1": crval1,
-        "cdelt1": cdelt1,
-        "crpix1": crpix1,
+    last_error: Optional[Exception] = None
+
+    for key in alternate_keys:
+        wcs_key = key if key else " "
+        try:
+            wcs = WCS(header, key=wcs_key)
+        except Exception as exc:  # pragma: no cover - astropy validation
+            last_error = exc
+            continue
+
+        spectral_axis = getattr(wcs.wcs, "spec", -1)
+        if spectral_axis is None:
+            spectral_axis = -1
+        if spectral_axis < 0:
+            ctypes = getattr(wcs.wcs, "ctype", ())
+            for axis_index, axis_type in enumerate(ctypes):
+                if _ctype_is_spectral(axis_type):
+                    spectral_axis = axis_index
+                    break
+        if spectral_axis < 0:
+            for axis_index in range(wcs.pixel_n_dim):
+                axis_number = axis_index + 1
+                unit_candidate: Optional[str] = None
+                if key:
+                    unit_candidate = header.get(f"CUNIT{axis_number}{key}")
+                if not unit_candidate:
+                    unit_candidate = header.get(f"CUNIT{axis_number}")
+                if _unit_is_wavelength(unit_candidate):
+                    spectral_axis = axis_index
+                    break
+        if spectral_axis < 0 and wcs.pixel_n_dim == 1:
+            spectral_axis = 0
+        if spectral_axis < 0 or spectral_axis >= wcs.pixel_n_dim:
+            continue
+
+        try:
+            quantity, metadata = _wcs_to_quantity(
+                wcs,
+                header,
+                size,
+                spectral_axis,
+                key or None,
+            )
+        except Exception as exc:  # pragma: no cover - defensive conversion
+            last_error = exc
+            continue
+
+        return quantity, metadata
+
+    message = "FITS header does not describe a spectral WCS axis."
+    if last_error is not None:
+        raise ValueError(message) from last_error
+    raise ValueError(message)
+
+
+def _wcs_to_quantity(
+    wcs: WCS,
+    header,
+    size: int,
+    spectral_axis: int,
+    alternate_key: Optional[str],
+) -> Tuple[Quantity, Dict[str, object]]:
+    pixel_coords: List[np.ndarray] = []
+    for axis_index in range(wcs.pixel_n_dim):
+        if axis_index == spectral_axis:
+            coords = np.arange(size, dtype=float)
+        else:
+            if axis_index < len(wcs.wcs.crpix):
+                ref = float(wcs.wcs.crpix[axis_index]) - 1.0
+            else:  # pragma: no cover - malformed WCS
+                ref = 0.0
+            coords = np.full(size, ref, dtype=float)
+        pixel_coords.append(coords)
+
+    world = wcs.all_pix2world(*pixel_coords, 0)
+    if wcs.world_n_dim == 1:
+        world_axes = [np.asarray(world, dtype=float).reshape(-1)]
+    else:
+        world_axes = [np.asarray(axis, dtype=float).reshape(-1) for axis in world]
+
+    correlation = wcs.axis_correlation_matrix
+    if correlation is not None and spectral_axis < correlation.shape[1]:
+        correlated = np.nonzero(correlation[:, spectral_axis])[0]
+        if correlated.size:
+            world_axis_index = int(correlated[0])
+        else:
+            world_axis_index = min(spectral_axis, wcs.world_n_dim - 1)
+    else:
+        world_axis_index = min(spectral_axis, wcs.world_n_dim - 1)
+
+    world_values = world_axes[world_axis_index]
+
+    unit: Optional[str] = None
+    world_units = wcs.world_axis_units or ()
+    if world_axis_index < len(world_units):
+        unit = world_units[world_axis_index] or None
+
+    axis_number = spectral_axis + 1
+    if not unit and alternate_key:
+        unit = header.get(f"CUNIT{axis_number}{alternate_key}")
+    if not unit:
+        unit = header.get(f"CUNIT{axis_number}")
+
+    if unit:
+        try:
+            unit_obj = u.Unit(unit)
+        except Exception as exc:  # pragma: no cover - invalid unit text
+            raise ValueError(f"Unsupported WCS spectral unit: {unit!r}") from exc
+    else:
+        unit_obj = u.dimensionless_unscaled
+
+    quantity = u.Quantity(world_values, unit_obj, copy=False)
+
+    meta: Dict[str, object] = {
+        "pixel_axis": int(spectral_axis),
+        "world_axis": int(world_axis_index),
+        "world_physical_type": None,
+        "ctype": None,
+        "unit": canonical_unit(quantity),
     }
-    return wavelengths, meta
+
+    if alternate_key:
+        meta["wcs_key"] = alternate_key
+
+    physical_types = wcs.world_axis_physical_types or ()
+    if world_axis_index < len(physical_types):
+        meta["world_physical_type"] = physical_types[world_axis_index]
+
+    ctypes = getattr(wcs.wcs, "ctype", ())
+    if spectral_axis < len(ctypes):
+        meta["ctype"] = _coerce_header_value(ctypes[spectral_axis])
+
+    if spectral_axis < len(wcs.wcs.crpix):
+        meta["crpix"] = float(wcs.wcs.crpix[spectral_axis])
+    if world_axis_index < len(wcs.wcs.crval):
+        meta["crval"] = float(wcs.wcs.crval[world_axis_index])
+    if spectral_axis < len(wcs.wcs.cdelt):
+        meta["cdelt"] = float(wcs.wcs.cdelt[spectral_axis])
+
+    if wcs.wcs.has_cd():
+        meta["cd_matrix"] = wcs.wcs.cd.tolist()
+    elif wcs.wcs.has_pc():
+        meta["pc_matrix"] = wcs.wcs.pc.tolist()
+
+    return quantity, meta
 
 
 def _open_hdul(
@@ -658,6 +787,31 @@ def _ingest_table_hdu(
 
     mask_flag = bool(table_provenance.get("mask_applied", False))
 
+    provenance_details = dict(table_provenance)
+    try:
+        table_wcs_axis, table_wcs_meta = _compute_wavelengths(
+            wavelength_nm.size,
+            hdu.header,
+        )
+    except ValueError:
+        table_wcs_axis = None
+    else:
+        table_wcs_meta = dict(table_wcs_meta)
+        table_wcs_meta.setdefault("unit", canonical_unit(table_wcs_axis))
+        try:
+            axis_values = np.asarray(
+                table_wcs_axis.to_value(table_wcs_axis.unit), dtype=float
+            ).reshape(-1)
+            converted = to_nm(axis_values, table_wcs_axis)
+            converted_values = np.asarray(converted.to_value(u.nm), dtype=float)
+            table_wcs_meta["wavelength_range_nm"] = [
+                float(np.min(converted_values)),
+                float(np.max(converted_values)),
+            ]
+        except ValueError:
+            table_wcs_meta["conversion_failed"] = True
+        provenance_details["wcs"] = table_wcs_meta
+
     return (
         wavelength_nm,
         flux_array,
@@ -667,7 +821,7 @@ def _ingest_table_hdu(
         unit_inference,
         mask_flag,
         "table",
-        table_provenance,
+        provenance_details,
     )
 
 
@@ -700,17 +854,21 @@ def _ingest_image_hdu(
             f"(CTYPE1={axis_display!r}, CUNIT1={unit_display!r})."
         )
 
-    wavelengths_raw, wcs_meta = _compute_wavelengths(flux_array.size, hdu.header)
-    resolved_unit = _normalise_wavelength_unit(
-        unit_hint_raw
-    )
+    wavelength_axis, wcs_meta = _compute_wavelengths(flux_array.size, hdu.header)
+    axis_values = np.asarray(
+        wavelength_axis.to_value(wavelength_axis.unit), dtype=float
+    ).reshape(-1)
+    resolved_unit = canonical_unit(wavelength_axis)
 
     try:
-        wavelength_quantity = to_nm(wavelengths_raw, resolved_unit)
-        wavelength_nm = np.asarray(wavelength_quantity.to_value(u.nm), dtype=float)
+        wavelength_quantity = to_nm(axis_values, wavelength_axis)
+        wavelength_nm = np.asarray(
+            wavelength_quantity.to_value(u.nm), dtype=float
+        ).reshape(-1)
     except ValueError as exc:
         raise ValueError(
-            f"Unable to convert image axis values from unit {resolved_unit!r} to nm."
+            "Unable to convert image axis values from WCS unit "
+            f"{resolved_unit!r} to nm."
         ) from exc
 
 
@@ -750,7 +908,12 @@ def _ingest_image_hdu(
     }
     mask_flag = bool(mask_flat.any())
 
-    provenance_details: Dict[str, object] = {"wcs": wcs_meta}
+    wcs_details = dict(wcs_meta)
+    wcs_details["wavelength_range_nm"] = [
+        float(np.min(wavelength_nm)),
+        float(np.max(wavelength_nm)),
+    ]
+    provenance_details: Dict[str, object] = {"wcs": wcs_details}
     if dropped_nonpositive:
         provenance_details["dropped_nonpositive_wavelengths"] = dropped_nonpositive
     if collapse_meta:
