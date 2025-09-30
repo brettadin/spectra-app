@@ -12,7 +12,7 @@ import pandas as pd
 from astropy import units as u
 
 from app.utils.downsample import build_downsample_tiers
-from .units import canonical_unit, to_nm
+from .units import to_nm
 
 
 HEADER_ALIAS_MAP = {
@@ -296,23 +296,14 @@ def _parse_range_value(value: str, default_unit: str) -> Optional[Tuple[float, f
         return None
     unit = _extract_unit_hint(value) or default_unit
     try:
-        converted = to_nm([low, high], unit).to_value(u.nm)
+        converted_quantity, _ = to_nm([low, high], unit)
+        converted = converted_quantity.to_value(u.nm)
     except Exception:
         converted = [low, high]
     low_nm, high_nm = float(np.min(converted)), float(np.max(converted))
     if not math.isfinite(low_nm) or not math.isfinite(high_nm):
         return None
     return low_nm, high_nm
-
-
-def _convert_wavelengths_to_nm_array(values: np.ndarray, canonical_unit_name: str) -> np.ndarray:
-    if values.size == 0:
-        return np.asarray(values, dtype=float)
-    canonical = canonical_unit(canonical_unit_name) if canonical_unit_name else "nm"
-    converted = to_nm(np.asarray(values, dtype=float), canonical)
-    return np.asarray(converted.to_value(u.nm), dtype=float)
-
-
 def _collect_header_metadata(
     header_lines: Sequence[str],
 ) -> Tuple[Dict[str, object], Dict[str, str], List[str], Optional[str], Optional[str], Optional[str]]:
@@ -605,9 +596,13 @@ def parse_ascii(
     reported_wavelength_unit = wavelength_unit
     wavelength_series = working[wavelength_col].to_numpy(dtype=float, copy=False)
     try:
-        wavelength_quantity = to_nm(wavelength_series, wavelength_unit)
+        wavelength_quantity, canonical_wavelength_unit = to_nm(
+            wavelength_series, wavelength_unit
+        )
     except ValueError:
-        wavelength_quantity = to_nm(wavelength_series, assumed_unit)
+        wavelength_quantity, canonical_wavelength_unit = to_nm(
+            wavelength_series, assumed_unit
+        )
         provenance.setdefault("unit_inference", {})["fallback"] = assumed_unit
         wavelength_unit = assumed_unit
     wavelength_nm_values = np.asarray(
@@ -641,10 +636,7 @@ def parse_ascii(
         "wavelength_effective_range_nm",
         metadata.get("wavelength_range_nm", data_range),
     )
-    try:
-        metadata["original_wavelength_unit"] = canonical_unit(wavelength_unit)
-    except ValueError:
-        metadata["original_wavelength_unit"] = wavelength_unit
+    metadata["original_wavelength_unit"] = canonical_wavelength_unit
     metadata.setdefault("points", int(wavelength_nm_values.size))
 
     provenance_units: Dict[str, object] = {"wavelength_converted_to": "nm", "flux_unit": flux_unit}
@@ -661,7 +653,7 @@ def parse_ascii(
     axis = _normalise_axis(axis_hint) or "emission"
 
     provenance["samples"] = int(wavelength_nm_values.size)
-    provenance.setdefault("unit_inference", {})["resolved"] = wavelength_unit
+    provenance.setdefault("unit_inference", {})["resolved"] = canonical_wavelength_unit
 
     conversions: Dict[str, object] = {}
     original_unit = metadata.get("original_wavelength_unit")
@@ -841,17 +833,21 @@ def parse_ascii_segments(
     resolved_unit = header_unit_hint or assumed_unit
     unit_inference: Dict[str, object] = {"header": header_unit_hint, "assumed": assumed_unit}
     try:
-        canonical_wavelength_unit = canonical_unit(resolved_unit)
+        wavelength_quantity, canonical_wavelength_unit = to_nm(
+            wavelength_array, resolved_unit
+        )
     except ValueError:
         resolved_unit = assumed_unit
-        canonical_wavelength_unit = canonical_unit(resolved_unit)
+        wavelength_quantity, canonical_wavelength_unit = to_nm(
+            wavelength_array, resolved_unit
+        )
         unit_inference["fallback"] = assumed_unit
 
     if not metadata.get("reported_wavelength_unit"):
         metadata["reported_wavelength_unit"] = resolved_unit
     metadata.setdefault("original_wavelength_unit", canonical_wavelength_unit)
 
-    wavelength_nm = _convert_wavelengths_to_nm_array(wavelength_array, canonical_wavelength_unit)
+    wavelength_nm = np.asarray(wavelength_quantity.to_value(u.nm), dtype=float)
 
     finite_mask = np.isfinite(wavelength_nm) & np.isfinite(flux_array)
     dropped_nonfinite = int(finite_mask.size - int(np.count_nonzero(finite_mask)))
