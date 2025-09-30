@@ -42,6 +42,91 @@ HEADER_METADATA_KEYS = {
 }
 
 
+EVENT_FLUX_COLUMNS = {
+    "rawx",
+    "rawy",
+    "xcorr",
+    "ycorr",
+    "xdopp",
+    "xfull",
+    "yfull",
+    "epsilon",
+    "dq",
+    "pha",
+}
+
+
+def _is_probably_event_column(name: str) -> bool:
+    label = name.strip().lower()
+    return label in EVENT_FLUX_COLUMNS or label.startswith("raw")
+
+
+def _looks_like_event_table(
+    flux_column: str,
+    column_unit: Optional[str],
+    header_unit: Optional[str],
+    raw_values: np.ndarray,
+) -> bool:
+    if _is_probably_event_column(flux_column):
+        return True
+
+    for unit in (column_unit, header_unit):
+        if not unit:
+            continue
+        lowered = str(unit).strip().lower()
+        if lowered in {"pixel", "pixels", "pix"}:
+            return True
+
+    try:
+        flattened = np.asarray(raw_values).reshape(-1)
+    except Exception:  # pragma: no cover - defensive
+        flattened = np.array(raw_values).reshape(-1)
+
+    if flattened.size >= 512 and np.issubdtype(flattened.dtype, np.integer):
+        sample = flattened[: min(flattened.size, 4096)]
+        if np.unique(sample).size <= 256:
+            return True
+
+    return False
+
+
+def _suggest_event_bins(size: int) -> int:
+    if size <= 0:
+        return 1
+    bins = max(int(np.sqrt(size)), 32)
+    return int(min(bins, 4096))
+
+
+def _bin_event_samples(wavelengths: np.ndarray) -> Tuple[np.ndarray, np.ndarray, Dict[str, int]]:
+    finite = wavelengths[np.isfinite(wavelengths)]
+    if finite.size == 0:
+        raise ValueError("Event spectrum contains no finite wavelength samples.")
+
+    minimum = float(finite.min())
+    maximum = float(finite.max())
+    if np.isclose(minimum, maximum):
+        return np.array([minimum], dtype=float), np.array([float(finite.size)]), {
+            "method": "sqrt",
+            "bin_count": 1,
+            "nonzero_bins": 1,
+            "original_samples": int(finite.size),
+        }
+
+    bins = _suggest_event_bins(finite.size)
+    counts, edges = np.histogram(finite, bins=bins, range=(minimum, maximum))
+    centres = 0.5 * (edges[:-1] + edges[1:])
+    nonzero = counts > 0
+
+    provenance = {
+        "method": "sqrt",
+        "bin_count": int(bins),
+        "nonzero_bins": int(np.count_nonzero(nonzero)),
+        "original_samples": int(finite.size),
+    }
+
+    return centres[nonzero], counts[nonzero].astype(float), provenance
+
+
 def _ensure_1d(array: np.ndarray) -> np.ndarray:
     """Return a 1-D view of the provided array or raise if ambiguous."""
 
@@ -197,12 +282,36 @@ def _extract_table_data(
         or hdu.header.get("XUNIT")
     )
 
-    flux_unit_hint = (
-        _column_unit(hdu, flux_idx)
-        or hdu.header.get("BUNIT")
+    flux_unit_column = _column_unit(hdu, flux_idx)
+    flux_unit_header = (
+        hdu.header.get("BUNIT")
         or hdu.header.get("BUNIT1")
         or hdu.header.get("FLUXUNIT")
     )
+
+    derived_flux_unit: Optional[str] = None
+    event_meta: Optional[Dict[str, object]] = None
+    if _looks_like_event_table(
+        flux_col,
+        flux_unit_column,
+        flux_unit_header,
+        np.ma.getdata(flux_data),
+    ):
+        binned_wavelengths, binned_flux, bin_meta = _bin_event_samples(wavelength_values)
+        wavelength_values = binned_wavelengths
+        flux_values = binned_flux
+        derived_flux_unit = "count"
+        event_meta = {
+            "binning": bin_meta,
+            "flux_source_column": flux_col,
+            "original_row_count": int(len(data)),
+        }
+        if flux_unit_column or flux_unit_header:
+            event_meta["original_flux_unit"] = str(
+                flux_unit_column or flux_unit_header
+            )
+
+    flux_unit_hint = flux_unit_column or flux_unit_header
 
     resolved_unit = _normalise_wavelength_unit(wavelength_unit_hint)
     try:
@@ -221,6 +330,11 @@ def _extract_table_data(
         "mask_applied": bool(wavelength_mask.any() or flux_mask.any()),
         "row_count": int(len(data)),
     }
+
+    if event_meta is not None:
+        event_meta["derived_flux_unit"] = derived_flux_unit
+        provenance["event_table"] = event_meta
+        provenance["derived_flux_unit"] = derived_flux_unit
 
     return (
         wavelength_nm,
@@ -498,7 +612,9 @@ def parse_fits(content: HeaderInput, *, filename: Optional[str] = None) -> Dict[
 
         header = data_hdu.header
 
-        flux_unit, flux_kind = _normalise_flux_unit(flux_unit_hint)
+        derived_flux_unit = provenance_details.get("derived_flux_unit") if isinstance(provenance_details, dict) else None
+        flux_unit_source = derived_flux_unit or flux_unit_hint
+        flux_unit, flux_kind = _normalise_flux_unit(flux_unit_source)
 
         range_min = float(np.min(wavelength_nm))
         range_max = float(np.max(wavelength_nm))
@@ -563,6 +679,8 @@ def parse_fits(content: HeaderInput, *, filename: Optional[str] = None) -> Dict[
             provenance_units["wavelength_reported"] = _coerce_header_value(reported_wavelength_unit)
         if flux_unit_hint:
             provenance_units["flux_input"] = _coerce_header_value(flux_unit_hint)
+        if derived_flux_unit:
+            provenance_units["flux_derived"] = derived_flux_unit
         provenance["units"] = provenance_units
 
         conversions: Dict[str, object] = {}

@@ -552,3 +552,45 @@ def test_ingest_local_fits_table_handles_columns():
     assert provenance["data_mode"] == "table"
     assert provenance["column_mapping"]["wavelength"] == "WAVELENGTH"
     assert provenance["column_mapping"]["flux"] == "FLUX"
+
+
+def test_ingest_local_fits_event_table_bins_counts():
+    size = 2048
+    rng = np.random.default_rng(12345)
+    wavelengths = rng.uniform(1200.0, 1250.0, size)
+    rawx = rng.integers(0, 32, size, dtype=np.int16)
+    rawy = rng.integers(0, 32, size, dtype=np.int16)
+    times = np.linspace(0.0, 600.0, size, dtype=float)
+
+    columns = [
+        fits.Column(name="TIME", array=times, format="D", unit="s"),
+        fits.Column(name="RAWX", array=rawx, format="I", unit="pixel"),
+        fits.Column(name="RAWY", array=rawy, format="I", unit="pixel"),
+        fits.Column(name="WAVELENGTH", array=wavelengths, format="D", unit="Angstrom"),
+    ]
+
+    table_hdu = fits.BinTableHDU.from_columns(columns, name="EVENTS")
+    hdul = fits.HDUList([fits.PrimaryHDU(), table_hdu])
+
+    bio = io.BytesIO()
+    hdul.writeto(bio)
+    hdul.close()
+
+    payload = ingest_local_file("event_spectrum.fits", bio.getvalue())
+
+    assert payload["flux_unit"] == "count"
+    assert payload["flux_kind"] == "relative"
+    assert sum(payload["flux"]) == pytest.approx(size)
+
+    metadata = payload["metadata"]
+    assert metadata["points"] == len(payload["flux"])
+    assert metadata["reported_flux_unit"] == "pixel"
+
+    provenance = payload["provenance"]
+    assert provenance["column_mapping"]["flux"] == "RAWX"
+    assert provenance["event_table"]["flux_source_column"] == "RAWX"
+    assert provenance["event_table"]["derived_flux_unit"] == "count"
+    assert provenance["event_table"]["binning"]["original_samples"] == size
+    assert provenance["units"]["flux_input"] == "pixel"
+    assert provenance["units"]["flux_derived"] == "count"
+    assert provenance["conversions"]["flux_unit"] == {"from": "pixel", "to": "count"}
