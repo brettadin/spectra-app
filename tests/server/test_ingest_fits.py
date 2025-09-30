@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 from astropy.io import fits
 
 from app.server.ingest_fits import parse_fits
@@ -109,3 +110,48 @@ def test_parse_fits_collapses_image_data(tmp_path):
     collapse_meta = result["provenance"].get("image_collapse", {})
     assert collapse_meta.get("original_shape") == [2, 4]
     assert collapse_meta.get("collapsed_axes") == [0]
+
+
+def test_parse_fits_rejects_nonspectral_image_axis(tmp_path):
+    flux_values = np.array([1.0, 2.0, 3.0], dtype=float)
+
+    sci_header = fits.Header()
+    sci_header["CRVAL1"] = -1.0
+    sci_header["CDELT1"] = 1.0
+    sci_header["CRPIX1"] = 1.0
+    sci_header["CTYPE1"] = "RA---TAN"
+
+    sci_hdu = fits.ImageHDU(data=flux_values, header=sci_header, name="SCI")
+    hdul = fits.HDUList([fits.PrimaryHDU(), sci_hdu])
+    fits_path = tmp_path / "ra_axis_image.fits"
+    hdul.writeto(fits_path, overwrite=True)
+    hdul.close()
+
+    with pytest.raises(ValueError) as excinfo:
+        parse_fits(str(fits_path))
+
+    message = str(excinfo.value)
+    assert "does not describe a spectral axis" in message
+    assert "CTYPE1='RA---TAN'" in message
+
+
+def test_parse_fits_accepts_convertible_units_without_spectral_ctype(tmp_path):
+    flux_values = np.array([1.0, 2.0, 3.0], dtype=float)
+
+    sci_header = fits.Header()
+    sci_header["CRVAL1"] = 1000.0
+    sci_header["CDELT1"] = 1.0
+    sci_header["CRPIX1"] = 1.0
+    sci_header["CTYPE1"] = "LINEAR"
+    sci_header["CUNIT1"] = "angstrom"
+
+    sci_hdu = fits.ImageHDU(data=flux_values, header=sci_header, name="SCI")
+    hdul = fits.HDUList([fits.PrimaryHDU(), sci_hdu])
+    fits_path = tmp_path / "linear_angstrom.fits"
+    hdul.writeto(fits_path, overwrite=True)
+    hdul.close()
+
+    result = parse_fits(str(fits_path))
+
+    expected_wavelength_nm = [100.0 + i * 0.1 for i in range(flux_values.size)]
+    assert result["wavelength_nm"] == pytest.approx(expected_wavelength_nm)

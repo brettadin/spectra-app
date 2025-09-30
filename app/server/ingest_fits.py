@@ -194,6 +194,43 @@ def _mask_to_bool(mask, size: int) -> np.ndarray:
     return padded
 
 
+_SPECTRAL_AXIS_PREFIXES = {
+    "FREQ",
+    "WAVE",
+    "AWAV",
+    "VWAV",
+    "WAVN",
+    "VRAD",
+    "VELO",
+    "VOPT",
+    "ZOPT",
+    "BETA",
+    "ENER",
+}
+
+
+def _ctype_is_spectral(value: Optional[str]) -> bool:
+    if not value:
+        return False
+    token = str(value).strip()
+    if not token:
+        return False
+    prefix = token.split("-")[0].upper()
+    if len(prefix) < 4:
+        return False
+    return any(prefix.startswith(candidate) for candidate in _SPECTRAL_AXIS_PREFIXES)
+
+
+def _unit_is_wavelength(unit: Optional[str]) -> bool:
+    if not unit:
+        return False
+    try:
+        canonical_unit(str(unit))
+    except ValueError:
+        return False
+    return True
+
+
 def _detect_table_columns(names: Sequence[str]) -> Tuple[str, str]:
     if len(names) < 2:
         raise ValueError("FITS table must contain at least two columns for wavelength and flux")
@@ -554,9 +591,19 @@ def _ingest_image_hdu(
     if flux_array.size == 0:
         raise ValueError("FITS data array is empty.")
 
+    axis_type = hdu.header.get("CTYPE1")
+    unit_hint_raw = hdu.header.get("CUNIT1") or hdu.header.get("XUNIT")
+    if not (_ctype_is_spectral(axis_type) or _unit_is_wavelength(unit_hint_raw)):
+        axis_display = _coerce_header_value(axis_type) if axis_type is not None else None
+        unit_display = _coerce_header_value(unit_hint_raw) if unit_hint_raw is not None else None
+        raise ValueError(
+            "FITS image HDU does not describe a spectral axis "
+            f"(CTYPE1={axis_display!r}, CUNIT1={unit_display!r})."
+        )
+
     wavelengths_raw, wcs_meta = _compute_wavelengths(flux_array.size, hdu.header)
     resolved_unit = _normalise_wavelength_unit(
-        hdu.header.get("CUNIT1") or hdu.header.get("XUNIT")
+        unit_hint_raw
     )
 
     wavelength_nm = np.array(to_nm(wavelengths_raw.tolist(), resolved_unit), dtype=float)
