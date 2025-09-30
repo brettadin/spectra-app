@@ -58,6 +58,44 @@ def _ensure_1d(array: np.ndarray) -> np.ndarray:
     )
 
 
+def _collapse_image_data(
+    masked: np.ma.MaskedArray,
+) -> Tuple[np.ndarray, np.ndarray, Dict[str, object]]:
+    """Collapse an image-like masked array to a 1-D spectrum."""
+
+    provenance: Dict[str, object] = {"original_shape": list(masked.shape)}
+
+    if masked.ndim <= 1:
+        flux_view = np.array(np.ma.getdata(masked), dtype=float)
+        flux_array = _ensure_1d(flux_view)
+        mask_array = np.ma.getmaskarray(masked)
+    else:
+        collapse_axes = tuple(range(masked.ndim - 1))
+        collapsed = masked
+        if collapse_axes:
+            collapsed = masked.mean(axis=collapse_axes)
+        provenance.update(
+            {
+                "collapse_operation": "mean",
+                "collapsed_axes": list(collapse_axes),
+                "post_collapse_shape": list(np.shape(collapsed)),
+            }
+        )
+        flux_view = np.array(np.ma.getdata(collapsed), dtype=float)
+        flux_array = _ensure_1d(flux_view)
+        mask_array = np.ma.getmaskarray(collapsed)
+
+    if mask_array is np.ma.nomask or np.isscalar(mask_array):
+        mask_flat = np.zeros_like(flux_array, dtype=bool)
+    else:
+        mask_flat = np.array(mask_array, dtype=bool).reshape(flux_array.shape)
+
+    if flux_array.size:
+        provenance["points"] = int(flux_array.size)
+
+    return flux_array, mask_flat, provenance
+
+
 def _mask_to_bool(mask, size: int) -> np.ndarray:
     if mask is np.ma.nomask or mask is False:
         return np.zeros(size, dtype=bool)
@@ -353,12 +391,7 @@ def _ingest_image_hdu(
     Dict[str, object],
 ]:
     masked = np.ma.array(hdu.data)
-    flux_array = _ensure_1d(np.array(np.ma.getdata(masked), dtype=float))
-    mask_array = np.ma.getmaskarray(masked)
-    if mask_array is np.ma.nomask or np.isscalar(mask_array):
-        mask_flat = np.zeros_like(flux_array, dtype=bool)
-    else:
-        mask_flat = np.array(mask_array, dtype=bool).reshape(flux_array.shape)
+    flux_array, mask_flat, collapse_meta = _collapse_image_data(masked)
 
     if flux_array.size == 0:
         raise ValueError("FITS data array is empty.")
@@ -389,7 +422,9 @@ def _ingest_image_hdu(
     }
     mask_flag = bool(mask_flat.any())
 
-    provenance_details = {"wcs": wcs_meta}
+    provenance_details: Dict[str, object] = {"wcs": wcs_meta}
+    if collapse_meta:
+        provenance_details["image_collapse"] = collapse_meta
     reported_wavelength_unit = hdu.header.get("CUNIT1") or hdu.header.get("XUNIT")
 
     return (
