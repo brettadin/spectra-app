@@ -1,0 +1,1 @@
+Read AGENTS.md first. Then follow sections 1–5 in order. All code changes must add an entry to docs/ai_log/<today>.md and bump version.json with matching docs/patch_notes/v<version>.md. Cite mirrored docs via tools/search_server.py.
