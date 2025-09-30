@@ -50,6 +50,34 @@ def _assert_wavelength_quantity(payload, expected):
     assert quantity.to_value(u.nm) == pytest.approx(expected)
 
 
+def test_parse_fits_handles_logarithmic_dispersion(tmp_path):
+    flux_values = np.linspace(1.0, 5.0, 5)
+
+    header_values = {
+        "CTYPE1": "AWAV-LOG",
+        "CRVAL1": float(np.log10(4000.0)),
+        "CRPIX1": 1.0,
+        "CDELT1": 1e-4,
+        "CUNIT1": "Angstrom",
+        "BUNIT": "adu",
+    }
+
+    path, header = _write_wcs_spectrum(
+        tmp_path,
+        name="LOG",
+        data=flux_values,
+        header_values=header_values,
+    )
+
+    result = parse_fits(str(path))
+
+    expected_wavelength = _expected_wavelengths_from_header(header, flux_values.size)
+    assert result["wavelength_nm"] == pytest.approx(expected_wavelength)
+    _assert_wavelength_quantity(result, expected_wavelength)
+    wcs_meta = result["provenance"].get("wcs", {})
+    assert wcs_meta.get("ctype") == "AWAV-LOG"
+
+
 def test_parse_fits_uses_first_data_extension(tmp_path):
     flux_values = np.array([1.0, 2.0, 3.0], dtype=float)
 
@@ -166,6 +194,66 @@ def test_parse_fits_collapses_image_data(tmp_path):
     collapse_meta = result["provenance"].get("image_collapse", {})
     assert collapse_meta.get("original_shape") == [2, 4]
     assert collapse_meta.get("collapsed_axes") == [0]
+
+
+def test_parse_fits_handles_cd_matrix_wcs(tmp_path):
+    flux_values = np.array(
+        [
+            [1.0, 2.0, 3.0, 4.0],
+            [2.0, 3.0, 4.0, 5.0],
+        ],
+        dtype=float,
+    )
+
+    header_values = {
+        "NAXIS": 2,
+        "NAXIS1": flux_values.shape[0],
+        "NAXIS2": flux_values.shape[1],
+        "CTYPE1": "LINEAR",
+        "CUNIT1": "pix",
+        "CRPIX1": 1.0,
+        "CRVAL1": 0.0,
+        "CTYPE2": "WAVE",
+        "CUNIT2": "Angstrom",
+        "CRPIX2": 1.0,
+        "CRVAL2": 5000.0,
+        "CD1_1": 1.0,
+        "CD1_2": 0.2,
+        "CD2_1": 0.5,
+        "CD2_2": 0.8,
+        "BUNIT": "adu",
+    }
+
+    path, header = _write_wcs_spectrum(
+        tmp_path,
+        name="CDM",
+        data=flux_values,
+        header_values=header_values,
+    )
+
+    result = parse_fits(str(path))
+
+    expected_flux = flux_values.mean(axis=0)
+    assert result["flux"] == pytest.approx(expected_flux)
+
+    wcs = WCS(header)
+    pixel_length = flux_values.shape[1]
+    pixel_coords = [
+        np.full(pixel_length, header_values["CRPIX1"] - 1.0, dtype=float),
+        np.arange(pixel_length, dtype=float),
+    ]
+    world = wcs.all_pix2world(*pixel_coords, 0)
+    spectral_axis = np.asarray(world[1], dtype=float)
+    unit = wcs.world_axis_units[1] or header_values["CUNIT2"]
+    expected_quantity = u.Quantity(spectral_axis, u.Unit(unit))
+    expected_wavelength = expected_quantity.to(u.nm, equivalencies=u.spectral())
+
+    assert result["wavelength_nm"] == pytest.approx(
+        expected_wavelength.to_value(u.nm)
+    )
+    _assert_wavelength_quantity(result, expected_wavelength.to_value(u.nm))
+    wcs_meta = result["provenance"].get("wcs", {})
+    assert "cd_matrix" in wcs_meta
 
 
 def test_parse_fits_rejects_nonspectral_image_axis(tmp_path):

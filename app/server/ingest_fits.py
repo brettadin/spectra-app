@@ -571,15 +571,123 @@ def _compute_wavelengths(
 ) -> Tuple[Quantity, Dict[str, object]]:
     """Derive a spectral axis from the FITS header using WCS."""
 
-    alternate_keys = [""]
-    pattern = re.compile(r"^CTYPE\d+([A-Z])$")
-    for key in header.keys():
-        match = pattern.match(str(key))
-        if match:
-            candidate = match.group(1)
-            if candidate not in alternate_keys:
-                alternate_keys.append(candidate)
+    def _collect_alternate_keys() -> List[str]:
+        keys = [""]
+        pattern = re.compile(r"^CTYPE\d+([A-Z])$")
+        for card in header.keys():
+            match = pattern.match(str(card))
+            if match:
+                suffix = match.group(1)
+                if suffix not in keys:
+                    keys.append(suffix)
+        return keys
 
+    def _find_spectral_pixel_axis(
+        wcs: WCS, alternate_key: Optional[str]
+    ) -> int:
+        spectral_axis = getattr(wcs.wcs, "spec", None)
+        if spectral_axis is None:
+            spectral_axis = -1
+        if spectral_axis < 0:
+            for axis_index, axis_type in enumerate(getattr(wcs.wcs, "ctype", ())):
+                if _ctype_is_spectral(axis_type):
+                    spectral_axis = axis_index
+                    break
+        if spectral_axis < 0:
+            for axis_index in range(wcs.pixel_n_dim):
+                axis_number = axis_index + 1
+                unit_candidate: Optional[str] = None
+                if alternate_key:
+                    unit_candidate = header.get(f"CUNIT{axis_number}{alternate_key}")
+                if not unit_candidate:
+                    unit_candidate = header.get(f"CUNIT{axis_number}")
+                if _unit_is_wavelength(unit_candidate):
+                    spectral_axis = axis_index
+                    break
+        if spectral_axis < 0 and wcs.pixel_n_dim == 1:
+            spectral_axis = 0
+        if spectral_axis < 0 or spectral_axis >= wcs.pixel_n_dim:
+            raise ValueError("WCS does not advertise a spectral pixel axis")
+        return int(spectral_axis)
+
+    def _find_world_axis(wcs: WCS, pixel_axis: int) -> int:
+        correlation = wcs.axis_correlation_matrix
+        correlated: List[int] = []
+        if correlation is not None and pixel_axis < correlation.shape[1]:
+            correlated = [
+                int(index)
+                for index in np.nonzero(correlation[:, pixel_axis])[0].tolist()
+            ]
+
+        def _is_spectral_physical(value: Optional[str]) -> bool:
+            if not value:
+                return False
+            lowered = str(value).lower()
+            return "spectral" in lowered or lowered.startswith("em.")
+
+        physical_types = wcs.world_axis_physical_types or ()
+        if correlated:
+            for index in correlated:
+                if index < len(physical_types) and _is_spectral_physical(
+                    physical_types[index]
+                ):
+                    return index
+            return correlated[0]
+
+        for index, value in enumerate(physical_types):
+            if _is_spectral_physical(value):
+                return int(index)
+
+        return min(pixel_axis, max(wcs.world_n_dim - 1, 0))
+
+    def _sample_quantity(
+        wcs: WCS,
+        pixel_axis: int,
+        world_axis: int,
+        alternate_key: Optional[str],
+    ) -> Quantity:
+        pixel_coords: List[np.ndarray] = []
+        for axis_index in range(wcs.pixel_n_dim):
+            if axis_index == pixel_axis:
+                coords = np.arange(size, dtype=float)
+            else:
+                if axis_index < len(wcs.wcs.crpix):
+                    ref = float(wcs.wcs.crpix[axis_index]) - 1.0
+                else:  # pragma: no cover - malformed WCS
+                    ref = 0.0
+                coords = np.full(size, ref, dtype=float)
+            pixel_coords.append(coords)
+
+        world = wcs.all_pix2world(*pixel_coords, 0)
+        if wcs.world_n_dim == 1:
+            world_axes = [np.asarray(world, dtype=float).reshape(-1)]
+        else:
+            world_axes = [np.asarray(axis, dtype=float).reshape(-1) for axis in world]
+
+        world_values = world_axes[world_axis]
+
+        unit_text: Optional[str] = None
+        world_units = wcs.world_axis_units or ()
+        if world_axis < len(world_units):
+            unit_text = world_units[world_axis] or None
+
+        axis_number = pixel_axis + 1
+        if not unit_text and alternate_key:
+            unit_text = header.get(f"CUNIT{axis_number}{alternate_key}") or None
+        if not unit_text:
+            unit_text = header.get(f"CUNIT{axis_number}") or None
+
+        if unit_text:
+            try:
+                unit_obj = u.Unit(unit_text)
+            except Exception as exc:  # pragma: no cover - invalid unit text
+                raise ValueError(f"Unsupported WCS spectral unit: {unit_text!r}") from exc
+        else:
+            unit_obj = u.dimensionless_unscaled
+
+        return u.Quantity(world_values, unit_obj, copy=False)
+
+    alternate_keys = _collect_alternate_keys()
     last_error: Optional[Exception] = None
 
     for key in alternate_keys:
@@ -590,44 +698,46 @@ def _compute_wavelengths(
             last_error = exc
             continue
 
-        spectral_axis = getattr(wcs.wcs, "spec", -1)
-        if spectral_axis is None:
-            spectral_axis = -1
-        if spectral_axis < 0:
-            ctypes = getattr(wcs.wcs, "ctype", ())
-            for axis_index, axis_type in enumerate(ctypes):
-                if _ctype_is_spectral(axis_type):
-                    spectral_axis = axis_index
-                    break
-        if spectral_axis < 0:
-            for axis_index in range(wcs.pixel_n_dim):
-                axis_number = axis_index + 1
-                unit_candidate: Optional[str] = None
-                if key:
-                    unit_candidate = header.get(f"CUNIT{axis_number}{key}")
-                if not unit_candidate:
-                    unit_candidate = header.get(f"CUNIT{axis_number}")
-                if _unit_is_wavelength(unit_candidate):
-                    spectral_axis = axis_index
-                    break
-        if spectral_axis < 0 and wcs.pixel_n_dim == 1:
-            spectral_axis = 0
-        if spectral_axis < 0 or spectral_axis >= wcs.pixel_n_dim:
-            continue
-
         try:
-            quantity, metadata = _wcs_to_quantity(
-                wcs,
-                header,
-                size,
-                spectral_axis,
-                key or None,
-            )
+            spectral_axis = _find_spectral_pixel_axis(wcs, key or None)
+            world_axis = _find_world_axis(wcs, spectral_axis)
+            quantity = _sample_quantity(wcs, spectral_axis, world_axis, key or None)
         except Exception as exc:  # pragma: no cover - defensive conversion
             last_error = exc
             continue
 
-        return quantity, metadata
+        meta: Dict[str, object] = {
+            "pixel_axis": int(spectral_axis),
+            "world_axis": int(world_axis),
+            "world_physical_type": None,
+            "ctype": None,
+            "unit": canonical_unit(quantity),
+        }
+
+        if key:
+            meta["wcs_key"] = key
+
+        physical_types = wcs.world_axis_physical_types or ()
+        if world_axis < len(physical_types):
+            meta["world_physical_type"] = physical_types[world_axis]
+
+        ctypes = getattr(wcs.wcs, "ctype", ())
+        if spectral_axis < len(ctypes):
+            meta["ctype"] = _coerce_header_value(ctypes[spectral_axis])
+
+        if spectral_axis < len(wcs.wcs.crpix):
+            meta["crpix"] = float(wcs.wcs.crpix[spectral_axis])
+        if world_axis < len(wcs.wcs.crval):
+            meta["crval"] = float(wcs.wcs.crval[world_axis])
+        if spectral_axis < len(wcs.wcs.cdelt):
+            meta["cdelt"] = float(wcs.wcs.cdelt[spectral_axis])
+
+        if wcs.wcs.has_cd():
+            meta["cd_matrix"] = wcs.wcs.cd.tolist()
+        elif wcs.wcs.has_pc():
+            meta["pc_matrix"] = wcs.wcs.pc.tolist()
+
+        return quantity, meta
 
     message = "FITS header does not describe a spectral WCS axis."
     if last_error is not None:
@@ -635,96 +745,53 @@ def _compute_wavelengths(
     raise ValueError(message)
 
 
-def _wcs_to_quantity(
-    wcs: WCS,
-    header,
-    size: int,
-    spectral_axis: int,
-    alternate_key: Optional[str],
-) -> Tuple[Quantity, Dict[str, object]]:
-    pixel_coords: List[np.ndarray] = []
-    for axis_index in range(wcs.pixel_n_dim):
-        if axis_index == spectral_axis:
-            coords = np.arange(size, dtype=float)
-        else:
-            if axis_index < len(wcs.wcs.crpix):
-                ref = float(wcs.wcs.crpix[axis_index]) - 1.0
-            else:  # pragma: no cover - malformed WCS
-                ref = 0.0
-            coords = np.full(size, ref, dtype=float)
-        pixel_coords.append(coords)
+def _convert_wcs_axis_to_wavelength(axis: Quantity, header) -> Quantity:
+    """Convert a WCS-derived spectral axis to nanometres."""
 
-    world = wcs.all_pix2world(*pixel_coords, 0)
-    if wcs.world_n_dim == 1:
-        world_axes = [np.asarray(world, dtype=float).reshape(-1)]
-    else:
-        world_axes = [np.asarray(axis, dtype=float).reshape(-1) for axis in world]
+    try:
+        return axis.to(u.nm)
+    except u.UnitConversionError:
+        pass
 
-    correlation = wcs.axis_correlation_matrix
-    if correlation is not None and spectral_axis < correlation.shape[1]:
-        correlated = np.nonzero(correlation[:, spectral_axis])[0]
-        if correlated.size:
-            world_axis_index = int(correlated[0])
-        else:
-            world_axis_index = min(spectral_axis, wcs.world_n_dim - 1)
-    else:
-        world_axis_index = min(spectral_axis, wcs.world_n_dim - 1)
+    try:
+        return axis.to(u.nm, equivalencies=u.spectral())
+    except u.UnitConversionError:
+        pass
 
-    world_values = world_axes[world_axis_index]
+    rest_wavelength_keys = ("RESTWAV", "RESTWAVE", "RESTWVL")
+    rest_frequency_keys = ("RESTFRQ", "RESTFREQ")
 
-    unit: Optional[str] = None
-    world_units = wcs.world_axis_units or ()
-    if world_axis_index < len(world_units):
-        unit = world_units[world_axis_index] or None
-
-    axis_number = spectral_axis + 1
-    if not unit and alternate_key:
-        unit = header.get(f"CUNIT{axis_number}{alternate_key}")
-    if not unit:
-        unit = header.get(f"CUNIT{axis_number}")
-
-    if unit:
+    for key in rest_wavelength_keys:
+        value = header.get(key)
+        if value is None:
+            continue
         try:
-            unit_obj = u.Unit(unit)
-        except Exception as exc:  # pragma: no cover - invalid unit text
-            raise ValueError(f"Unsupported WCS spectral unit: {unit!r}") from exc
-    else:
-        unit_obj = u.dimensionless_unscaled
+            rest_quantity = u.Quantity(value, u.m, copy=False)
+        except Exception:
+            rest_quantity = u.Quantity(value, u.m)
+        try:
+            return axis.to(u.nm, equivalencies=u.doppler_optical(rest_quantity))
+        except u.UnitConversionError:
+            continue
 
-    quantity = u.Quantity(world_values, unit_obj, copy=False)
+    for key in rest_frequency_keys:
+        value = header.get(key)
+        if value is None:
+            continue
+        try:
+            rest_quantity = u.Quantity(value, u.Hz, copy=False)
+        except Exception:
+            rest_quantity = u.Quantity(value, u.Hz)
+        for equivalency in (
+            u.doppler_radio(rest_quantity),
+            u.doppler_relativistic(rest_quantity),
+        ):
+            try:
+                return axis.to(u.nm, equivalencies=equivalency)
+            except u.UnitConversionError:
+                continue
 
-    meta: Dict[str, object] = {
-        "pixel_axis": int(spectral_axis),
-        "world_axis": int(world_axis_index),
-        "world_physical_type": None,
-        "ctype": None,
-        "unit": canonical_unit(quantity),
-    }
-
-    if alternate_key:
-        meta["wcs_key"] = alternate_key
-
-    physical_types = wcs.world_axis_physical_types or ()
-    if world_axis_index < len(physical_types):
-        meta["world_physical_type"] = physical_types[world_axis_index]
-
-    ctypes = getattr(wcs.wcs, "ctype", ())
-    if spectral_axis < len(ctypes):
-        meta["ctype"] = _coerce_header_value(ctypes[spectral_axis])
-
-    if spectral_axis < len(wcs.wcs.crpix):
-        meta["crpix"] = float(wcs.wcs.crpix[spectral_axis])
-    if world_axis_index < len(wcs.wcs.crval):
-        meta["crval"] = float(wcs.wcs.crval[world_axis_index])
-    if spectral_axis < len(wcs.wcs.cdelt):
-        meta["cdelt"] = float(wcs.wcs.cdelt[spectral_axis])
-
-    if wcs.wcs.has_cd():
-        meta["cd_matrix"] = wcs.wcs.cd.tolist()
-    elif wcs.wcs.has_pc():
-        meta["pc_matrix"] = wcs.wcs.pc.tolist()
-
-    return quantity, meta
+    raise ValueError(f"Unsupported WCS spectral unit: {axis.unit!r}")
 
 
 def _open_hdul(
@@ -795,10 +862,7 @@ def _ingest_table_hdu(
         table_wcs_meta = dict(table_wcs_meta)
         table_wcs_meta.setdefault("unit", canonical_unit(table_wcs_axis))
         try:
-            axis_values = np.asarray(
-                table_wcs_axis.to_value(table_wcs_axis.unit), dtype=float
-            ).reshape(-1)
-            converted = to_nm(axis_values, table_wcs_axis)
+            converted = _convert_wcs_axis_to_wavelength(table_wcs_axis, hdu.header)
             converted_values = np.asarray(converted.to_value(u.nm), dtype=float)
             table_wcs_meta["wavelength_range_nm"] = [
                 float(np.min(converted_values)),
@@ -851,13 +915,12 @@ def _ingest_image_hdu(
         )
 
     wavelength_axis, wcs_meta = _compute_wavelengths(flux_array.size, hdu.header)
-    axis_values = np.asarray(
-        wavelength_axis.to_value(wavelength_axis.unit), dtype=float
-    ).reshape(-1)
     resolved_unit = canonical_unit(wavelength_axis)
 
     try:
-        wavelength_quantity = to_nm(axis_values, wavelength_axis)
+        wavelength_quantity = _convert_wcs_axis_to_wavelength(
+            wavelength_axis, hdu.header
+        )
         wavelength_nm_values = np.asarray(
             wavelength_quantity.to_value(u.nm), dtype=float
         ).reshape(-1)
