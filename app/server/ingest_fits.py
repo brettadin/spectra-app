@@ -7,6 +7,7 @@ from typing import Dict, List, Optional, Sequence, Tuple, Union
 import re
 
 import numpy as np
+from astropy import units as u
 from astropy.io import fits
 
 from .ingest_ascii import checksum_bytes  # reuse checksum helper
@@ -423,9 +424,8 @@ def _extract_table_data(
             )
 
     try:
-        wavelength_nm = np.array(
-            to_nm(wavelength_values.tolist(), resolved_unit), dtype=float
-        )
+        wavelength_quantity = to_nm(wavelength_values, resolved_unit)
+        wavelength_nm = np.asarray(wavelength_quantity.to_value(u.nm), dtype=float)
     except ValueError as exc:
         raise ValueError(
             f"Unable to convert values from unit {resolved_unit!r} to nm."
@@ -445,14 +445,15 @@ def _extract_table_data(
 
     positive_wavelength_mask = wavelength_nm > 0
     positive_count = int(np.count_nonzero(positive_wavelength_mask))
-    dropped_nonpositive_nm = int(wavelength_nm.size - positive_count)
     if positive_count == 0:
         raise ValueError(
             "FITS table ingestion yielded no positive wavelengths after conversion to nm."
         )
 
-    wavelength_nm = wavelength_nm[positive_wavelength_mask]
-    flux_values = flux_values[positive_wavelength_mask]
+    if positive_count < wavelength_nm.size:
+        dropped_nonpositive_nm += int(wavelength_nm.size - positive_count)
+        wavelength_nm = wavelength_nm[positive_wavelength_mask]
+        flux_values = flux_values[positive_wavelength_mask]
 
     provenance: Dict[str, object] = {
         "table_columns": column_names,
@@ -483,10 +484,6 @@ def _extract_table_data(
 
     if dropped_nonpositive_source:
         provenance["dropped_nonpositive_wavenumbers"] = dropped_nonpositive_source
-
-
-    if dropped_nonpositive:
-        provenance["dropped_nonpositive_wavenumbers"] = dropped_nonpositive
     if dropped_nonpositive_nm:
         provenance["dropped_nonpositive_wavelengths"] = dropped_nonpositive_nm
 
@@ -708,7 +705,13 @@ def _ingest_image_hdu(
         unit_hint_raw
     )
 
-    wavelength_nm = np.array(to_nm(wavelengths_raw.tolist(), resolved_unit), dtype=float)
+    try:
+        wavelength_quantity = to_nm(wavelengths_raw, resolved_unit)
+        wavelength_nm = np.asarray(wavelength_quantity.to_value(u.nm), dtype=float)
+    except ValueError as exc:
+        raise ValueError(
+            f"Unable to convert image axis values from unit {resolved_unit!r} to nm."
+        ) from exc
 
 
     base_valid = (~mask_flat) & np.isfinite(flux_array) & np.isfinite(wavelength_nm)
@@ -929,10 +932,13 @@ def parse_fits(content: HeaderInput, *, filename: Optional[str] = None) -> Dict[
 
         axis = "emission"
 
+        wavelength_list = wavelength_nm.tolist()
+        flux_list = flux_array.tolist()
         return {
             "label_hint": label_hint,
-            "wavelength_nm": [float(value) for value in wavelength_nm.tolist()],
-            "flux": [float(value) for value in flux_array.tolist()],
+            "wavelength_nm": wavelength_list,
+            "wavelength": {"values": wavelength_list, "unit": "nm"},
+            "flux": flux_list,
             "flux_unit": flux_unit,
             "flux_kind": flux_kind,
             "metadata": metadata,

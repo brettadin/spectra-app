@@ -478,6 +478,7 @@ def ingest_local_file(name: str, content: bytes) -> Dict[str, object]:
         "provider": "LOCAL",
         "summary": summary,
         "wavelength_nm": wavelengths,
+        "wavelength": {"values": wavelengths, "unit": "nm"},
         "flux": flux_values,
         "flux_unit": flux_unit,
         "flux_kind": parsed.get("flux_kind") or "relative",

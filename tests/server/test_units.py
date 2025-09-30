@@ -20,15 +20,16 @@ from app.server.units import canonical_unit, to_nm
 )
 def test_to_nm_accepts_units_with_whitespace(raw_unit, values, expected):
     converted = to_nm(values, raw_unit)
-    assert converted == pytest.approx(expected)
+    assert converted.unit.is_equivalent("nm")
+    assert converted.value == pytest.approx(expected)
 
 
 @pytest.mark.parametrize(
     "raw_unit, expected",
     [
         (" NM", "nm"),
-        ("Angstrom ", "Å"),
-        ("Å ", "Å"),
+        ("Angstrom ", "Angstrom"),
+        ("Å ", "Angstrom"),
     ],
 )
 def test_canonical_unit_normalizes_spacing(raw_unit, expected):
