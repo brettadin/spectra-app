@@ -431,28 +431,17 @@ def _extract_table_data(
             f"Unable to convert values from unit {resolved_unit!r} to nm."
         ) from exc
 
-    positive_nm = wavelength_nm > 0
-    dropped_nonpositive_nm = 0
-    if not np.all(positive_nm):
-        dropped_nonpositive_nm = int(positive_nm.size - np.count_nonzero(positive_nm))
-        wavelength_nm = wavelength_nm[positive_nm]
-        flux_values = flux_values[positive_nm]
-
-    if wavelength_nm.size == 0:
-        raise ValueError(
-            "FITS table ingestion yielded no positive wavelength samples."
-        )
-
-    positive_wavelength_mask = wavelength_nm > 0
-    positive_count = int(np.count_nonzero(positive_wavelength_mask))
-    dropped_nonpositive_nm = int(wavelength_nm.size - positive_count)
+    positive_mask = wavelength_nm > 0
+    positive_count = int(np.count_nonzero(positive_mask))
+    dropped_nonpositive_nm = int(positive_mask.size - positive_count)
     if positive_count == 0:
         raise ValueError(
             "FITS table ingestion yielded no positive wavelengths after conversion to nm."
         )
 
-    wavelength_nm = wavelength_nm[positive_wavelength_mask]
-    flux_values = flux_values[positive_wavelength_mask]
+    if dropped_nonpositive_nm:
+        wavelength_nm = wavelength_nm[positive_mask]
+        flux_values = flux_values[positive_mask]
 
     provenance: Dict[str, object] = {
         "table_columns": column_names,
@@ -481,14 +470,13 @@ def _extract_table_data(
 
     provenance["wavelength_unit_resolution"] = unit_resolution
 
+    total_dropped_nonpositive = dropped_nonpositive_source + dropped_nonpositive_nm
     if dropped_nonpositive_source:
         provenance["dropped_nonpositive_wavenumbers"] = dropped_nonpositive_source
-
-
-    if dropped_nonpositive:
-        provenance["dropped_nonpositive_wavenumbers"] = dropped_nonpositive
     if dropped_nonpositive_nm:
         provenance["dropped_nonpositive_wavelengths"] = dropped_nonpositive_nm
+    if total_dropped_nonpositive:
+        provenance["dropped_nonpositive_rows"] = total_dropped_nonpositive
 
     if event_meta is not None:
         event_meta["derived_flux_unit"] = derived_flux_unit

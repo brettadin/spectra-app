@@ -1,0 +1,4 @@
+Spectra App v1.2.0 (REF 1.2.0-A01, 1.2.0-C01)
+- Fix FITS table ingestion crash when provenance records dropped non-positive wavenumber rows.
+- Record the current runtime package versions in docs/runtime.json for alignment.
+- Continuity docs: docs/brains/brains_v1.2.0.md
