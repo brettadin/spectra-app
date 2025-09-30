@@ -72,3 +72,40 @@ def test_parse_fits_flattens_multidimensional_table(tmp_path):
     assert result["wavelength_nm"] == wavelengths.reshape(-1).tolist()
     assert result["metadata"]["points"] == flux.size
     assert result["provenance"]["row_count"] == wavelengths.shape[0]
+
+
+def test_parse_fits_collapses_image_data(tmp_path):
+    flux_values = np.array(
+        [
+            [1.0, 3.0, 5.0, 7.0],
+            [2.0, 4.0, 6.0, 8.0],
+        ],
+        dtype=float,
+    )
+
+    sci_header = fits.Header()
+    sci_header["CRVAL1"] = 100.0
+    sci_header["CDELT1"] = 0.5
+    sci_header["CRPIX1"] = 1.0
+    sci_header["CUNIT1"] = "nm"
+
+    sci_hdu = fits.ImageHDU(data=flux_values, header=sci_header, name="SCI")
+    primary_hdu = fits.PrimaryHDU()
+
+    hdul = fits.HDUList([primary_hdu, sci_hdu])
+    fits_path = tmp_path / "two_dimensional_image.fits"
+    hdul.writeto(fits_path, overwrite=True)
+    hdul.close()
+
+    result = parse_fits(str(fits_path))
+
+    expected_flux = flux_values.mean(axis=0)
+    expected_wavelength = [100.0 + 0.5 * i for i in range(flux_values.shape[1])]
+
+    assert result["flux"] == expected_flux.tolist()
+    assert result["wavelength_nm"] == expected_wavelength
+    assert result["metadata"]["points"] == flux_values.shape[1]
+
+    collapse_meta = result["provenance"].get("image_collapse", {})
+    assert collapse_meta.get("original_shape") == [2, 4]
+    assert collapse_meta.get("collapsed_axes") == [0]
