@@ -35,3 +35,40 @@ def test_parse_fits_uses_first_data_extension(tmp_path):
     assert result["metadata"]["original_wavelength_unit"] == "nm"
     assert result["metadata"]["wavelength_range_nm"] == [400.0, 401.0]
     assert result["provenance"]["data_mode"] == "image"
+
+
+def test_parse_fits_flattens_multidimensional_table(tmp_path):
+    wavelengths = np.array(
+        [
+            [400.0, 401.0, 402.0, 403.0],
+            [500.0, 501.0, 502.0, 503.0],
+            [600.0, 601.0, 602.0, 603.0],
+        ],
+        dtype=float,
+    )
+    flux = np.array(
+        [
+            [1.0, 2.0, 3.0, 4.0],
+            [5.0, 6.0, 7.0, 8.0],
+            [9.0, 10.0, 11.0, 12.0],
+        ],
+        dtype=float,
+    )
+
+    columns = [
+        fits.Column(name="WAVELENGTH", array=wavelengths, format="4D", unit="nm"),
+        fits.Column(name="FLUX", array=flux, format="4D"),
+    ]
+    table_hdu = fits.BinTableHDU.from_columns(columns)
+
+    hdul = fits.HDUList([fits.PrimaryHDU(), table_hdu])
+    fits_path = tmp_path / "multidimensional_table.fits"
+    hdul.writeto(fits_path, overwrite=True)
+    hdul.close()
+
+    result = parse_fits(str(fits_path))
+
+    assert result["flux"] == flux.reshape(-1).tolist()
+    assert result["wavelength_nm"] == wavelengths.reshape(-1).tolist()
+    assert result["metadata"]["points"] == flux.size
+    assert result["provenance"]["row_count"] == wavelengths.shape[0]

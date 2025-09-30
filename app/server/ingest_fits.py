@@ -122,8 +122,16 @@ def _extract_table_data(
     wavelength_data = np.ma.array(data[wavelength_col])
     flux_data = np.ma.array(data[flux_col])
 
-    wavelength_values = _ensure_1d(np.array(np.ma.getdata(wavelength_data), dtype=float))
-    flux_values = _ensure_1d(np.array(np.ma.getdata(flux_data), dtype=float))
+    wavelength_values = np.array(np.ma.getdata(wavelength_data), dtype=float)
+    flux_values = np.array(np.ma.getdata(flux_data), dtype=float)
+
+    if wavelength_values.ndim > 1:
+        wavelength_values = wavelength_values.reshape(-1)
+    if flux_values.ndim > 1:
+        flux_values = flux_values.reshape(-1)
+
+    wavelength_values = _ensure_1d(wavelength_values)
+    flux_values = _ensure_1d(flux_values)
 
     size = min(wavelength_values.size, flux_values.size)
     wavelength_values = wavelength_values[:size]
