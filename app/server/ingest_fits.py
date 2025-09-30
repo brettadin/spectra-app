@@ -426,11 +426,15 @@ def _extract_table_data(
             )
 
     try:
-        wavelength_quantity = to_nm(wavelength_values, resolved_unit)
+        wavelength_quantity, canonical_resolved_unit = to_nm(
+            wavelength_values, resolved_unit
+        )
     except ValueError as exc:
         raise ValueError(
             f"Unable to convert values from unit {resolved_unit!r} to nm."
         ) from exc
+
+    resolved_unit = canonical_resolved_unit
 
     wavelength_nm_values = np.asarray(wavelength_quantity.to_value(u.nm), dtype=float)
     if wavelength_nm_values.size == 0:
