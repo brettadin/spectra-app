@@ -408,21 +408,16 @@ def _extract_table_data(
             f"Unable to convert values from unit {resolved_unit!r} to nm."
         ) from exc
 
-    positive_mask = wavelength_nm > 0
-    positive_count = int(np.count_nonzero(positive_mask))
+    positive_wavelength_mask = wavelength_nm > 0
+    positive_count = int(np.count_nonzero(positive_wavelength_mask))
     dropped_nonpositive_nm = int(wavelength_nm.size - positive_count)
     if positive_count == 0:
         raise ValueError(
-            "FITS table ingestion yielded no positive-wavelength samples after unit conversion."
+            "FITS table ingestion yielded no positive wavelengths after conversion to nm."
         )
 
-    wavelength_nm = wavelength_nm[positive_mask]
-    flux_values = flux_values[positive_mask]
-
-    if wavelength_nm.size == 0:
-        raise ValueError(
-            "FITS table ingestion yielded no positive-wavelength samples after unit conversion."
-        )
+    wavelength_nm = wavelength_nm[positive_wavelength_mask]
+    flux_values = flux_values[positive_wavelength_mask]
 
     provenance: Dict[str, object] = {
         "table_columns": column_names,

@@ -226,8 +226,8 @@ def test_parse_fits_rejects_table_with_nonpositive_wavelengths(tmp_path):
         parse_fits(str(fits_path))
 
     message = str(excinfo.value)
-    assert "positive-wavelength" in message
-    assert "after unit conversion" in message
+    assert "no positive wavelengths" in message
+    assert "conversion to nm" in message
 
 
 def test_parse_fits_rejects_table_with_negative_wavelengths_after_conversion(tmp_path):
@@ -249,10 +249,31 @@ def test_parse_fits_rejects_table_with_negative_wavelengths_after_conversion(tmp
         parse_fits(str(fits_path))
 
     message = str(excinfo.value)
-    assert (
-        "FITS table ingestion yielded no positive-wavelength samples after unit conversion."
-        in message
-    )
+    assert "no positive wavelengths" in message
+    assert "conversion to nm" in message
+
+
+def test_parse_fits_rejects_table_with_negative_wavelengths_microns(tmp_path):
+    wavelengths = np.array([-2.0, -1.0], dtype=float)
+    flux = np.array([1.0, 2.0], dtype=float)
+
+    columns = [
+        fits.Column(name="WAVE", array=wavelengths, format="D", unit="micron"),
+        fits.Column(name="FLUX", array=flux, format="D"),
+    ]
+
+    table_hdu = fits.BinTableHDU.from_columns(columns)
+    hdul = fits.HDUList([fits.PrimaryHDU(), table_hdu])
+    fits_path = tmp_path / "negative_wavelength_micron_table.fits"
+    hdul.writeto(fits_path, overwrite=True)
+    hdul.close()
+
+    with pytest.raises(ValueError) as excinfo:
+        parse_fits(str(fits_path))
+
+    message = str(excinfo.value)
+    assert "no positive wavelengths" in message
+    assert "conversion to nm" in message
 
 
 def test_parse_fits_rejects_image_with_nonpositive_wavelengths(tmp_path):
