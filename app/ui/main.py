@@ -2084,7 +2084,7 @@ def _render_overlay_tab(version_info: Dict[str, str]) -> None:
         version_info.get("version", "v?"),
         axis_viewport=effective_viewport,
     )
-    st.plotly_chart(fig, width="stretch")
+    st.plotly_chart(fig, use_container_width=True)
 
     control_col, action_col = st.columns([3, 1])
     with control_col:
@@ -2302,7 +2302,7 @@ def _render_differential_result(result: Optional[DifferentialResult]) -> None:
     if result is None:
         return
     fig = _build_differential_figure(result)
-    st.plotly_chart(fig, width="stretch")
+    st.plotly_chart(fig, use_container_width=True)
     grid = np.asarray(result.grid_nm, dtype=float)
     if grid.size:
         st.caption(

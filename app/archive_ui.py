@@ -89,7 +89,7 @@ class ArchiveUI:
                     height=260,
                     margin=dict(t=20, b=20, l=40, r=10),
                 )
-                st.plotly_chart(fig, width="stretch")
+                st.plotly_chart(fig, use_container_width=True)
                 st.caption(hit.summary)
                 cols = st.columns(2)
                 with cols[0]:
