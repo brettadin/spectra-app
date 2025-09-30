@@ -605,12 +605,14 @@ def parse_ascii(
     reported_wavelength_unit = wavelength_unit
     wavelength_series = working[wavelength_col].to_numpy(dtype=float, copy=False)
     try:
-        wavelength_nm = to_nm(wavelength_series, wavelength_unit)
+        wavelength_quantity = to_nm(wavelength_series, wavelength_unit)
     except ValueError:
-        wavelength_nm = to_nm(wavelength_series, assumed_unit)
+        wavelength_quantity = to_nm(wavelength_series, assumed_unit)
         provenance.setdefault("unit_inference", {})["fallback"] = assumed_unit
         wavelength_unit = assumed_unit
-    wavelength_nm_values = np.asarray(wavelength_nm.to_value(u.nm), dtype=float)
+    wavelength_nm_values = np.asarray(
+        wavelength_quantity.to_value(u.nm), dtype=float
+    )
     metadata.setdefault("reported_wavelength_unit", reported_wavelength_unit)
 
     flux_values = working[flux_col].to_numpy(dtype=float, copy=False)
@@ -695,8 +697,8 @@ def parse_ascii(
         subset = numeric_valid.loc[indices, ["__wavelength_nm", column]]
         if subset.empty:
             continue
-        wavelengths_extra = [float(value) for value in subset["__wavelength_nm"].tolist()]
-        flux_extra = [float(value) for value in subset[column].tolist()]
+        wavelengths_extra = subset["__wavelength_nm"].to_numpy(dtype=float, copy=False)
+        flux_extra = subset[column].to_numpy(dtype=float, copy=False)
         tiers = build_downsample_tiers(
             np.asarray(wavelengths_extra, dtype=float),
             np.asarray(flux_extra, dtype=float),
@@ -705,13 +707,17 @@ def parse_ascii(
 
         )
         extra_metadata = dict(metadata)
-        extra_metadata["points"] = len(wavelengths_extra)
+        extra_metadata["points"] = int(wavelengths_extra.size)
         additional_traces.append(
             {
                 "label": str(column),
-                "wavelength_nm": wavelengths_extra,
-                "wavelength": {"values": wavelengths_extra, "unit": "nm"},
-                "flux": flux_extra,
+                "wavelength_nm": wavelengths_extra.tolist(),
+                "wavelength": {
+                    "values": wavelengths_extra.tolist(),
+                    "unit": "nm",
+                },
+                "wavelength_quantity": u.Quantity(wavelengths_extra, u.nm),
+                "flux": flux_extra.tolist(),
                 "flux_unit": flux_unit,
                 "flux_kind": flux_kind,
                 "axis": axis,
@@ -731,6 +737,7 @@ def parse_ascii(
         "label_hint": label_hint,
         "wavelength_nm": wavelength_nm_values.tolist(),
         "wavelength": {"values": wavelength_nm_values.tolist(), "unit": "nm"},
+        "wavelength_quantity": wavelength_quantity,
         "flux": np.asarray(flux_values, dtype=float).tolist(),
         "flux_unit": flux_unit,
         "flux_kind": flux_kind,

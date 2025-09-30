@@ -42,6 +42,14 @@ def _write_wcs_spectrum(
     return path, header
 
 
+def _assert_wavelength_quantity(payload, expected):
+    quantity = payload.get("wavelength_quantity")
+    assert quantity is not None
+    assert isinstance(quantity, u.Quantity)
+    assert quantity.unit.is_equivalent(u.nm)
+    assert quantity.to_value(u.nm) == pytest.approx(expected)
+
+
 def test_parse_fits_uses_first_data_extension(tmp_path):
     flux_values = np.array([1.0, 2.0, 3.0], dtype=float)
 
@@ -72,6 +80,7 @@ def test_parse_fits_uses_first_data_extension(tmp_path):
     assert result["wavelength"]["values"] == expected_wavelength
     assert result["flux_unit"] == "arb"
     assert result["flux_kind"] == "relative"
+    _assert_wavelength_quantity(result, expected_wavelength)
     assert result["metadata"]["original_wavelength_unit"] == "nm"
     assert result["metadata"]["wavelength_range_nm"] == [400.0, 401.0]
     assert result["provenance"]["data_mode"] == "image"
@@ -114,6 +123,7 @@ def test_parse_fits_flattens_multidimensional_table(tmp_path):
     assert result["wavelength_nm"] == flat_wavelength
     assert result["wavelength"]["unit"] == "nm"
     assert result["wavelength"]["values"] == flat_wavelength
+    _assert_wavelength_quantity(result, flat_wavelength)
     assert result["metadata"]["points"] == flux.size
     assert result["provenance"]["row_count"] == wavelengths.shape[0]
 
@@ -465,3 +475,28 @@ def test_parse_fits_handles_logarithmic_dispersion(tmp_path):
     assert wcs_meta.get("ctype") == "AWAV-LOG"
     assert wcs_meta.get("unit") == "m"
     assert "wavelength_range_nm" in wcs_meta
+
+
+def test_parse_fits_table_wavenumber_retains_quantity(tmp_path):
+    wavenumbers = np.array([20000.0, 15000.0, 10000.0], dtype=float)
+    flux = np.array([10.0, 20.0, 30.0], dtype=float)
+
+    columns = [
+        fits.Column(name="WAVENUM", format="E", array=wavenumbers, unit="cm-1"),
+        fits.Column(name="FLUX", format="E", array=flux, unit="adu"),
+    ]
+    table_hdu = fits.BinTableHDU.from_columns(columns, name="SPECTRUM")
+    table_hdu.header["CTYPE1"] = "AWAV"
+    table_hdu.header["CUNIT1"] = "cm-1"
+
+    hdul = fits.HDUList([fits.PrimaryHDU(), table_hdu])
+    path = tmp_path / "wavenumber_table.fits"
+    hdul.writeto(path, overwrite=True)
+    hdul.close()
+
+    result = parse_fits(str(path))
+
+    expected_nm = (1.0 / (wavenumbers * u.cm**-1)).to_value(u.nm)
+    assert result["wavelength_nm"] == pytest.approx(expected_nm)
+    _assert_wavelength_quantity(result, expected_nm)
+    assert result["metadata"]["original_wavelength_unit"].lower() == "cm-1"
