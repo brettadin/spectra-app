@@ -17,3 +17,4 @@ Spectra App — Patch Log (append-only)
 - v1.2.0f (REF 1.2.0f-A01): normalise example browser provider defaults before the multiselect renders, silencing rerun warnings and preserving cached filters.
 - v1.2.0g (REF 1.2.0g-A01): relocate the NIST line catalog tools into the sidebar controls, refresh the library copy, and add regression coverage for the new placement.
 - v1.2.0h (REF 1.2.0h-A01): move the example quick-add controls into the sidebar stack, streamline the Library tab messaging, update the UI contract, and extend regression coverage.
+- v1.2.0i (REF 1.2.0i-A01): relocate the reference trace selector and clear overlays action to the Differential tab, update regression coverage, and refresh continuity collateral.

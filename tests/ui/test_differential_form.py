@@ -51,3 +51,25 @@ def test_differential_form_has_single_submit_button():
             queue.extend(children.values())
 
     assert len(button_nodes) == 1
+
+
+def test_reference_controls_render_in_differential_tab():
+    app = AppTest.from_function(_render_differential_tab_entrypoint)
+
+    app.session_state.overlay_traces = [
+        _simple_overlay("a"),
+        _simple_overlay("b"),
+    ]
+    app.session_state.reference_trace_id = "b"
+    app.session_state.normalization_mode = "unit"
+
+    app.run()
+
+    reference_select = [
+        select for select in app.selectbox if select.label == "Reference trace"
+    ]
+    assert reference_select, "Reference selectbox should be rendered in differential tab"
+    assert reference_select[0].value == "b"
+
+    button_labels = [button.label for button in app.button]
+    assert "Clear overlays" in button_labels
