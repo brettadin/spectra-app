@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.0f",
+  "version": "v1.2.0g",
   "date_utc": "2025-10-03T00:00:00Z",
-  "summary": "Example browser provider filters initialise defaults without reassigning Streamlit-owned state."
+  "summary": "Move NIST line catalog tools into the sidebar controls with regression coverage."
 }

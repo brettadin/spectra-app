@@ -1,0 +1,3 @@
+Spectra App — v1.2.0g
+- Move the NIST line catalog fetch form into the sidebar session controls so it sits with the network and display toggles.
+- Drop the Library tab container for line catalogs, update the tab copy, and add regression coverage for the sidebar placement and offline notice.

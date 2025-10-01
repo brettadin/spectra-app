@@ -1,14 +1,16 @@
 {
   "sidebar": [
-    "Examples",
-    "Display mode",
-    "Display units",
-    "Export what I see"
+    "Session controls",
+    "Display & viewport",
+    "Differential & normalization",
+    "Similarity settings",
+    "Line catalogs"
   ],
   "tabs": [
     "Overlay",
     "Differential",
-    "Docs"
+    "Library",
+    "Docs & Provenance"
   ],
   "badges": [
     "version_badge_top_right"
@@ -19,15 +21,18 @@
   "plot": [
     "legend_non_empty"
   ],
-  "v": "v1.1.4",
+  "v": "v1.2.0g",
   "must_have": [
     "Overlay tab present",
     "Differential tab present",
+    "Library tab present",
+    "Docs & Provenance tab present",
     "Export what I see produces PNG+CSV+manifest",
     "Unit toggles: nm, \u00c5, \u00b5m, cm^-1 round-trip",
     "Duplicate guard banner with override/purge",
     "Fetch Data section reachable",
     "Export manifest contains fetch_provenance when traces are fetched",
-    "Differential A/B selections persist; epsilon guard toggle exists"
+    "Differential A/B selections persist; epsilon guard toggle exists",
+    "NIST line catalog fetch available from sidebar when online"
   ]
 }
