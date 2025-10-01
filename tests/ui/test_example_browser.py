@@ -48,6 +48,23 @@ def test_filter_examples_supports_search_and_favourites():
     assert results == [spec_b]
 
 
+def test_normalise_provider_defaults_filters_stale_entries():
+    options = ["MAST", "ESO", "NED"]
+    stored = ["ESO", "HST", "ESO"]
+
+    defaults = example_browser._normalise_provider_defaults(options, stored)
+
+    assert defaults == ["ESO"]
+
+
+def test_normalise_provider_defaults_falls_back_to_all_when_empty():
+    options = ["MAST", "ESO"]
+
+    defaults = example_browser._normalise_provider_defaults(options, [])
+
+    assert defaults == options
+
+
 def test_register_example_usage_tracks_recent(monkeypatch):
     import app.ui.main as main
 
