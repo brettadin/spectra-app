@@ -247,15 +247,25 @@ def _label_suggests_time(name: str) -> bool:
 
 
 def _parse_time_unit_hint(unit_text: Optional[str]) -> Optional[Dict[str, object]]:
-    if not unit_text:
+    if unit_text is None:
         return None
 
-    cleaned = str(unit_text).strip()
+    coerced = _coerce_header_value(unit_text)
+    if coerced is None:
+        return None
+
+    if isinstance(coerced, bytes):
+        try:
+            coerced = coerced.decode("utf-8", errors="ignore")
+        except Exception:  # pragma: no cover - defensive
+            coerced = coerced.decode("latin-1", errors="ignore")
+
+    cleaned = str(coerced).strip()
     if not cleaned:
         return None
 
-    lowered = cleaned.lower()
-    frame_match = _TIME_FRAME_PATTERN.search(lowered)
+    folded = cleaned.casefold()
+    frame_match = _TIME_FRAME_PATTERN.search(folded)
     frame = frame_match.group(1).upper() if frame_match else None
     offset: Optional[float] = None
 
@@ -266,7 +276,7 @@ def _parse_time_unit_hint(unit_text: Optional[str]) -> Optional[Dict[str, object
             rf"{token}\s*[+-]\s*([0-9]+(?:\.[0-9]+)?)",
             re.IGNORECASE,
         )
-        offset_match = pattern.search(lowered)
+        offset_match = pattern.search(folded)
         if offset_match:
             try:
                 offset = float(offset_match.group(1))
@@ -274,7 +284,7 @@ def _parse_time_unit_hint(unit_text: Optional[str]) -> Optional[Dict[str, object
                 offset = None
 
     for token, (label, unit) in _TIME_UNIT_MAP.items():
-        if re.search(rf"\b{re.escape(token)}\b", lowered):
+        if re.search(rf"\b{re.escape(token)}\b", folded):
             return {
                 "kind": "time",
                 "canonical_unit": label,
@@ -328,8 +338,16 @@ def _ctype_is_spectral(value: Optional[str]) -> bool:
 def _unit_is_wavelength(unit: Optional[str]) -> bool:
     if not unit:
         return False
+    coerced = _coerce_header_value(unit)
+    if coerced is None:
+        return False
+    if isinstance(coerced, bytes):
+        try:
+            coerced = coerced.decode("utf-8", errors="ignore")
+        except Exception:  # pragma: no cover - defensive
+            coerced = coerced.decode("latin-1", errors="ignore")
     try:
-        to_nm([1.0], unit)
+        to_nm([1.0], coerced)
     except Exception:
         return False
     return True
@@ -731,9 +749,20 @@ def _resolve_wavelength_unit_alias(value: str) -> Optional[str]:
 
 
 def _normalise_wavelength_unit(unit: Optional[str], default: str = "nm") -> str:
-    if not unit:
+    if unit is None:
         return default
-    text = str(unit).strip()
+
+    coerced = _coerce_header_value(unit)
+    if coerced is None:
+        return default
+
+    if isinstance(coerced, bytes):
+        try:
+            coerced = coerced.decode("utf-8", errors="ignore")
+        except Exception:  # pragma: no cover - defensive
+            coerced = coerced.decode("latin-1", errors="ignore")
+
+    text = str(coerced).strip()
     if not text:
         return default
 
