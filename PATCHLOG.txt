@@ -24,3 +24,4 @@ Spectra App — Patch Log (append-only)
 - v1.2.0m (REF 1.2.0m-A01): relocate the overlay clearing control into the display sidebar cluster, confirm the action in the overlay tab, extend UI coverage, and refresh release collateral.
 - v1.2.0t (REF 1.2.0t-A01): tighten target library overlay gating with manifest axis checks, block JWST CALINTS cubes, surface clearer disabled-button guidance, and extend regression coverage.
 - v1.2.0v: Retire the example browser and streamline the Examples sidebar around quick-add shortcuts.
+- v1.2.0x: Finalize overlay ingestion on the main thread to avoid ScriptRunContext warnings.

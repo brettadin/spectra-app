@@ -51,10 +51,10 @@ def test_docs_tab_banner_uses_patch_metadata(monkeypatch, tmp_path):
     monkeypatch.setattr(main_module, "_get_overlays", lambda: [])
 
     version_info = {
-        "version": "v1.2.0v",
-        "patch_version": "v1.2.0v",
-        "patch_summary": "Retire the example browser and streamline the Examples sidebar around quick-add shortcuts.",
-        "patch_raw": "v1.2.0v: Retire the example browser and streamline the Examples sidebar around quick-add shortcuts.",
+        "version": "v1.2.0x",
+        "patch_version": "v1.2.0x",
+        "patch_summary": "Finalize overlay ingestion on the main thread to avoid ScriptRunContext warnings.",
+        "patch_raw": "v1.2.0x: Finalize overlay ingestion on the main thread to avoid ScriptRunContext warnings.",
     }
 
     main_module._render_docs_tab(version_info)
@@ -62,7 +62,7 @@ def test_docs_tab_banner_uses_patch_metadata(monkeypatch, tmp_path):
     assert captured_info
     assert (
         captured_info[0]
-        == "v1.2.0v: Retire the example browser and streamline the Examples sidebar around quick-add shortcuts."
+        == "v1.2.0x: Finalize overlay ingestion on the main thread to avoid ScriptRunContext warnings."
     )
 
 
@@ -75,14 +75,28 @@ def test_header_prefers_patch_version(monkeypatch):
 
     version_info = {
         "version": "v0.0.0-dev",
-        "patch_version": "v1.2.0v",
-        "patch_summary": "Retire the example browser and streamline the Examples sidebar around quick-add shortcuts.",
-        "patch_raw": "v1.2.0v: Retire the example browser and streamline the Examples sidebar around quick-add shortcuts.",
-        "date_utc": "2025-10-13T09:00:00Z",
+        "patch_version": "v1.2.0x",
+        "patch_summary": "Finalize overlay ingestion on the main thread to avoid ScriptRunContext warnings.",
+        "patch_raw": "v1.2.0x: Finalize overlay ingestion on the main thread to avoid ScriptRunContext warnings.",
+        "date_utc": "2025-10-14T09:30:00Z",
     }
 
     main_module._render_app_header(version_info)
 
     assert captured_caption
-    assert captured_caption[0].startswith("v1.2.0v • Updated 2025-10-13 09:00 UTC")
-    assert "Retire the example browser" in captured_caption[0]
+    assert captured_caption[0].startswith("v1.2.0x • Updated 2025-10-14 09:30 UTC")
+    assert "Finalize overlay ingestion" in captured_caption[0]
+
+
+def test_resolve_patch_metadata_returns_current_patch_line():
+    from app import _version
+
+    version_info = _version.get_version_info()
+    patch_version, patch_summary, patch_line = main_module._resolve_patch_metadata(version_info)
+
+    assert patch_version == "v1.2.0x"
+    assert patch_summary == "Finalize overlay ingestion on the main thread to avoid ScriptRunContext warnings."
+    assert (
+        patch_line
+        == "v1.2.0x: Finalize overlay ingestion on the main thread to avoid ScriptRunContext warnings."
+    )
