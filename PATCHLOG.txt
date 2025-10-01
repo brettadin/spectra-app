@@ -20,3 +20,4 @@ Spectra App — Patch Log (append-only)
 - v1.2.0i (REF 1.2.0i-A01): relocate the reference trace selector and clear overlays action to the Differential tab, update regression coverage, and refresh continuity collateral.
 - v1.2.0j (REF 1.2.0j-A01): move similarity analysis into the Differential workspace, extend regression coverage, keep overlay metadata/line tables intact, and refresh continuity docs.
 - v1.2.0k (REF 1.2.0k-A01): reorganize the target catalog with search filters, manifest metrics, grouped overlay actions, and new layout regression coverage.
+- v1.2.0l (REF 1.2.0l-A01): split overlay viewports by axis kind, surface mixed-axis warnings, update exports/tests, and refresh continuity docs.

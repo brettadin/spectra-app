@@ -40,7 +40,7 @@ def test_full_resolution_preference_returns_all_points(session_state):
         display_units="nm",
         display_mode="Flux (raw)",
         normalization_mode="none",
-        viewport=(None, None),
+        viewport_by_kind={"wavelength": (None, None)},
         reference=None,
         differential_mode="Off",
         version_tag="vtest",

@@ -14,7 +14,7 @@ def test_overlay_without_hover_uses_default_hover_fields():
         display_units="nm",
         display_mode="Flux (raw)",
         normalization_mode="none",
-        viewport=(None, None),
+        viewport_by_kind={"wavelength": (None, None)},
         reference=None,
         differential_mode="Off",
         version_tag="vtest",
