@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.0g",
-  "date_utc": "2025-10-03T00:00:00Z",
-  "summary": "Move NIST line catalog tools into the sidebar controls with regression coverage."
+  "version": "v1.2.0h",
+  "date_utc": "2025-10-04T00:00:00Z",
+  "summary": "Relocate example quick-add controls into the sidebar and refresh the library guidance."
 }

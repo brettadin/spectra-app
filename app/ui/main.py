@@ -809,7 +809,7 @@ def _load_example_preview(
 
 
 def _render_examples_group(container: DeltaGenerator) -> None:
-    container.markdown("#### Examples")
+    container.markdown("#### Examples library")
     if not EXAMPLE_LIBRARY:
         container.caption("Example library unavailable.")
         return
@@ -819,69 +819,85 @@ def _render_examples_group(container: DeltaGenerator) -> None:
         key="example_browser_open",
         help="Open the example browser to search curated spectra.",
         on_click=lambda: st.session_state.__setitem__("example_browser_visible", True),
+        use_container_width=True,
     )
 
     quick_form = container.form("example_quick_add_form")
+    quick_form.caption("Quick add")
     selection = quick_form.selectbox(
-        "Quick add",
+        "Quick add example",
         EXAMPLE_LIBRARY,
         format_func=lambda spec: spec.label,
         key="example_quick_add_select",
+        label_visibility="collapsed",
     )
-    quick_form.caption(selection.description)
-    submitted = quick_form.form_submit_button("Load example")
+    if selection.description:
+        quick_form.caption(selection.description)
+    submitted = quick_form.form_submit_button("Load example", use_container_width=True)
     if submitted:
         added, message = _load_example(selection)
         (container.success if added else container.info)(message)
 
     favourites = _resolve_examples(st.session_state.get("example_favourites", []))
     if favourites:
-        fav_form = container.form("example_favourites_form")
-        favourite = fav_form.selectbox(
-            "Favourites",
-            favourites,
-            format_func=lambda spec: spec.label,
-            key="example_favourite_select",
-        )
-        fav_submit = fav_form.form_submit_button("Load favourite")
-        if fav_submit:
-            added, message = _load_example(favourite)
-            (container.success if added else container.info)(message)
+        favourites_panel = container.expander("Favourites", expanded=False)
+        with favourites_panel:
+            fav_form = st.form("example_favourites_form")
+            favourite = fav_form.selectbox(
+                "Favourite example",
+                favourites,
+                format_func=lambda spec: spec.label,
+                key="example_favourite_select",
+                label_visibility="collapsed",
+            )
+            fav_submit = fav_form.form_submit_button(
+                "Load favourite", use_container_width=True
+            )
+            if fav_submit:
+                added, message = _load_example(favourite)
+                (favourites_panel.success if added else favourites_panel.info)(message)
     else:
         container.caption("Mark favourites in the browser to pin them here.")
 
     recents = _resolve_examples(st.session_state.get("example_recent", []))
     if recents:
-        recent_form = container.form("example_recent_form")
-        recent = recent_form.selectbox(
-            "Recent",
-            recents,
-            format_func=lambda spec: spec.label,
-            key="example_recent_select",
-        )
-        recent_submit = recent_form.form_submit_button("Reload recent")
-        if recent_submit:
-            added, message = _load_example(recent)
-            (container.success if added else container.info)(message)
+        recent_panel = container.expander("Recent", expanded=False)
+        with recent_panel:
+            recent_form = st.form("example_recent_form")
+            recent = recent_form.selectbox(
+                "Recent example",
+                recents,
+                format_func=lambda spec: spec.label,
+                key="example_recent_select",
+                label_visibility="collapsed",
+            )
+            recent_submit = recent_form.form_submit_button(
+                "Reload recent", use_container_width=True
+            )
+            if recent_submit:
+                added, message = _load_example(recent)
+                (recent_panel.success if added else recent_panel.info)(message)
 
     overlays = _get_overlays()
     if overlays:
-        options = [trace.trace_id for trace in overlays]
-        current = st.session_state.get("reference_trace_id")
-        try:
-            index = options.index(current) if current in options else 0
-        except ValueError:
-            index = 0
-        st.session_state["reference_trace_id"] = container.selectbox(
-            "Reference trace",
-            options,
-            index=index,
-            format_func=_trace_label,
-            key="reference_trace_select",
-        )
-        if container.button("Clear overlays", key="clear_overlays_button"):
-            _clear_overlays()
-            container.warning("Cleared all overlays.")
+        overlay_panel = container.expander("Reference & overlays", expanded=False)
+        with overlay_panel:
+            options = [trace.trace_id for trace in overlays]
+            current = st.session_state.get("reference_trace_id")
+            try:
+                index = options.index(current) if current in options else 0
+            except ValueError:
+                index = 0
+            st.session_state["reference_trace_id"] = overlay_panel.selectbox(
+                "Reference trace",
+                options,
+                index=index,
+                format_func=_trace_label,
+                key="reference_trace_select",
+            )
+            if overlay_panel.button("Clear overlays", key="clear_overlays_button"):
+                _clear_overlays()
+                overlay_panel.warning("Cleared all overlays.")
     else:
         container.caption("Load an example or fetch from an archive to begin.")
 
@@ -1092,6 +1108,8 @@ def _render_settings_group(container: DeltaGenerator) -> None:
 
     container.divider()
     _render_display_section(container)
+    container.divider()
+    _render_examples_group(container)
     container.divider()
     _render_differential_section(container)
     with container.expander("Similarity settings", expanded=False) as similarity_panel:
@@ -2520,8 +2538,10 @@ def _render_library_tab() -> None:
         "from a single workspace panel."
     )
 
-    examples_container = st.container()
-    _render_examples_group(examples_container)
+    st.info(
+        "Use the **Examples library** panel in the sidebar to quick-load curated "
+        "spectra or open the full browser without leaving your current tab."
+    )
 
     st.divider()
 
