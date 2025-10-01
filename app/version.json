@@ -1,4 +1,7 @@
 {
+  "version": "v1.2.0e",
+  "date_utc": "2025-10-02T00:00:00Z",
+  "summary": "App header now mirrors patch metadata to avoid drift."
   "version": "v1.2.0d",
   "date_utc": "2025-10-02T00:00:00Z",
   "summary": "Docs tab banner now reflects the current patch metadata."

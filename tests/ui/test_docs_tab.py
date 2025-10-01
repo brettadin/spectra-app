@@ -61,3 +61,25 @@ def test_docs_tab_banner_uses_patch_metadata(monkeypatch, tmp_path):
 
     assert captured_info
     assert captured_info[0] == "v1.2.0d: Docs tab banner pulls from patch log"
+
+
+def test_header_prefers_patch_version(monkeypatch):
+    captured_caption: list[str] = []
+
+    st = main_module.st
+    monkeypatch.setattr(st, "title", lambda *a, **k: None)
+    monkeypatch.setattr(st, "caption", lambda msg, *a, **k: captured_caption.append(msg))
+
+    version_info = {
+        "version": "v0.0.0-dev",
+        "patch_version": "v1.2.0e",
+        "patch_summary": "(REF 1.2.0e-A01): Header pulls from patch metadata",
+        "patch_raw": "v1.2.0e (REF 1.2.0e-A01): Header pulls from patch metadata",
+        "date_utc": "2025-10-02T18:30:00Z",
+    }
+
+    main_module._render_app_header(version_info)
+
+    assert captured_caption
+    assert captured_caption[0].startswith("v1.2.0e • Updated 2025-10-02 18:30 UTC")
+    assert "Header pulls from patch metadata" in captured_caption[0]

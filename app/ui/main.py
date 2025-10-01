@@ -2617,14 +2617,10 @@ def _render_docs_tab(version_info: Mapping[str, object]) -> None:
 # Entry points
 
 
-def render() -> None:
-    _ensure_session_state()
-    _process_ingest_queue()
-    version_info = get_version_info()
-    _, patch_summary, _ = _resolve_patch_metadata(version_info)
-
+def _render_app_header(version_info: Mapping[str, object]) -> None:
     st.title("Spectra App")
-    build_version = str(version_info.get("version") or "v?")
+    patch_version, patch_summary, _ = _resolve_patch_metadata(version_info)
+    build_version = patch_version or str(version_info.get("version") or "v?")
     timestamp = _format_version_timestamp(version_info.get("date_utc"))
     caption_parts = [build_version]
     if timestamp:
@@ -2632,6 +2628,14 @@ def render() -> None:
     if patch_summary:
         caption_parts.append(str(patch_summary))
     st.caption(" • ".join(part for part in caption_parts if part))
+
+
+def render() -> None:
+    _ensure_session_state()
+    _process_ingest_queue()
+    version_info = get_version_info()
+
+    _render_app_header(version_info)
 
     _render_example_browser()
     sidebar = st.sidebar
