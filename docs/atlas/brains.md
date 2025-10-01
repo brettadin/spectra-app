@@ -1,3 +1,8 @@
+# Patch log continuity — 2025-10-13
+- **REF 1.2.0v-A01**: Added the `v1.2.0v` patch log entry so `_resolve_patch_metadata()` keeps the header and Docs banner in sync with version metadata. 【F:PATCHLOG.txt†L24-L26】【F:app/_version.py†L30-L64】
+- Locked the Docs tab and header regression against the quick-add summary so continuity helpers surface the expected copy without manual updates. 【F:tests/ui/test_docs_tab.py†L16-L78】
+- Rolled the release docs (brains, patch notes, AI log) to capture the alignment work. 【F:docs/patch_notes/v1.2.0v.md†L1-L22】【F:docs/brains/brains_v1.2.0v.md†L1-L17】【F:docs/ai_log/2025-10-13.md†L1-L22】
+
 # Examples quick-add focus — 2025-10-13
 - Remove the example browser launcher and associated favourites/recents panels so the Examples sidebar leans on the quick-add selector only. 【F:app/ui/main.py†L1230-L1245】
 - Drop the dormant browser state initialisers to prevent future Streamlit warnings now that the sheet is gone. 【F:app/ui/main.py†L468-L483】
