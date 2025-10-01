@@ -14,3 +14,13 @@ Next:
 - Implement MAST/ESO/SDSS fetch with provenance.json per dataset.
 - Wire unit resolver and duplicate-upload guard (checksum index).
 - Finish differential alignment, resampling, and logging.
+---
+v1.2.0d — Overlay gating for MAST products
+Date: 2025-10-01 01:15:00Z
+
+Summary:
+- Limit Overlay actions in the targets panel to spectra/SED/time-series entries and annotate images/cubes with a disabled control.
+- Added focused regression coverage for the helper that classifies dataproduct types.
+
+Verification:
+- pytest tests/ui/test_targets_overlay_support.py

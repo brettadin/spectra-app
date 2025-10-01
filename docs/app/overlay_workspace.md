@@ -22,7 +22,10 @@ The **Overlay visibility** form lists every loaded trace, including those
 fetched from archives or generated in the differential tab. Select which traces
 should remain visible and apply the change to update the chart in one go. The
 summary table above the form records label, type, provenance source, and point
-count for quick triage.
+count for quick triage. Entries sourced from the target library only appear here
+if they advertise a 1-D dataproduct (spectra, SEDs, or time-series); image/cube
+rows stay in the library list with a disabled Overlay button so users know why
+they cannot be enqueued.
 
 Use **Remove overlays** to delete one or more traces when the workspace gets
 crowded. Removing an overlay also clears any cached similarity scores that

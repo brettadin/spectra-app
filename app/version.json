@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.0c",
-  "date_utc": "2025-10-01T00:00:00Z",
-  "summary": "Fix example browser provider filter session persistence and remove redundant widget warning."
+  "version": "v1.2.0d",
+  "date_utc": "2025-10-01T01:15:00Z",
+  "summary": "Restrict MAST overlay actions to supported 1-D products and annotate images/cubes."
 }
