@@ -23,13 +23,13 @@ The table below lists the key dependencies and their official documentation sour
 
 ## Streamlit
 
-**Current usage:** The UI code (`app/app_merged.py` and `app/ui/example_browser.py`) uses Streamlit to render pages, accept user input and show Plotly graphs. It uses containers, columns, interactive widgets and session state to manage example selection. A render function wraps UI code in a try/except to capture exceptions and display them in a Streamlit error component.
+**Current usage:** The UI code (`app/ui/main.py`) uses Streamlit to render pages, accept user input and show Plotly graphs. It uses containers, columns, interactive widgets and session state to manage example selection. A render function wraps UI code in a try/except to capture exceptions and display them in a Streamlit error component.
 
 **Strengths:**
 
-- Streamlit allows the team to prototype interactive front-ends quickly. Its markdown support and simple widget API make the example browser easy to implement.
+- Streamlit allows the team to prototype interactive front-ends quickly. Its markdown support and simple widget API keep the example quick-add workflow easy to maintain.
 - The UI code uses dynamic lists of examples and provider filters; it updates UI state without requiring page reloads.
-- Recent hotfix ensures provider multiselect state in the example browser persists via `st.session_state` without triggering widget key warnings.
+- Recent hotfix trims the Examples sidebar down to quick-add controls, avoiding additional session keys and warning-prone state juggling.
 
 **Issues:**
 
@@ -46,7 +46,7 @@ The table below lists the key dependencies and their official documentation sour
 
 ## Plotly
 
-**Current usage:** The UI uses `plotly.graph_objects` to create sparklines for each example spectrum. When a user loads a spectrum, the full interactive plot is rendered using Plotly in the example viewer (not shown in this file but likely in `app/ui/main.py`).
+**Current usage:** The UI uses `plotly.graph_objects` for preview and workspace charts. When a user loads a spectrum, the full interactive plot is rendered in the example viewer within `app/ui/main.py`.
 
 **Strengths:**
 
@@ -72,7 +72,7 @@ The table below lists the key dependencies and their official documentation sour
 **Strengths:**
 
 - NumPy provides efficient array operations and broadcasting; the code uses `numpy.asarray`, `numpy.clip`, `numpy.mean`, etc., effectively.
-- Vectorised operations are used in parts of `example_browser.py` to normalise flux for sparklines.
+- Vectorised operations in the ingestion pipeline and overlay helpers normalise flux arrays before plotting.
 
 **Issues:**
 

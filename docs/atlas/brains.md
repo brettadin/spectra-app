@@ -1,3 +1,8 @@
+# Examples quick-add focus — 2025-10-13
+- Remove the example browser launcher and associated favourites/recents panels so the Examples sidebar leans on the quick-add selector only. 【F:app/ui/main.py†L1230-L1245】
+- Drop the dormant browser state initialisers to prevent future Streamlit warnings now that the sheet is gone. 【F:app/ui/main.py†L468-L483】
+- Refresh the sidebar regression to assert the button is gone while the quick-add form remains reachable. 【F:tests/ui/test_sidebar_examples.py†L1-L37】
+
 # Axis-aware viewport handling — 2025-10-08
 - Maintain a `viewport_axes` session map keyed by axis kind so wavelength and time traces stop overwriting each other's zoom state.
 - Mixed-axis overlays reuse per-kind ranges during sampling/export while the chart surfaces a "Mixed axes" title and warning instead of forcing a shared x-range.
