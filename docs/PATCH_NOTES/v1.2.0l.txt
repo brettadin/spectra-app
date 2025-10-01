@@ -1,0 +1,1 @@
+v1.2.0l — Split overlay viewport state by axis kind, warn on mixed axes, and update exports/tests accordingly.

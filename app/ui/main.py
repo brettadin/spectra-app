@@ -330,6 +330,92 @@ def _format_version_timestamp(raw: object) -> str:
 
 # ---------------------------------------------------------------------------
 # Session state helpers
+# ---------------------------------------------------------------------------
+
+
+VIEWPORT_STATE_KEY = "viewport_axes"
+
+
+def _normalize_axis_kind(value: Optional[str]) -> str:
+    try:
+        text = str(value or "")
+    except Exception:
+        text = ""
+    text = text.strip().lower()
+    return text or "wavelength"
+
+
+def _axis_kind_for_trace(trace: OverlayTrace) -> str:
+    return _normalize_axis_kind(getattr(trace, "axis_kind", None))
+
+
+def _group_overlays_by_axis_kind(
+    overlays: Sequence[OverlayTrace],
+) -> Dict[str, List[OverlayTrace]]:
+    groups: Dict[str, List[OverlayTrace]] = {}
+    for trace in overlays:
+        kind = _axis_kind_for_trace(trace)
+        groups.setdefault(kind, []).append(trace)
+    return groups
+
+
+def _normalize_viewport_tuple(
+    viewport: Tuple[float | None, float | None] | Sequence[float | None] | None,
+) -> Tuple[float | None, float | None]:
+    if not isinstance(viewport, Sequence) or len(viewport) != 2:
+        return (None, None)
+
+    def _coerce(value: object) -> float | None:
+        if value is None:
+            return None
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return None
+        return number if math.isfinite(number) else None
+
+    low = _coerce(viewport[0])
+    high = _coerce(viewport[1])
+    return (low, high)
+
+
+def _get_viewport_store() -> Dict[str, Tuple[float | None, float | None]]:
+    store = st.session_state.get(VIEWPORT_STATE_KEY)
+    if not isinstance(store, Mapping):
+        return {}
+    normalized: Dict[str, Tuple[float | None, float | None]] = {}
+    for kind, viewport in store.items():
+        normalized[_normalize_axis_kind(kind)] = _normalize_viewport_tuple(viewport)
+    return normalized
+
+
+def _set_viewport_store(store: Dict[str, Tuple[float | None, float | None]]) -> None:
+    st.session_state[VIEWPORT_STATE_KEY] = dict(store)
+
+
+def _set_viewport_for_kind(
+    axis_kind: str, viewport: Tuple[float | None, float | None]
+) -> None:
+    store = _get_viewport_store()
+    store[_normalize_axis_kind(axis_kind)] = _normalize_viewport_tuple(viewport)
+    _set_viewport_store(store)
+
+
+def _get_viewport_for_kind(axis_kind: str) -> Tuple[float | None, float | None]:
+    store = _get_viewport_store()
+    return store.get(_normalize_axis_kind(axis_kind), (None, None))
+
+
+def _determine_primary_axis_kind(
+    overlays: Sequence[OverlayTrace],
+) -> str:
+    groups = _group_overlays_by_axis_kind(overlays)
+    if groups.get("wavelength"):
+        return "wavelength"
+    for kind, traces in groups.items():
+        if traces:
+            return kind
+    return "wavelength"
 
 
 def _ensure_session_state() -> None:
@@ -338,7 +424,22 @@ def _ensure_session_state() -> None:
     st.session_state.setdefault("display_units", "nm")
     st.session_state.setdefault("display_mode", "Flux (raw)")
     st.session_state.setdefault("display_full_resolution", False)
-    st.session_state.setdefault("viewport_nm", (None, None))
+    if VIEWPORT_STATE_KEY not in st.session_state:
+        legacy = st.session_state.get("viewport_nm")
+        if isinstance(legacy, Sequence) and len(legacy) == 2:
+            _set_viewport_store({"wavelength": _normalize_viewport_tuple(legacy)})
+        else:
+            _set_viewport_store({"wavelength": (None, None)})
+    else:
+        store = _get_viewport_store()
+        if "wavelength" not in store:
+            store["wavelength"] = (None, None)
+        _set_viewport_store(store)
+    if "viewport_nm" in st.session_state:
+        try:
+            del st.session_state["viewport_nm"]
+        except Exception:
+            st.session_state["viewport_nm"] = None
     st.session_state.setdefault("auto_viewport", True)
     st.session_state.setdefault("normalization_mode", "unit")
     st.session_state.setdefault("differential_mode", "Off")
@@ -960,19 +1061,29 @@ def _render_display_section(container: DeltaGenerator) -> None:
 
     overlays = _get_overlays()
     target_overlays = [trace for trace in overlays if trace.visible] or overlays
-    min_bound, max_bound = _infer_viewport_bounds(target_overlays)
+    if not target_overlays:
+        st.session_state["auto_viewport"] = True
+        return
+
+    axis_groups = _group_overlays_by_axis_kind(target_overlays)
+    primary_axis = _determine_primary_axis_kind(target_overlays)
+    selected_group = axis_groups.get(primary_axis) or target_overlays
+    min_bound, max_bound = _infer_viewport_bounds(selected_group)
     if math.isclose(min_bound, max_bound):
         max_bound = min_bound + 1.0
+
     auto = container.checkbox(
         "Auto viewport", value=bool(st.session_state.get("auto_viewport", True))
     )
     st.session_state["auto_viewport"] = auto
     if auto:
-        st.session_state["viewport_nm"] = (None, None)
+        _set_viewport_for_kind(primary_axis, (None, None))
         return
 
-    stored_viewport = st.session_state.get("viewport_nm", (None, None))
-    default_low, default_high = _effective_viewport(target_overlays, stored_viewport)
+    stored_viewport = _get_viewport_for_kind(primary_axis)
+    default_low, default_high = _effective_viewport(
+        selected_group, stored_viewport, axis_kind=primary_axis
+    )
     if default_low is None or default_high is None:
         default_low, default_high = float(min_bound), float(max_bound)
     else:
@@ -980,14 +1091,27 @@ def _render_display_section(container: DeltaGenerator) -> None:
         default_high = min(float(max_bound), float(default_high))
         if default_low >= default_high:
             default_low, default_high = float(min_bound), float(max_bound)
+
+    if len([kind for kind, traces in axis_groups.items() if traces]) > 1:
+        label = primary_axis.replace("_", " ")
+        container.warning(
+            f"Mixed axis kinds detected. Viewport adjustments apply to {label} traces; "
+            "other kinds will auto-scale."
+        )
+
+    slider_label = "Viewport (nm)" if primary_axis == "wavelength" else "Viewport (time)"
+    span = max(float(max_bound) - float(min_bound), 1.0)
+    step = 1.0 if primary_axis == "wavelength" else max(span / 200.0, 1e-6)
     selection = container.slider(
-        "Viewport (nm)",
+        slider_label,
         min_value=float(min_bound),
         max_value=float(max_bound),
         value=(float(default_low), float(default_high)),
-        step=1.0,
+        step=float(step),
     )
-    st.session_state["viewport_nm"] = (float(selection[0]), float(selection[1]))
+    _set_viewport_for_kind(
+        primary_axis, (float(selection[0]), float(selection[1]))
+    )
 
 
 def _render_differential_section(container: DeltaGenerator) -> None:
@@ -1243,7 +1367,13 @@ def _auto_viewport_range(
     overlays: Sequence[OverlayTrace],
     *,
     coverage: float = 0.99,
+    axis_kind: Optional[str] = None,
 ) -> Optional[Tuple[float, float]]:
+    normalized_kind = _normalize_axis_kind(axis_kind) if axis_kind else None
+    if normalized_kind is not None:
+        overlays = [
+            trace for trace in overlays if _axis_kind_for_trace(trace) == normalized_kind
+        ]
     visible = [trace for trace in overlays if trace.visible]
     target = visible if visible else list(overlays)
     if not target:
@@ -1290,26 +1420,27 @@ def _auto_viewport_range(
 def _effective_viewport(
     overlays: Sequence[OverlayTrace],
     viewport: Tuple[float | None, float | None],
+    *,
+    axis_kind: Optional[str] = None,
 ) -> Tuple[float | None, float | None]:
     if not overlays:
         return (None, None)
 
-    low, high = viewport
+    normalized_viewport = _normalize_viewport_tuple(viewport)
+    low, high = normalized_viewport
     if low is not None or high is not None:
         return (
             float(low) if low is not None else None,
             float(high) if high is not None else None,
         )
 
-    auto_range = _auto_viewport_range(overlays)
+    target_kind = axis_kind or _axis_kind_for_trace(overlays[0])
+    auto_range = _auto_viewport_range(overlays, axis_kind=target_kind)
     if auto_range is not None:
         return float(auto_range[0]), float(auto_range[1])
 
-    if overlays:
-        fallback_low, fallback_high = _infer_viewport_bounds(overlays)
-        return float(fallback_low), float(fallback_high)
-
-    return (None, None)
+    fallback_low, fallback_high = _infer_viewport_bounds(overlays)
+    return float(fallback_low), float(fallback_high)
 
 
 def _extract_metadata_range(
@@ -1391,6 +1522,25 @@ def _convert_axis_series(
     return _convert_wavelength(series, display_units)
 
 
+def _axis_title_for_kind(
+    axis_kind: str,
+    overlays: Sequence[OverlayTrace],
+    display_units: str,
+) -> Optional[str]:
+    normalized = _normalize_axis_kind(axis_kind)
+    for trace in overlays:
+        if _axis_kind_for_trace(trace) != normalized:
+            continue
+        values = list(trace.wavelength_nm)
+        if not values:
+            continue
+        sample = pd.Series(values[: min(len(values), 256)])
+        _, axis_title = _convert_axis_series(sample, trace, display_units)
+        if axis_title:
+            return axis_title
+    return None
+
+
 def _normalize_hover_values(
     values: Optional[Sequence[object]],
 ) -> Optional[List[Optional[str]]]:
@@ -1460,37 +1610,62 @@ def _build_overlay_figure(
     display_units: str,
     display_mode: str,
     normalization_mode: str,
-    viewport: Tuple[float | None, float | None],
+    viewport_by_kind: Mapping[str, Tuple[float | None, float | None]],
     reference: Optional[OverlayTrace],
     differential_mode: str,
     version_tag: str,
-    axis_viewport: Tuple[float | None, float | None] | None = None,
+    *,
+    axis_viewport_by_kind: Optional[
+        Mapping[str, Tuple[float | None, float | None]]
+    ] = None,
 ) -> Tuple[go.Figure, str]:
     fig = go.Figure()
     axis_title = "Wavelength (nm)"
     full_resolution = _is_full_resolution_enabled()
     max_points = None if full_resolution else 12000
-    reference_vectors = (
-        reference.to_vectors(max_points=max_points, viewport=viewport)
-        if reference
-        else None
+    viewport_lookup = {
+        _normalize_axis_kind(kind): _normalize_viewport_tuple(viewport)
+        for kind, viewport in (viewport_by_kind or {}).items()
+    }
+    axis_lookup = (
+        {
+            _normalize_axis_kind(kind): _normalize_viewport_tuple(viewport)
+            for kind, viewport in axis_viewport_by_kind.items()
+        }
+        if axis_viewport_by_kind
+        else {}
     )
+    reference_vectors: Optional[TraceVectors] = None
+    if reference:
+        ref_kind = _axis_kind_for_trace(reference)
+        reference_vectors = reference.to_vectors(
+            max_points=max_points,
+            viewport=viewport_lookup.get(ref_kind, (None, None)),
+        )
+
+    visible_axis_kinds: List[str] = []
+    axis_titles: Dict[str, str] = {}
 
     for trace in overlays:
         if not trace.visible:
             continue
+
+        axis_kind = _axis_kind_for_trace(trace)
+        viewport = viewport_lookup.get(axis_kind, (None, None))
+        visible_axis_kinds.append(axis_kind)
 
         if trace.kind == "lines":
             df = trace.to_dataframe()
             df = _filter_viewport(df, viewport)
             if df.empty:
                 continue
-            converted, axis_title = _convert_axis_series(
+            converted, candidate_title = _convert_axis_series(
                 df["wavelength_nm"], trace, display_units
             )
             df = df.assign(wavelength=converted, flux=df["flux"].astype(float))
             hover_values = _normalize_hover_values(df.get("hover"))
             _add_line_trace(fig, df, trace.label, hover_values)
+            axis_titles.setdefault(axis_kind, candidate_title)
             continue
 
         sample_w, sample_flux, sample_hover, _ = trace.sample(
@@ -1525,9 +1700,10 @@ def _build_overlay_figure(
             sample_flux = np.asarray(values_trace - values_ref, dtype=float)
             sample_hover = None
 
-        converted, axis_title = _convert_axis_series(
+        converted, candidate_title = _convert_axis_series(
             pd.Series(sample_w), trace, display_units
         )
+        axis_titles.setdefault(axis_kind, candidate_title)
         flux_array = np.asarray(sample_flux, dtype=float)
 
         if display_mode != "Flux (raw)":
@@ -1550,6 +1726,14 @@ def _build_overlay_figure(
             )
         )
 
+    if axis_titles:
+        unique_kinds = sorted({kind for kind in visible_axis_kinds})
+        if len(unique_kinds) == 1:
+            axis_title = axis_titles.get(unique_kinds[0], axis_title)
+        else:
+            friendly = " + ".join(kind.replace("_", " ") for kind in unique_kinds)
+            axis_title = f"Mixed axes ({friendly})"
+
     fig.update_layout(
         xaxis_title=axis_title,
         yaxis_title="Normalized flux" if display_mode != "Flux (raw)" else "Flux",
@@ -1557,16 +1741,19 @@ def _build_overlay_figure(
         margin=dict(t=50, b=40, l=60, r=20),
         height=520,
     )
-    if axis_viewport is not None:
-        axis_low, axis_high = axis_viewport
-        if (
-            axis_low is not None
-            and axis_high is not None
-            and math.isfinite(axis_low)
-            and math.isfinite(axis_high)
-            and axis_high > axis_low
-        ):
-            fig.update_xaxes(range=[float(axis_low), float(axis_high)])
+    unique_kinds = sorted({kind for kind in visible_axis_kinds})
+    if len(unique_kinds) == 1 and axis_lookup:
+        axis_range = axis_lookup.get(unique_kinds[0])
+        if axis_range is not None:
+            axis_low, axis_high = axis_range
+            if (
+                axis_low is not None
+                and axis_high is not None
+                and math.isfinite(axis_low)
+                and math.isfinite(axis_high)
+                and axis_high > axis_low
+            ):
+                fig.update_xaxes(range=[float(axis_low), float(axis_high)])
     fig.update_layout(
         annotations=[
             dict(
@@ -1901,16 +2088,20 @@ def _export_current_view(
     overlays: Sequence[OverlayTrace],
     display_units: str,
     display_mode: str,
-    viewport: Tuple[float | None, float | None],
+    viewport: Mapping[str, Tuple[float | None, float | None]],
 ) -> None:
     rows: List[Dict[str, object]] = []
     for trace in overlays:
         if not trace.visible:
             continue
-        df = _filter_viewport(trace.to_dataframe(), viewport)
+        axis_kind = _axis_kind_for_trace(trace)
+        axis_view = viewport.get(axis_kind, (None, None))
+        df = _filter_viewport(trace.to_dataframe(), axis_view)
         if df.empty:
             continue
-        converted, _ = _convert_wavelength(df["wavelength_nm"], display_units)
+        converted, axis_title = _convert_axis_series(
+            df["wavelength_nm"], trace, display_units
+        )
         scaled = df["flux"].to_numpy(dtype=float)
         if display_mode != "Flux (raw)":
             scaled = apply_normalization(scaled, "max")
@@ -1919,11 +2110,18 @@ def _export_current_view(
                 float(flux_value)
             ):
                 continue
+            if axis_kind == "wavelength":
+                unit_label = display_units
+            elif axis_title and "(" in axis_title and axis_title.rstrip().endswith(")"):
+                unit_label = axis_title.rsplit("(", 1)[1].rstrip(") ")
+            else:
+                unit_label = axis_title or axis_kind
             rows.append(
                 {
                     "series": trace.label,
                     "wavelength": float(wavelength_value),
-                    "unit": display_units,
+                    "axis_kind": axis_kind,
+                    "unit": unit_label,
                     "flux": float(flux_value),
                     "display_mode": display_mode,
                 }
@@ -1941,12 +2139,16 @@ def _export_current_view(
         fig.write_image(str(png_path))
     except Exception as exc:
         st.warning(f"PNG export requires kaleido ({exc}).")
+    viewport_payload = {
+        kind: {"low": vp[0], "high": vp[1]}
+        for kind, vp in viewport.items()
+    }
     manifest = build_manifest(
         rows,
         display_units=display_units,
         display_mode=display_mode,
         exported_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        viewport={"low_nm": viewport[0], "high_nm": viewport[1]},
+        viewport=viewport_payload,
     )
     manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     st.success(f"Exported: {csv_path.name}, {png_path.name}, {manifest_path.name}")
@@ -2103,20 +2305,35 @@ def _convert_nist_payload(data: Dict[str, object]) -> Optional[Dict[str, object]
 
 def _render_status_bar(version_info: Mapping[str, object]) -> None:
     overlays = _get_overlays()
-    viewport_setting = st.session_state.get("viewport_nm", (None, None))
     target_overlays = [trace for trace in overlays if trace.visible] or overlays
-    effective_viewport = _effective_viewport(target_overlays, viewport_setting)
+    axis_groups = _group_overlays_by_axis_kind(target_overlays)
+    primary_axis = _determine_primary_axis_kind(target_overlays)
+    selected_group = axis_groups.get(primary_axis) or target_overlays
+    stored_viewport = _get_viewport_for_kind(primary_axis)
+    effective_viewport = _effective_viewport(
+        selected_group, stored_viewport, axis_kind=primary_axis
+    )
     low, high = effective_viewport
     auto_enabled = bool(st.session_state.get("auto_viewport", True))
     auto_active = (
         auto_enabled
-        and viewport_setting[0] is None
-        and viewport_setting[1] is None
+        and stored_viewport[0] is None
+        and stored_viewport[1] is None
         and low is not None
         and high is not None
     )
-    low_str = f"{low:.1f} nm" if low is not None else "auto"
-    high_str = f"{high:.1f} nm" if high is not None else "auto"
+    display_units = st.session_state.get("display_units", "nm")
+    axis_title = _axis_title_for_kind(primary_axis, selected_group, display_units)
+    unit_suffix: Optional[str] = None
+    if axis_title and "(" in axis_title and axis_title.rstrip().endswith(")"):
+        unit_suffix = axis_title.rsplit("(", 1)[1].rstrip(") ")
+    elif axis_title:
+        unit_suffix = axis_title
+    if not unit_suffix:
+        unit_suffix = "nm" if primary_axis == "wavelength" else primary_axis.replace("_", " ")
+    unit_suffix = unit_suffix.strip()
+    low_str = f"{low:.1f} {unit_suffix}" if low is not None else "auto"
+    high_str = f"{high:.1f} {unit_suffix}" if high is not None else "auto"
     viewport_str = f"{low_str} – {high_str}"
     if auto_active:
         viewport_str += " (auto)"
@@ -2191,18 +2408,22 @@ def _render_overlay_tab(version_info: Dict[str, str]) -> None:
     display_mode = st.session_state.get("display_mode", "Flux (raw)")
     normalization = st.session_state.get("normalization_mode", "unit")
     differential_mode = st.session_state.get("differential_mode", "Off")
-    viewport_setting = st.session_state.get("viewport_nm", (None, None))
     target_overlays = [trace for trace in overlays if trace.visible] or overlays
-    effective_viewport = _effective_viewport(target_overlays, viewport_setting)
+    axis_groups = _group_overlays_by_axis_kind(target_overlays)
+    viewport_store = _get_viewport_store()
     auto_enabled = bool(st.session_state.get("auto_viewport", True))
-    filter_viewport: Tuple[float | None, float | None]
-    if auto_enabled and (viewport_setting[0] is None and viewport_setting[1] is None):
-        filter_viewport = (None, None)
-    else:
-        filter_viewport = (
-            float(effective_viewport[0]) if effective_viewport[0] is not None else None,
-            float(effective_viewport[1]) if effective_viewport[1] is not None else None,
-        )
+    effective_viewports: Dict[str, Tuple[float | None, float | None]] = {}
+    filter_viewports: Dict[str, Tuple[float | None, float | None]] = {}
+    for kind, group in axis_groups.items():
+        stored = viewport_store.get(kind, (None, None))
+        effective = _effective_viewport(group, stored, axis_kind=kind)
+        effective_viewports[kind] = effective
+        if auto_enabled and stored[0] is None and stored[1] is None:
+            filter_viewports[kind] = (None, None)
+        else:
+            filter_viewports[kind] = effective
+    visible_axis_kinds = [kind for kind, traces in axis_groups.items() if traces]
+    single_axis = len(visible_axis_kinds) == 1
 
     reference = next(
         (
@@ -2218,13 +2439,19 @@ def _render_overlay_tab(version_info: Dict[str, str]) -> None:
         display_units,
         display_mode,
         normalization,
-        filter_viewport,
+        filter_viewports,
         reference,
         differential_mode,
         version_info.get("version", "v?"),
-        axis_viewport=effective_viewport,
+        axis_viewport_by_kind=effective_viewports if single_axis else None,
     )
     st.plotly_chart(fig, use_container_width=True)
+
+    if len(visible_axis_kinds) > 1:
+        friendly = " + ".join(kind.replace("_", " ") for kind in sorted(visible_axis_kinds))
+        st.warning(
+            f"Mixed axis kinds visible ({friendly}). Viewport limits apply per axis and the plot auto-scales the combined view."
+        )
 
     control_col, action_col = st.columns([3, 1])
     with control_col:
@@ -2232,7 +2459,11 @@ def _render_overlay_tab(version_info: Dict[str, str]) -> None:
     with action_col:
         if st.button("Export view", key="export_view"):
             _export_current_view(
-                fig, overlays, display_units, display_mode, effective_viewport
+                fig,
+                overlays,
+                display_units,
+                display_mode,
+                effective_viewports,
             )
         st.caption(f"Axis: {axis_title}")
 
@@ -2466,11 +2697,22 @@ def _render_differential_tab() -> None:
 
     sample_default = int(st.session_state.get("differential_sample_points", 2000))
     normalization = st.session_state.get("normalization_mode", "unit")
-    viewport_setting = st.session_state.get("viewport_nm", (None, None))
+    viewport_store = _get_viewport_store()
     similarity_sources = [trace for trace in spectral_overlays if trace.visible]
     if len(similarity_sources) < 2:
         similarity_sources = spectral_overlays
-    effective_viewport = _effective_viewport(similarity_sources, viewport_setting)
+    wavelength_sources = [
+        trace for trace in similarity_sources if _axis_kind_for_trace(trace) == "wavelength"
+    ]
+    stored_wavelength_view = viewport_store.get("wavelength", (None, None))
+    if wavelength_sources:
+        effective_viewport = _effective_viewport(
+            wavelength_sources,
+            stored_wavelength_view,
+            axis_kind="wavelength",
+        )
+    else:
+        effective_viewport = (None, None)
 
     with st.form(key="differential_compute_form"):
         col_a, col_b = st.columns(2)
@@ -2538,8 +2780,12 @@ def _render_differential_tab() -> None:
     cache: SimilarityCache = st.session_state["similarity_cache"]
     full_resolution = _is_full_resolution_enabled()
     vector_max_points = None if full_resolution else 15000
+    viewport_map = {"wavelength": effective_viewport} if wavelength_sources else {}
     visible_vectors = [
-        trace.to_vectors(max_points=vector_max_points, viewport=effective_viewport)
+        trace.to_vectors(
+            max_points=vector_max_points,
+            viewport=viewport_map.get(_axis_kind_for_trace(trace), (None, None)),
+        )
         for trace in similarity_sources
     ]
     if len(visible_vectors) >= 2:

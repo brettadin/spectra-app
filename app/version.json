@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.0k",
-  "date_utc": "2025-10-07T00:00:00Z",
-  "summary": "Reorganize the target catalog with search, manifest highlights, and grouped overlay actions."
+  "version": "v1.2.0l",
+  "date_utc": "2025-10-08T00:00:00Z",
+  "summary": "Segment overlay viewports by axis kind so time-series traces no longer clamp spectral plots."
 }
