@@ -1,0 +1,3 @@
+Spectra App — v1.2.0j
+- Relocate the similarity analysis panel into the Differential tab alongside comparison tooling.
+- Refresh regression coverage, UI contract guidance, and continuity docs to lock the new placement.

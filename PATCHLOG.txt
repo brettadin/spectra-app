@@ -18,3 +18,4 @@ Spectra App — Patch Log (append-only)
 - v1.2.0g (REF 1.2.0g-A01): relocate the NIST line catalog tools into the sidebar controls, refresh the library copy, and add regression coverage for the new placement.
 - v1.2.0h (REF 1.2.0h-A01): move the example quick-add controls into the sidebar stack, streamline the Library tab messaging, update the UI contract, and extend regression coverage.
 - v1.2.0i (REF 1.2.0i-A01): relocate the reference trace selector and clear overlays action to the Differential tab, update regression coverage, and refresh continuity collateral.
+- v1.2.0j (REF 1.2.0j-A01): move similarity analysis into the Differential workspace, extend regression coverage, keep overlay metadata/line tables intact, and refresh continuity docs.
