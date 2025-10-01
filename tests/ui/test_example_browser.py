@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from streamlit.testing.v1 import AppTest
+
 from app.providers import ProviderQuery
 from app.ui import example_browser
 from app.ui.main import ExampleSpec, _ensure_session_state, _load_example_preview, _register_example_usage, _toggle_example_favourite
@@ -22,6 +24,43 @@ def _build_example(slug: str, label: str, provider: str, description: str = "") 
         description=description,
         provider=provider,
         query=ProviderQuery(target=label, instrument="STIS", limit=1),
+    )
+
+
+def _render_browser_entrypoint() -> None:
+    import streamlit as st  # noqa: F401  # Re-exported for AppTest serialization
+
+    from app.providers import ProviderQuery
+    from app.ui.example_browser import render_example_browser_sheet
+    from app.ui.main import ExampleSpec
+
+    examples = [
+        ExampleSpec(
+            slug="vega",
+            label="Vega",
+            description="Bright standard",
+            provider="MAST",
+            query=ProviderQuery(target="Vega", instrument="STIS", limit=1),
+        ),
+        ExampleSpec(
+            slug="betel",
+            label="Betelgeuse",
+            description="Red supergiant",
+            provider="ESO",
+            query=ProviderQuery(target="Betelgeuse", instrument="STIS", limit=1),
+        ),
+    ]
+
+    render_example_browser_sheet(
+        examples=examples,
+        visible=True,
+        favourites=[],
+        recents=[],
+        load_callback=lambda spec: (True, ""),
+        toggle_favourite=lambda slug, is_starred: None,
+        preview_loader=lambda spec: None,
+        resolve_spec=lambda slug: next((spec for spec in examples if spec.slug == slug), None),
+        network_available=True,
     )
 
 
@@ -63,6 +102,30 @@ def test_normalise_provider_defaults_falls_back_to_all_when_empty():
     defaults = example_browser._normalise_provider_defaults(options, [])
 
     assert defaults == options
+
+
+def test_provider_filter_persists_session_state():
+    app = AppTest.from_function(_render_browser_entrypoint)
+    app.session_state.example_browser_visible = True
+
+    app.run()
+
+    assert app.session_state.example_browser_provider_filter == ["ESO", "MAST"]
+    assert not app.warning
+
+    # Simulate the user narrowing providers to a subset and rerun.
+    app.session_state.example_browser_provider_filter = ["ESO"]
+    app.run()
+
+    assert app.session_state.example_browser_provider_filter == ["ESO"]
+    assert not app.warning
+
+    # Stale providers are pruned while preserving surviving selections.
+    app.session_state.example_browser_provider_filter = ["ESO", "GALEX"]
+    app.run()
+
+    assert app.session_state.example_browser_provider_filter == ["ESO"]
+    assert not app.warning
 
 
 def test_register_example_usage_tracks_recent(monkeypatch):
