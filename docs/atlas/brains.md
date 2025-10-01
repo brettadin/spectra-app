@@ -19,8 +19,12 @@
 - Locked regression coverage on byte-string table headers to ensure wavelength and time ingestion keep reporting the right `axis_kind`. 【F:tests/server/test_ingest_fits.py†L375-L395】【F:tests/server/test_ingest_fits.py†L442-L466】
 
 ## Example browser provider persistence — 2025-10-11
-- Only seed the provider multiselect with defaults when the session key is unset so Streamlit relies on the stored selection thereafter, eliminating rerun warnings. 【F:app/ui/example_browser.py†L199-L218】
-- Normalise any cached provider list before rendering and sync it back to session state so stale providers disappear without losing user intent. 【F:app/ui/example_browser.py†L185-L198】
+- Only seed the provider multiselect with defaults when the session key is unset so Streamlit relies on the stored selection thereafter, eliminating rerun warnings. 【F:app/ui/example_browser.py†L192-L210】
+- Normalise any cached provider list before rendering and sync it back to session state so stale providers disappear without losing user intent. 【F:app/ui/example_browser.py†L185-L197】
+
+## Example browser provider filter normalisation — 2025-10-12
+- Populate the provider filter session key via `setdefault` and mutate the cached list in place so reruns keep user selections without triggering Streamlit's state reassignment warning. 【F:app/ui/example_browser.py†L189-L207】
+- Keep the UI regression that drives reruns with narrowed and stale providers to ensure the warning stays silent while selections persist. 【F:tests/ui/test_example_browser.py†L63-L97】
 
 ## Asynchronous overlay ingest queue — 2025-10-11
 - Manage overlay downloads through a session-scoped executor that tracks queued, running, and completed jobs with shared progress snapshots for reruns to consume. 【F:app/ui/main.py†L526-L792】
