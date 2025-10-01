@@ -1,3 +1,8 @@
+# FITS wavelength alias canonicalisation — 2025-10-15
+- Funnel `_normalise_wavelength_unit` candidates through a canonicaliser so byte-decoded aliases (e.g., `Angstroms`) resolve to the singular FITS label before `_unit_is_wavelength` validates them. 【F:app/server/ingest_fits.py†L758-L805】
+- Let `_unit_is_wavelength` trust canonical strings while still decoding defensive byte inputs, ensuring previously-normalised units skip redundant coercion. 【F:app/server/ingest_fits.py†L343-L356】
+- Locked regressions for plural byte `TUNIT`/`CUNIT` headers to prove ingestion surfaces canonical units and preserved metadata. 【F:tests/server/test_ingest_fits.py†L371-L426】
+
 # Overlay ingest thread-safety — 2025-10-14
 - **REF 1.2.0x-A01**: Route overlay payload additions through the main thread by returning ingest results from worker futures and finalising state updates in `_refresh_ingest_jobs`, eliminating cross-thread Streamlit mutations. 【F:app/ui/main.py†L621-L678】【F:app/ui/main.py†L680-L713】
 - Hardened the ingest queue regression to assert queued overlays complete without `ScriptRunContext` warnings while preserving async progress. 【F:tests/ui/test_overlay_ingest_queue_async.py†L9-L128】

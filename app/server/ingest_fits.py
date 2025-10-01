@@ -338,16 +338,16 @@ def _ctype_is_spectral(value: Optional[str]) -> bool:
 def _unit_is_wavelength(unit: Optional[str]) -> bool:
     if not unit:
         return False
-    coerced = _coerce_header_value(unit)
-    if coerced is None:
-        return False
-    if isinstance(coerced, bytes):
+    if isinstance(unit, bytes):
         try:
-            coerced = coerced.decode("utf-8", errors="ignore")
+            unit = unit.decode("utf-8", errors="ignore")
         except Exception:  # pragma: no cover - defensive
-            coerced = coerced.decode("latin-1", errors="ignore")
+            unit = unit.decode("latin-1", errors="ignore")
+    text = str(unit).strip()
+    if not text:
+        return False
     try:
-        to_nm([1.0], coerced)
+        to_nm([1.0], text)
     except Exception:
         return False
     return True
@@ -773,6 +773,14 @@ def _normalise_wavelength_unit(unit: Optional[str], default: str = "nm") -> str:
 
     fallback_alias: Optional[str] = None
 
+    def _canonicalise(candidate: Optional[str]) -> Optional[str]:
+        if not candidate:
+            return None
+        try:
+            return canonical_unit(candidate)
+        except ValueError:
+            return None
+
     for candidate in candidates:
         if not candidate:
             continue
@@ -780,14 +788,14 @@ def _normalise_wavelength_unit(unit: Optional[str], default: str = "nm") -> str:
         if alias and fallback_alias is None:
             fallback_alias = alias
         for option in (candidate, alias):
-            if not option:
-                continue
-            try:
-                return canonical_unit(option)
-            except ValueError:
-                continue
+            canonical_option = _canonicalise(option)
+            if canonical_option:
+                return canonical_option
 
     if fallback_alias:
+        canonical_alias = _canonicalise(fallback_alias)
+        if canonical_alias:
+            return canonical_alias
         return fallback_alias
 
     lowered = text.casefold().replace("μ", "µ")
@@ -796,6 +804,9 @@ def _normalise_wavelength_unit(unit: Optional[str], default: str = "nm") -> str:
         return "cm^-1"
     if any(token in condensed for token in ("wavenumber", "spatialfrequency", "kayser")):
         return "cm^-1"
+    canonical_text = _canonicalise(text)
+    if canonical_text:
+        return canonical_text
     return text
 
 
