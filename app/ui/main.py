@@ -879,26 +879,7 @@ def _render_examples_group(container: DeltaGenerator) -> None:
                 (recent_panel.success if added else recent_panel.info)(message)
 
     overlays = _get_overlays()
-    if overlays:
-        overlay_panel = container.expander("Reference & overlays", expanded=False)
-        with overlay_panel:
-            options = [trace.trace_id for trace in overlays]
-            current = st.session_state.get("reference_trace_id")
-            try:
-                index = options.index(current) if current in options else 0
-            except ValueError:
-                index = 0
-            st.session_state["reference_trace_id"] = overlay_panel.selectbox(
-                "Reference trace",
-                options,
-                index=index,
-                format_func=_trace_label,
-                key="reference_trace_select",
-            )
-            if overlay_panel.button("Clear overlays", key="clear_overlays_button"):
-                _clear_overlays()
-                overlay_panel.warning("Cleared all overlays.")
-    else:
+    if not overlays:
         container.caption("Load an example or fetch from an archive to begin.")
 
 
@@ -2163,6 +2144,39 @@ def _render_status_bar(version_info: Mapping[str, object]) -> None:
 # Main tab renderers
 
 
+def _render_reference_controls(overlays: Sequence[OverlayTrace]) -> None:
+    st.subheader("Reference & overlays")
+    if not overlays:
+        st.caption("Load an example or fetch from an archive to begin.")
+        return
+
+    options = [trace.trace_id for trace in overlays]
+    current = st.session_state.get("reference_trace_id")
+    default_index = 0
+    if current in options:
+        default_index = options.index(current)
+    elif options:
+        st.session_state["reference_trace_id"] = options[0]
+
+    col_select, col_action = st.columns([4, 1])
+    selection = col_select.selectbox(
+        "Reference trace",
+        options,
+        index=default_index,
+        format_func=_trace_label,
+        key="reference_trace_select",
+    )
+    st.session_state["reference_trace_id"] = selection
+
+    cleared = False
+    if col_action.button("Clear overlays", key="clear_overlays_button"):
+        _clear_overlays()
+        cleared = True
+
+    if cleared:
+        st.warning("Cleared all overlays.")
+
+
 def _render_overlay_tab(version_info: Dict[str, str]) -> None:
     st.header("Overlay workspace")
     _render_local_upload()
@@ -2444,6 +2458,7 @@ def _render_differential_result(result: Optional[DifferentialResult]) -> None:
 def _render_differential_tab() -> None:
     st.header("Differential analysis")
     overlays = _get_overlays()
+    _render_reference_controls(overlays)
     spectral_overlays = [trace for trace in overlays if trace.kind != "lines"]
     if len(spectral_overlays) < 2:
         st.info("Add at least two spectra to compare differentially.")

@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.0h",
-  "date_utc": "2025-10-04T00:00:00Z",
-  "summary": "Relocate example quick-add controls into the sidebar and refresh the library guidance."
+  "version": "v1.2.0i",
+  "date_utc": "2025-10-05T00:00:00Z",
+  "summary": "Move reference trace selection into the differential workspace with related tools."
 }

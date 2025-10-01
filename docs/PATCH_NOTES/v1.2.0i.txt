@@ -1,0 +1,3 @@
+Spectra App — v1.2.0i
+- Relocate the reference trace selector and clear overlays button into the Differential tab so comparison tools share one workspace.
+- Extend differential UI regression coverage and refresh versioning collateral for the release.
