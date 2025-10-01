@@ -79,6 +79,51 @@ def _parse_with_custom_hdul(monkeypatch, builder):
     return parse_fits(b"")
 
 
+@pytest.fixture
+def byte_angstrom_table_builder():
+    def _builder():
+        wavelengths = np.array([410.0, 411.0, 412.0], dtype=float)
+        flux = np.array([1.0, 1.2, 1.4], dtype=float)
+
+        columns = [
+            fits.Column(name="WAVE", array=wavelengths, format="D"),
+            fits.Column(name="FLUX", array=flux, format="D", unit="adu"),
+        ]
+
+        table_hdu = fits.BinTableHDU.from_columns(columns, name="SPECTRUM")
+        table_hdu.header["TUNIT1"] = "Angstroms"
+        table_hdu.header.cards["TUNIT1"]._value = b"Angstroms"
+        table_hdu.header["CUNIT1"] = "Angstroms"
+        table_hdu.header.cards["CUNIT1"]._value = b"Angstroms"
+
+        return fits.HDUList([fits.PrimaryHDU(), table_hdu])
+
+    return _builder
+
+
+@pytest.fixture
+def byte_bjd_table_builder():
+    def _builder():
+        time = np.array([0.0, 1.0, 2.0], dtype=float)
+        flux = np.array([20.0, 21.0, 22.0], dtype=float)
+
+        columns = [
+            fits.Column(name="TIME", array=time, format="D"),
+            fits.Column(name="FLUX", array=flux, format="D", unit="e-/s"),
+        ]
+
+        unit_text = "BJD - 2457000, days"
+        table_hdu = fits.BinTableHDU.from_columns(columns, name="LIGHTCURVE")
+        table_hdu.header["TUNIT1"] = unit_text
+        table_hdu.header.cards["TUNIT1"]._value = unit_text.encode("ascii")
+        table_hdu.header["CUNIT1"] = unit_text
+        table_hdu.header.cards["CUNIT1"]._value = unit_text.encode("ascii")
+
+        return fits.HDUList([fits.PrimaryHDU(), table_hdu])
+
+    return _builder
+
+
 def test_parse_fits_handles_logarithmic_dispersion(tmp_path):
     flux_values = np.linspace(1.0, 5.0, 5)
 
@@ -395,6 +440,15 @@ def test_parse_fits_table_handles_byte_tunit_for_wavelength(monkeypatch):
     assert result["wavelength"]["unit"] == "nm"
 
 
+def test_parse_fits_table_byte_keywords_roundtrip(monkeypatch, byte_angstrom_table_builder):
+    result = _parse_with_custom_hdul(monkeypatch, byte_angstrom_table_builder)
+
+    assert result["axis_kind"] == "wavelength"
+    metadata = result["metadata"]
+    assert metadata["axis_kind"] == "wavelength"
+    assert result["wavelength"]["unit"] == "nm"
+
+
 def test_parse_fits_accepts_time_series_units(tmp_path):
     time = np.array([0.0, 1.5, 3.25, 4.0], dtype=float)
     flux = np.array([10.0, 11.0, 12.0, 11.5], dtype=float)
@@ -482,6 +536,18 @@ def test_parse_fits_time_unit_btjd_with_offset(tmp_path):
     assert provenance_units.get("time_frame") == "BTJD"
     assert provenance_units.get("time_offset") == pytest.approx(2457000.0)
     assert result["wavelength_nm"] == pytest.approx(time)
+
+
+def test_parse_fits_table_byte_time_keywords_roundtrip(monkeypatch, byte_bjd_table_builder):
+    result = _parse_with_custom_hdul(monkeypatch, byte_bjd_table_builder)
+
+    assert result["axis_kind"] == "time"
+    metadata = result["metadata"]
+    assert metadata["axis_kind"] == "time"
+    assert metadata["time_unit"] == "day"
+    assert metadata.get("time_frame") == "BJD"
+    assert metadata.get("time_offset") == pytest.approx(2457000.0)
+    assert result["time"]["unit"] == "day"
 
 
 def test_parse_fits_time_unit_bjd_tdb_with_offset(tmp_path):

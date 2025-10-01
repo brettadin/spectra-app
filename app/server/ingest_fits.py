@@ -247,20 +247,7 @@ def _label_suggests_time(name: str) -> bool:
 
 
 def _parse_time_unit_hint(unit_text: Optional[str]) -> Optional[Dict[str, object]]:
-    if unit_text is None:
-        return None
-
-    coerced = _coerce_header_value(unit_text)
-    if coerced is None:
-        return None
-
-    if isinstance(coerced, bytes):
-        try:
-            coerced = coerced.decode("utf-8", errors="ignore")
-        except Exception:  # pragma: no cover - defensive
-            coerced = coerced.decode("latin-1", errors="ignore")
-
-    cleaned = str(coerced).strip()
+    cleaned = _decode_header_text(unit_text)
     if not cleaned:
         return None
 
@@ -336,18 +323,16 @@ def _ctype_is_spectral(value: Optional[str]) -> bool:
 
 
 def _unit_is_wavelength(unit: Optional[str]) -> bool:
-    if not unit:
+    text = _decode_header_text(unit)
+    if not text:
         return False
-    coerced = _coerce_header_value(unit)
-    if coerced is None:
+
+    normalised = _normalise_wavelength_unit(text, default=text)
+    if not normalised:
         return False
-    if isinstance(coerced, bytes):
-        try:
-            coerced = coerced.decode("utf-8", errors="ignore")
-        except Exception:  # pragma: no cover - defensive
-            coerced = coerced.decode("latin-1", errors="ignore")
+
     try:
-        to_nm([1.0], coerced)
+        to_nm([1.0], normalised)
     except Exception:
         return False
     return True
@@ -709,6 +694,27 @@ def _coerce_header_value(value):
     return value
 
 
+def _decode_header_text(value: Optional[object]) -> Optional[str]:
+    if value is None:
+        return None
+
+    coerced = _coerce_header_value(value)
+    if coerced is None:
+        return None
+
+    if isinstance(coerced, bytes):
+        try:
+            coerced = coerced.decode("utf-8", errors="ignore")
+        except Exception:  # pragma: no cover - defensive
+            coerced = coerced.decode("latin-1", errors="ignore")
+
+    text = str(coerced).strip()
+    if not text:
+        return None
+
+    return text
+
+
 _WAVELENGTH_UNIT_LABEL_ALIASES = {
     "angstrom": "Angstrom",
     "angstroms": "Angstrom",
@@ -749,33 +755,36 @@ def _resolve_wavelength_unit_alias(value: str) -> Optional[str]:
 
 
 def _normalise_wavelength_unit(unit: Optional[str], default: str = "nm") -> str:
-    if unit is None:
+    text = _decode_header_text(unit)
+    if text is None:
         return default
 
-    coerced = _coerce_header_value(unit)
-    if coerced is None:
-        return default
+    folded_text = text.casefold()
 
-    if isinstance(coerced, bytes):
-        try:
-            coerced = coerced.decode("utf-8", errors="ignore")
-        except Exception:  # pragma: no cover - defensive
-            coerced = coerced.decode("latin-1", errors="ignore")
+    candidates: List[str] = []
 
-    text = str(coerced).strip()
-    if not text:
-        return default
+    def _add_candidate(candidate: Optional[str]) -> None:
+        if not candidate:
+            return
+        stripped = candidate.strip()
+        if stripped and stripped not in candidates:
+            candidates.append(stripped)
 
-    candidates = [text]
+    _add_candidate(text)
+    _add_candidate(folded_text)
+
     if "(" in text and ")" in text:
-        candidates.append(re.sub(r"\(.*?\)", "", text).strip())
-    candidates.append(text.split()[0])
+        stripped = re.sub(r"\(.*?\)", "", text).strip()
+        _add_candidate(stripped)
+        _add_candidate(stripped.casefold())
+
+    first_token = text.split()[0]
+    _add_candidate(first_token)
+    _add_candidate(first_token.casefold())
 
     fallback_alias: Optional[str] = None
 
     for candidate in candidates:
-        if not candidate:
-            continue
         alias = _resolve_wavelength_unit_alias(candidate)
         if alias and fallback_alias is None:
             fallback_alias = alias
@@ -790,7 +799,7 @@ def _normalise_wavelength_unit(unit: Optional[str], default: str = "nm") -> str:
     if fallback_alias:
         return fallback_alias
 
-    lowered = text.casefold().replace("μ", "µ")
+    lowered = folded_text.replace("μ", "µ")
     condensed = lowered.replace(" ", "")
     if "cm" in condensed and ("-1" in condensed or "⁻1" in condensed or "/" in condensed):
         return "cm^-1"

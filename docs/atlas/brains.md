@@ -26,3 +26,8 @@
 - Manage overlay downloads through a session-scoped executor that tracks queued, running, and completed jobs with shared progress snapshots for reruns to consume. 【F:app/ui/main.py†L526-L792】
 - Render an “Overlay downloads” sidebar cluster so users can watch job states resolve without leaving the workspace controls. 【F:app/ui/main.py†L795-L839】【F:app/ui/main.py†L3426-L3451】
 - Locked a regression that stalls network fetches to prove reruns stay responsive and jobs surface success once the worker completes. 【F:tests/ui/test_overlay_ingest_queue_async.py†L12-L112】
+
+## FITS byte-string axis units — 2025-10-01
+- Added `_decode_header_text` so spectral/time unit parsing normalises decoded header bytes before alias checks, keeping byte-coded `TUNIT`/`CUNIT` hints intact. 【F:app/server/ingest_fits.py†L233-L305】【F:app/server/ingest_fits.py†L751-L815】
+- Routed `_unit_is_wavelength` through the normaliser to reuse alias handling before equivalency checks. 【F:app/server/ingest_fits.py†L338-L353】
+- Introduced pytest fixtures that feed byte-string `Angstroms` and `BJD - 2457000, days` headers, asserting the parser preserves wavelength/time `axis_kind`. 【F:tests/server/test_ingest_fits.py†L86-L135】【F:tests/server/test_ingest_fits.py†L396-L426】
