@@ -1657,8 +1657,9 @@ def _remove_overlays(trace_ids: Sequence[str]) -> None:
         trace for trace in _get_overlays() if trace.trace_id not in set(trace_ids)
     ]
     _set_overlays(remaining)
-    cache: SimilarityCache = st.session_state["similarity_cache"]
-    cache.reset()
+    cache = st.session_state.get("similarity_cache")
+    if isinstance(cache, SimilarityCache):
+        cache.reset()
 
 
 def _normalise_wavelength_range(meta: Dict[str, object]) -> str:
@@ -2235,22 +2236,6 @@ def _render_overlay_tab(version_info: Dict[str, str]) -> None:
             )
         st.caption(f"Axis: {axis_title}")
 
-    cache: SimilarityCache = st.session_state["similarity_cache"]
-    full_resolution = _is_full_resolution_enabled()
-    vector_max_points = None if full_resolution else 15000
-    visible_vectors = [
-        trace.to_vectors(max_points=vector_max_points, viewport=effective_viewport)
-        for trace in overlays
-        if trace.visible
-    ]
-    options = SimilarityOptions(
-        metrics=tuple(st.session_state.get("similarity_metrics", ["cosine"])),
-        normalization=st.session_state.get("similarity_normalization", normalization),
-        line_match_top_n=int(st.session_state.get("similarity_line_peaks", 8)),
-        primary_metric=st.session_state.get("similarity_primary_metric", "cosine"),
-        reference_id=st.session_state.get("reference_trace_id"),
-    )
-    render_similarity_panel(visible_vectors, effective_viewport, options, cache)
     _render_metadata_summary(overlays)
     _render_line_tables(overlays)
 
@@ -2480,6 +2465,12 @@ def _render_differential_tab() -> None:
         default_operation = operation_labels[0]
 
     sample_default = int(st.session_state.get("differential_sample_points", 2000))
+    normalization = st.session_state.get("normalization_mode", "unit")
+    viewport_setting = st.session_state.get("viewport_nm", (None, None))
+    similarity_sources = [trace for trace in spectral_overlays if trace.visible]
+    if len(similarity_sources) < 2:
+        similarity_sources = spectral_overlays
+    effective_viewport = _effective_viewport(similarity_sources, viewport_setting)
 
     with st.form(key="differential_compute_form"):
         col_a, col_b = st.columns(2)
@@ -2520,7 +2511,6 @@ def _render_differential_tab() -> None:
         if trace_a_id == trace_b_id:
             st.warning("Select two distinct traces to compute a differential.")
         else:
-            normalization = st.session_state.get("normalization_mode", "unit")
             try:
                 result = _compute_differential_result(
                     trace_map[trace_a_id],
@@ -2543,6 +2533,28 @@ def _render_differential_tab() -> None:
         "Differential maths uses the normalization selected in the sidebar "
         "and resamples both traces onto a shared wavelength grid."
     )
+    if "similarity_cache" not in st.session_state:
+        st.session_state["similarity_cache"] = SimilarityCache()
+    cache: SimilarityCache = st.session_state["similarity_cache"]
+    full_resolution = _is_full_resolution_enabled()
+    vector_max_points = None if full_resolution else 15000
+    visible_vectors = [
+        trace.to_vectors(max_points=vector_max_points, viewport=effective_viewport)
+        for trace in similarity_sources
+    ]
+    if len(visible_vectors) >= 2:
+        options = SimilarityOptions(
+            metrics=tuple(st.session_state.get("similarity_metrics", ["cosine"])),
+            normalization=st.session_state.get(
+                "similarity_normalization", normalization
+            ),
+            line_match_top_n=int(st.session_state.get("similarity_line_peaks", 8)),
+            primary_metric=st.session_state.get("similarity_primary_metric", "cosine"),
+            reference_id=st.session_state.get("reference_trace_id"),
+        )
+        render_similarity_panel(
+            visible_vectors, effective_viewport, options, cache
+        )
     _render_differential_result(result)
 
 

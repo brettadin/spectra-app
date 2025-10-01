@@ -1,5 +1,6 @@
 from streamlit.testing.v1 import AppTest
 
+from app.similarity import SimilarityCache
 from app.ui.main import OverlayTrace
 
 
@@ -73,3 +74,26 @@ def test_reference_controls_render_in_differential_tab():
 
     button_labels = [button.label for button in app.button]
     assert "Clear overlays" in button_labels
+
+
+def test_similarity_panel_renders_with_differential_inputs():
+    app = AppTest.from_function(_render_differential_tab_entrypoint)
+
+    app.session_state.overlay_traces = [
+        _simple_overlay("a"),
+        _simple_overlay("b"),
+        _simple_overlay("c"),
+    ]
+    app.session_state.reference_trace_id = "a"
+    app.session_state.normalization_mode = "unit"
+    app.session_state.similarity_cache = SimilarityCache()
+    app.session_state.similarity_metrics = ["cosine", "line_match"]
+    app.session_state.similarity_primary_metric = "cosine"
+    app.session_state.similarity_line_peaks = 5
+
+    app.run()
+
+    assert not app.exception
+
+    headings = [block.body for block in app.markdown]
+    assert "### Similarity analysis" in headings

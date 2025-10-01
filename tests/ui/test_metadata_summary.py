@@ -4,6 +4,7 @@ from textwrap import dedent
 import numpy as np
 import pytest
 from astropy.io import fits
+from streamlit.testing.v1 import AppTest
 
 from app.ui.main import OverlayTrace, _build_metadata_summary_rows
 from app.utils.local_ingest import ingest_local_file
@@ -27,6 +28,14 @@ def _overlay_from_payload(payload: dict) -> OverlayTrace:
         axis_kind=payload.get("axis_kind")
         or ((payload.get("metadata") or {}).get("axis_kind") if isinstance(payload.get("metadata"), dict) else "wavelength"),
     )
+
+
+def _render_overlay_tab_entrypoint() -> None:
+    import streamlit as st  # noqa: F401  # Re-exported for AppTest serialization
+
+    from app.ui.main import _render_overlay_tab
+
+    _render_overlay_tab({"version": "vtest"})
 
 
 def test_metadata_summary_ascii_upload_header_units():
@@ -143,3 +152,59 @@ def test_metadata_summary_time_series_axis():
     overlay = _overlay_from_payload(payload)
     rows = _build_metadata_summary_rows([overlay])
     assert rows[0]["Axis range"] == "0.0000 – 2.0000 BJD - 2457000, days"
+
+
+def test_overlay_tab_retains_metadata_and_line_tables():
+    app = AppTest.from_function(_render_overlay_tab_entrypoint)
+
+    spectral_overlay = OverlayTrace(
+        trace_id="spec-1",
+        label="Spectrum",
+        wavelength_nm=(500.0, 510.0, 520.0),
+        flux=(1.0, 1.1, 0.9),
+        metadata={
+            "instrument": "SpecOne",
+            "telescope": "ScopeOne",
+            "observation_date": "2025-10-05",
+        },
+        provenance={"units": {"wavelength_converted_to": "nm"}},
+    )
+    line_overlay = OverlayTrace(
+        trace_id="line-1",
+        label="Lines",
+        wavelength_nm=(500.1,),
+        flux=(0.0,),
+        kind="lines",
+        metadata={
+            "lines": [
+                {
+                    "wavelength_nm": 500.1,
+                    "observed_wavelength_nm": 500.2,
+                    "ritz_wavelength_nm": 500.15,
+                    "relative_intensity": 0.8,
+                    "relative_intensity_normalized": 0.9,
+                    "lower_level": "a",
+                    "upper_level": "b",
+                    "transition_type": "E1",
+                }
+            ]
+        },
+    )
+
+    app.session_state.overlay_traces = [spectral_overlay, line_overlay]
+    app.session_state.viewport_nm = (None, None)
+    app.session_state.auto_viewport = True
+    app.session_state.display_units = "nm"
+    app.session_state.display_mode = "Flux (raw)"
+    app.session_state.normalization_mode = "unit"
+    app.session_state.differential_mode = "Off"
+    app.session_state.reference_trace_id = spectral_overlay.trace_id
+
+    app.run()
+
+    assert not app.exception
+
+    headings = [block.body for block in app.markdown]
+    assert "#### Metadata summary" in headings
+    expander_labels = [exp.label for exp in app.expander]
+    assert "Line metadata tables" in expander_labels

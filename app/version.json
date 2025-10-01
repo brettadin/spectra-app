@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.0i",
-  "date_utc": "2025-10-05T00:00:00Z",
-  "summary": "Move reference trace selection into the differential workspace with related tools."
+  "version": "v1.2.0j",
+  "date_utc": "2025-10-06T00:00:00Z",
+  "summary": "Relocate similarity analysis into the differential workspace and refresh coverage."
 }
