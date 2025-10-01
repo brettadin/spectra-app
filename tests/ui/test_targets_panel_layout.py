@@ -52,3 +52,15 @@ def test_targets_panel_groups_products_by_collection():
 
     markdown_blocks = [block.body for block in app.markdown]
     assert any(body.startswith("**Curated selection") for body in markdown_blocks)
+
+
+def test_targets_panel_catalog_table_is_optional():
+    app = AppTest.from_function(_render_targets_entrypoint)
+
+    app.run()
+
+    expander_labels = [exp.label for exp in app.expander]
+    assert expander_labels.count("Browse catalog entries") == 1
+
+    # The catalog table remains available, but should no longer dominate the layout.
+    assert len(app.dataframe) == 1

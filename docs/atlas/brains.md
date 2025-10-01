@@ -44,3 +44,8 @@
 - Parse manifest extension metadata for axis keywords and dimensionality before enabling overlays so only 1-D spectra and time series remain interactive. 【F:app/ui/targets.py†L19-L219】
 - Treat JWST CALINTS cubes as unsupported even when labelled as time-series, wiring the disabled overlay button to explain the axis mismatch. 【F:app/ui/targets.py†L181-L199】
 - Extended regression coverage proving axis-hint parsing blocks CALINTS cubes and missing time axes. 【F:tests/ui/test_targets_overlay_support.py†L24-L98】
+
+## Target catalog summary-first layout — 2025-10-12
+- Render the target manifest name, narrative summary, and status metrics in a dedicated container before offering the registry grid so the curated context stays visible. 【F:app/ui/targets.py†L260-L326】
+- Tuck the full catalog dataframe into an optional “Browse catalog entries” expander, keeping the manifest summary adjacent to the curated product groups. 【F:app/ui/targets.py†L328-L352】
+- Locked a regression asserting the new expander label is present and the grid remains available for discovery. 【F:tests/ui/test_targets_panel_layout.py†L53-L74】
