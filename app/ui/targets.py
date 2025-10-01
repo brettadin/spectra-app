@@ -16,6 +16,15 @@ class RegistryUnavailableError(RuntimeError):
         super().__init__(message)
 
 
+SUPPORTED_OVERLAY_TYPES = {
+    "spectrum",
+    "sed",
+    "timeseries",
+    "time-series",
+    "time series",
+}
+
+
 def _extract_mast_products(
     manifest: Dict[str, Any],
 ) -> Tuple[List[Dict[str, Any]], int, bool]:
@@ -31,6 +40,38 @@ def _extract_mast_products(
     items = list(mast_products)
     total = len(items)
     return items, total, False
+
+
+def _product_overlay_support(product: Dict[str, Any]) -> Dict[str, Any]:
+    """Classify whether a MAST product should expose the Overlay action."""
+
+    raw_type = str(product.get("dataproduct_type", "") or "").strip()
+    normalized = raw_type.lower()
+
+    if normalized in SUPPORTED_OVERLAY_TYPES:
+        return {
+            "supported": True,
+            "normalized_type": normalized or None,
+            "note": "",
+        }
+
+    if normalized in {"image", "cube"}:
+        note = (
+            "Images and cubes are 2-D products; overlay is limited to 1-D spectra, "
+            "SEDs, or time-series."
+        )
+    elif normalized:
+        note = (
+            "Overlay is limited to 1-D spectra, SEDs, or time-series; "
+            f"'{raw_type}' is not supported."
+        )
+    else:
+        note = (
+            "Overlay is limited to 1-D spectra, SEDs, or time-series; this entry "
+            "does not report a dataproduct type."
+        )
+
+    return {"supported": False, "normalized_type": normalized or None, "note": note}
 
 
 def render_targets_panel(
@@ -84,19 +125,29 @@ def render_targets_panel(
                 url = r.get("productURL") or ""
                 obsid = str(r.get("obsid", idx))
                 fname = str(r.get("productFilename", ""))
-                dtype = str(r.get("dataproduct_type", ""))
+                support = _product_overlay_support(r)
+                dtype = str(r.get("dataproduct_type", "")) or "unknown"
                 label = f"{fname} [{dtype}]"
                 cols = expander.columns([3, 1])
                 cols[0].code(label, language="text")
                 btn_key = f"ov-{obsid}-{idx}"
-                if cols[1].button("Overlay", key=btn_key):
-                    entry = {"url": url, "label": fname or f"product-{idx}"}
-                    provider = str(
-                        r.get("obs_collection") or r.get("provider") or ""
-                    ).strip()
-                    if provider:
-                        entry["provider"] = provider
-                    st.session_state.setdefault("ingest_queue", []).append(entry)
+                if support["supported"]:
+                    if cols[1].button("Overlay", key=btn_key):
+                        entry = {"url": url, "label": fname or f"product-{idx}"}
+                        provider = str(
+                            r.get("obs_collection") or r.get("provider") or ""
+                        ).strip()
+                        if provider:
+                            entry["provider"] = provider
+                        st.session_state.setdefault("ingest_queue", []).append(entry)
+                else:
+                    cols[1].button(
+                        "Overlay",
+                        key=btn_key,
+                        disabled=True,
+                        help=support["note"],
+                    )
+                    cols[1].caption(support["note"])
             if truncated or len(mast_products) > len(display_products):
                 expander.caption(
                     f"Showing first {len(display_products)} of {total_count} MAST products."
