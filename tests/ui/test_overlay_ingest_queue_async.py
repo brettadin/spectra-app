@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import threading
 import time
 from typing import Any, Dict, List
@@ -108,6 +109,69 @@ def test_ingest_queue_remains_interactive_during_long_download(monkeypatch):
         assert any("two" in value for value in lowered_messages)
     finally:
         release_download.set()
+        runtime = (
+            app.session_state["ingest_runtime"]
+            if "ingest_runtime" in app.session_state
+            else {}
+        )
+        executor = runtime.get("executor") if isinstance(runtime, dict) else None
+        if executor:
+            executor.shutdown(wait=True)
+
+
+def test_ingest_queue_completes_without_script_context_warning(monkeypatch, caplog):
+    """Overlay jobs add payloads on the main thread without ScriptRunContext warnings."""
+
+    from app.ui import main as main_module
+
+    def _fake_requests_get(url: str, timeout: int = 60):
+        class _FakeResponse:
+            content = b"payload"
+
+            def raise_for_status(self) -> None:
+                return None
+
+        return _FakeResponse()
+
+    monkeypatch.setattr(main_module.requests, "get", _fake_requests_get)
+
+    def _fake_ingest_local_file(filename: str, content: bytes) -> Dict[str, Any]:
+        return {
+            "label": filename,
+            "wavelength_nm": [510.0, 520.0, 530.0],
+            "flux": [1.0, 1.1, 0.9],
+        }
+
+    monkeypatch.setattr(main_module, "ingest_local_file", _fake_ingest_local_file)
+
+    added_payloads: List[Dict[str, Any]] = []
+
+    def _record_overlay_payload(payload: Dict[str, Any]) -> tuple[bool, str]:
+        added_payloads.append(payload)
+        label = payload.get("label") or "overlay"
+        return True, f"Added {label}"
+
+    monkeypatch.setattr(main_module, "_add_overlay_payload", _record_overlay_payload)
+
+    app = AppTest.from_function(_render_ingest_sidebar_entrypoint)
+
+    caplog.set_level(logging.WARNING)
+    try:
+        with caplog.at_level(logging.WARNING):
+            app.session_state.ingest_queue = [
+                {"url": "http://example.com/three.fits", "label": "Three"}
+            ]
+            app.run()
+
+            for _ in range(12):
+                if added_payloads:
+                    break
+                time.sleep(0.05)
+                app.run()
+
+        assert added_payloads, "Overlay payload should be added on the main thread"
+        assert "ScriptRunContext" not in caplog.text
+    finally:
         runtime = (
             app.session_state["ingest_runtime"]
             if "ingest_runtime" in app.session_state

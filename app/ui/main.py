@@ -77,6 +77,13 @@ class OverlayTrace:
     )
     cache_dataset_id: Optional[str] = None
 
+
+@dataclass
+class OverlayIngestResult:
+    status: str
+    detail: str
+    payload: Optional[Dict[str, Any]] = None
+
     def to_dataframe(self) -> pd.DataFrame:
         if str(self.axis_kind).strip().lower() == "image":
             return pd.DataFrame(columns=["wavelength_nm", "flux"])
@@ -669,7 +676,7 @@ def _submit_ingest_job(runtime: Dict[str, Any], entry: Mapping[str, Any]) -> str
 def _ingest_overlay_job(
     entry: Mapping[str, Any],
     progress_callback: Callable[[Optional[str], Optional[str], Optional[float]], None],
-) -> Tuple[str, str]:
+) -> OverlayIngestResult:
     url = str(entry.get("url") or "")
     label_hint = str(entry.get("label") or "").strip()
     provider_hint = entry.get("provider")
@@ -690,7 +697,7 @@ def _ingest_overlay_job(
             _add_overlay_from_url(resolved_url, label=label)
             message = f"Added {label}"
             progress_callback("success", message, 1.0)
-            return "success", message
+            return OverlayIngestResult(status="success", detail=message, payload=None)
 
         progress_callback("downloading", "Downloading overlay data", None)
         response = requests.get(resolved_url, timeout=60)
@@ -703,7 +710,7 @@ def _ingest_overlay_job(
         except LocalIngestError as exc:
             message = f"Unable to ingest {label}: {exc}"
             progress_callback("error", message, 1.0)
-            return "error", message
+            return OverlayIngestResult(status="error", detail=message, payload=None)
 
         payload = dict(payload)
         payload.setdefault("label", label)
@@ -724,14 +731,13 @@ def _ingest_overlay_job(
         provenance["ingest"] = ingest_info
         payload["provenance"] = provenance
 
-        added, message = _add_overlay_payload(payload)
-        status = "success" if added else "info"
-        progress_callback(status, message, 1.0)
-        return status, message
+        progress_callback("ingesting", "Overlay ready for addition", 0.95)
+        prepared_message = f"Prepared {label}"
+        return OverlayIngestResult(status="success", detail=prepared_message, payload=payload)
     except Exception as exc:  # pragma: no cover - network/runtime failure
         message = f"Failed to ingest {label}: {exc}"
         progress_callback("error", message, 1.0)
-        return "error", message
+        return OverlayIngestResult(status="error", detail=message, payload=None)
 
 
 def _refresh_ingest_jobs(runtime: Dict[str, Any]) -> None:
@@ -747,12 +753,44 @@ def _refresh_ingest_jobs(runtime: Dict[str, Any]) -> None:
         if not future.done():
             continue
 
+        payload: Optional[Dict[str, Any]] = None
         try:
-            status, detail = future.result()
+            result = future.result()
         except Exception as exc:  # pragma: no cover - unexpected future failure
             status, detail = "error", str(exc)
+        else:
+            if isinstance(result, OverlayIngestResult):
+                status, detail, payload = result.status, result.detail, result.payload
+            elif isinstance(result, tuple):  # pragma: no cover - legacy tuple result
+                if len(result) == 3:
+                    status, detail, payload = result  # type: ignore[misc]
+                elif len(result) == 2:
+                    status, detail = result  # type: ignore[misc]
+                else:
+                    status, detail = "error", "Unexpected ingest result"
+            else:  # pragma: no cover - unexpected result type
+                status, detail = "error", "Unexpected ingest result"
 
-        _update_ingest_job(runtime, job_id, status=status, detail=detail, progress=1.0, finished=True)
+        final_status = status
+        final_detail = detail
+        if payload is not None:
+            try:
+                added, message = _add_overlay_payload(payload)
+            except Exception as exc:  # pragma: no cover - overlay addition failure
+                final_status = "error"
+                final_detail = f"Failed to add overlay: {exc}"
+            else:
+                final_status = "success" if added else "info"
+                final_detail = message
+
+        _update_ingest_job(
+            runtime,
+            job_id,
+            status=final_status,
+            detail=final_detail,
+            progress=1.0,
+            finished=True,
+        )
         completed.append(job_id)
 
     for job_id in completed:
