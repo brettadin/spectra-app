@@ -1,5 +1,5 @@
 {
   "version": "v1.2.0u",
-  "date_utc": "2025-10-01T21:12:50Z",
-  "summary": "Prioritize target manifest context above the catalog grid and move the registry table into a secondary expander."
+  "date_utc": "2025-10-12T09:00:00Z",
+  "summary": "Stabilise example browser provider persistence so reruns keep selections without Streamlit warnings."
 }
