@@ -1,0 +1,3 @@
+Spectra App — v1.2.0f
+- Fix the example browser provider selector by initialising cached defaults before the multiselect renders, preventing Streamlit from warning about reassigned state and keeping filters persistent.
+- Add unit coverage for the provider default normalisation helper.

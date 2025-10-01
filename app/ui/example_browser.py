@@ -106,6 +106,46 @@ def filter_examples(
     return results
 
 
+# Internal helpers are defined above the UI entrypoints so unit tests can
+# exercise the state normalisation logic without requiring a Streamlit
+# runtime.  The helper keeps provider defaults stable when the available
+# provider list changes between reruns.
+
+
+def _normalise_provider_defaults(
+    provider_options: Sequence[str],
+    stored_selection: Optional[Sequence[str]],
+) -> List[str]:
+    """Return the initial provider selection for the filter widget.
+
+    The selection prefers the caller-provided `stored_selection` (usually the
+    Streamlit session state) but falls back to the full provider list when
+    nothing valid is cached.  The return order preserves the stored values so
+    the widget restores user intent while filtering out stale providers.
+    """
+
+    if not provider_options:
+        return []
+
+    if not stored_selection:
+        return list(provider_options)
+
+    # Preserve the order in which providers were stored while filtering out
+    # entries that are no longer offered.
+    seen: set[str] = set()
+    filtered: List[str] = []
+    valid = set(provider_options)
+    for provider in stored_selection:
+        if provider in valid and provider not in seen:
+            filtered.append(provider)
+            seen.add(provider)
+
+    if filtered:
+        return filtered
+
+    return list(provider_options)
+
+
 def render_example_browser_sheet(
     *,
     examples: Sequence["ExampleSpec"],
@@ -143,35 +183,31 @@ def render_example_browser_sheet(
             st.caption("Using local cache")
 
         provider_options = sorted({spec.provider for spec in examples})
-        st.session_state.setdefault("example_browser_search", "")
         providers_key = "example_browser_provider_filter"
-        session_providers = st.session_state.setdefault(providers_key, provider_options)
-        valid_providers = [
-            provider for provider in session_providers if provider in provider_options
-        ]
-        if valid_providers != session_providers:
-            st.session_state[providers_key] = valid_providers
-            session_providers = valid_providers
-        if not session_providers and provider_options:
-            st.session_state[providers_key] = provider_options
-            session_providers = provider_options
-        st.session_state.setdefault("example_browser_favourites_only", False)
+        stored_selection = st.session_state.get(providers_key)
+        provider_defaults = _normalise_provider_defaults(
+            provider_options, stored_selection
+        )
+
+        search_key = "example_browser_search"
+        favourites_key = "example_browser_favourites_only"
 
         search_value = st.text_input(
             "Search examples",
-            value=st.session_state["example_browser_search"],
-            key="example_browser_search",
+            value=st.session_state.get(search_key, ""),
+            key=search_key,
             help="Filter by label, description, provider, or query metadata.",
         )
         selected_providers = st.multiselect(
             "Providers",
             provider_options,
+            default=provider_defaults,
             key=providers_key,
         )
         favourites_only = st.checkbox(
             "Show favourites only",
-            value=st.session_state["example_browser_favourites_only"],
-            key="example_browser_favourites_only",
+            value=st.session_state.get(favourites_key, False),
+            key=favourites_key,
         )
 
         filtered = filter_examples(
