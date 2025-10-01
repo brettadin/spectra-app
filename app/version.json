@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.0p",
-  "date_utc": "2025-10-11T02:45:00Z",
-  "summary": "Stabilise example browser provider persistence to prevent warning banners."
+  "version": "v1.2.0q",
+  "date_utc": "2025-10-11T05:30:00Z",
+  "summary": "Stream background overlay downloads with a sidebar progress queue."
 }

@@ -5,7 +5,8 @@
     "Examples library",
     "Differential & normalization",
     "Similarity settings",
-    "Line catalogs"
+    "Line catalogs",
+    "Overlay downloads"
   ],
   "tabs": [
     "Overlay",
@@ -22,7 +23,7 @@
   "plot": [
     "legend_non_empty"
   ],
-  "v": "v1.2.0n",
+  "v": "v1.2.0q",
   "must_have": [
     "Overlay tab present",
     "Differential tab present",

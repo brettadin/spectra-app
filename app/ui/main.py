@@ -5,14 +5,13 @@ import json
 import math
 import time
 import uuid
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
+import threading
+from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 from urllib.parse import quote, urlparse
-
-
-from urllib.parse import urlparse
 
 
 import numpy as np
@@ -524,77 +523,320 @@ def _resolve_overlay_url(raw_url: str) -> str:
     return url
 
 
-def _process_ingest_queue() -> None:
-    queue = list(st.session_state.get("ingest_queue", []))
-    if not queue:
+_OVERLAY_STATUS_LABELS = {
+    "queued": "Queued",
+    "running": "Starting",
+    "downloading": "Downloading",
+    "ingesting": "Ingesting",
+    "success": "Completed",
+    "info": "Completed",
+    "error": "Failed",
+}
+
+_OVERLAY_STATUS_PROGRESS = {
+    "queued": 0.0,
+    "running": 0.1,
+    "downloading": 0.4,
+    "ingesting": 0.7,
+    "success": 1.0,
+    "info": 1.0,
+    "error": 1.0,
+}
+
+
+def _ensure_ingest_runtime() -> Dict[str, Any]:
+    runtime = st.session_state.get("ingest_runtime")
+    if not isinstance(runtime, dict):
+        runtime = {}
+
+    executor = runtime.get("executor")
+    if not isinstance(executor, ThreadPoolExecutor) or getattr(executor, "_shutdown", False):
+        executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="overlay-ingest")
+        runtime["executor"] = executor
+
+    lock = runtime.get("lock")
+    if lock is None or not hasattr(lock, "acquire"):
+        lock = threading.Lock()
+        runtime["lock"] = lock
+
+    runtime.setdefault("jobs", {})
+    runtime.setdefault("futures", {})
+    st.session_state["ingest_runtime"] = runtime
+    return runtime
+
+
+def _normalise_ingest_item(item: Any) -> Optional[Dict[str, Any]]:
+    if isinstance(item, Mapping):
+        url = str(item.get("url") or "")
+        label_hint = str(item.get("label") or "").strip()
+        provider_hint = item.get("provider")
+    else:
+        url = str(item or "")
+        label_hint = ""
+        provider_hint = None
+
+    if not url:
+        return None
+
+    return {"url": url, "label": label_hint, "provider": provider_hint}
+
+
+def _update_ingest_job(
+    runtime: Dict[str, Any],
+    job_id: str,
+    *,
+    status: Optional[str] = None,
+    detail: Optional[str] = None,
+    progress: Optional[float] = None,
+    finished: bool = False,
+) -> None:
+    lock_obj = runtime.get("lock")
+    jobs = runtime.get("jobs")
+    if jobs is None:
         return
+
+    if lock_obj is None or not hasattr(lock_obj, "__enter__"):
+        lock_obj = threading.Lock()
+        runtime["lock"] = lock_obj
+
+    if not isinstance(jobs, dict):
+        return
+
+    with lock_obj:
+        job = jobs.get(job_id)
+        if job is None:
+            return
+
+        if status:
+            job["status"] = status
+        if detail is not None:
+            job["detail"] = detail
+
+        if progress is None and status in _OVERLAY_STATUS_PROGRESS:
+            progress = _OVERLAY_STATUS_PROGRESS[status]
+
+        if progress is not None:
+            try:
+                job["progress"] = max(0.0, min(1.0, float(progress)))
+            except Exception:
+                job["progress"] = _OVERLAY_STATUS_PROGRESS.get(status or "queued", 0.0)
+
+        timestamp = time.time()
+        if status and job.get("started_at") is None and status not in {"queued"}:
+            job["started_at"] = timestamp
+        if finished or status in {"success", "info", "error"}:
+            job["finished_at"] = timestamp
+            if detail is not None:
+                job["result"] = detail
+
+
+def _submit_ingest_job(runtime: Dict[str, Any], entry: Mapping[str, Any]) -> str:
+    job_id = uuid.uuid4().hex
+    label_hint = str(entry.get("label") or "").strip()
+    url = str(entry.get("url") or "")
+    provider_hint = entry.get("provider")
+    derived_name = Path(urlparse(url).path).name
+    display_label = label_hint or derived_name or "remote-spectrum"
+
+    job_record = {
+        "id": job_id,
+        "url": url,
+        "label": display_label,
+        "provider": provider_hint,
+        "status": "queued",
+        "detail": "Waiting to start",
+        "progress": 0.0,
+        "submitted_at": time.time(),
+        "started_at": None,
+        "finished_at": None,
+    }
+
+    lock = runtime.get("lock")
+    jobs = runtime.setdefault("jobs", {})
+    if lock and hasattr(lock, "acquire") and isinstance(jobs, dict):
+        with lock:
+            jobs[job_id] = job_record
+    elif isinstance(jobs, dict):
+        jobs[job_id] = job_record
+
+    def _update(status: Optional[str] = None, detail: Optional[str] = None, progress: Optional[float] = None) -> None:
+        try:
+            _update_ingest_job(runtime, job_id, status=status, detail=detail, progress=progress)
+        except Exception:
+            pass
+
+    executor: ThreadPoolExecutor = runtime["executor"]
+    future = executor.submit(_ingest_overlay_job, entry, _update)
+    runtime.setdefault("futures", {})[job_id] = future
+    return job_id
+
+
+def _ingest_overlay_job(
+    entry: Mapping[str, Any],
+    progress_callback: Callable[[Optional[str], Optional[str], Optional[float]], None],
+) -> Tuple[str, str]:
+    url = str(entry.get("url") or "")
+    label_hint = str(entry.get("label") or "").strip()
+    provider_hint = entry.get("provider")
+    resolved_url = _resolve_overlay_url(url)
+    derived_name = Path(urlparse(url).path).name
+    label = label_hint or derived_name or "remote-spectrum"
+
+    progress_callback("running", "Preparing download", None)
 
     try:
         from app.core.ingest import add_overlay_from_url as _add_overlay_from_url  # type: ignore
     except Exception:  # pragma: no cover - optional integration point
         _add_overlay_from_url = None
 
-    for item in queue:
-        if isinstance(item, dict):
-            url = str(item.get("url") or "")
-            label_hint = str(item.get("label") or "").strip()
-            provider_hint = item.get("provider")
-        else:
-            url = str(item or "")
-            label_hint = ""
-            provider_hint = None
+    try:
+        if _add_overlay_from_url is not None:
+            progress_callback("ingesting", "Delegating to ingest pipeline", None)
+            _add_overlay_from_url(resolved_url, label=label)
+            message = f"Added {label}"
+            progress_callback("success", message, 1.0)
+            return "success", message
 
-        if not url:
+        progress_callback("downloading", "Downloading overlay data", None)
+        response = requests.get(resolved_url, timeout=60)
+        response.raise_for_status()
+
+        filename = derived_name or f"overlay-{uuid.uuid4().hex[:8]}"
+        progress_callback("ingesting", "Ingesting overlay data", None)
+        try:
+            payload = ingest_local_file(filename, response.content)
+        except LocalIngestError as exc:
+            message = f"Unable to ingest {label}: {exc}"
+            progress_callback("error", message, 1.0)
+            return "error", message
+
+        payload = dict(payload)
+        payload.setdefault("label", label)
+        if provider_hint and not payload.get("provider"):
+            payload["provider"] = str(provider_hint)
+
+        metadata = dict(payload.get("metadata") or {})
+        metadata.setdefault("source", "Target overlay queue")
+        payload["metadata"] = metadata
+
+        provenance = dict(payload.get("provenance") or {})
+        ingest_info = dict(provenance.get("ingest") or {})
+        ingest_info.setdefault("method", "overlay_queue")
+        ingest_info["source_url"] = url
+        if resolved_url and resolved_url != url:
+            ingest_info.setdefault("resolved_url", resolved_url)
+        ingest_info.setdefault("label", label)
+        provenance["ingest"] = ingest_info
+        payload["provenance"] = provenance
+
+        added, message = _add_overlay_payload(payload)
+        status = "success" if added else "info"
+        progress_callback(status, message, 1.0)
+        return status, message
+    except Exception as exc:  # pragma: no cover - network/runtime failure
+        message = f"Failed to ingest {label}: {exc}"
+        progress_callback("error", message, 1.0)
+        return "error", message
+
+
+def _refresh_ingest_jobs(runtime: Dict[str, Any]) -> None:
+    futures = runtime.get("futures")
+    if not isinstance(futures, dict):
+        return
+
+    completed: List[str] = []
+    for job_id, future in list(futures.items()):
+        if not isinstance(future, Future):
+            completed.append(job_id)
+            continue
+        if not future.done():
             continue
 
-        resolved_url = _resolve_overlay_url(url)
-        derived_name = Path(urlparse(url).path).name
-        label = label_hint or derived_name or "remote-spectrum"
-
         try:
-            if _add_overlay_from_url is not None:
-                _add_overlay_from_url(resolved_url, label=label)
+            status, detail = future.result()
+        except Exception as exc:  # pragma: no cover - unexpected future failure
+            status, detail = "error", str(exc)
+
+        _update_ingest_job(runtime, job_id, status=status, detail=detail, progress=1.0, finished=True)
+        completed.append(job_id)
+
+    for job_id in completed:
+        futures.pop(job_id, None)
+
+
+def _snapshot_ingest_jobs(runtime: Optional[Mapping[str, Any]]) -> List[Dict[str, Any]]:
+    if not isinstance(runtime, Mapping):
+        return []
+
+    lock = runtime.get("lock")
+    jobs = runtime.get("jobs")
+    if lock is None or jobs is None or not hasattr(lock, "acquire"):
+        return []
+
+    with lock:
+        values = list(jobs.values()) if isinstance(jobs, dict) else []
+        return [dict(job) for job in values]
+
+
+def _process_ingest_queue() -> None:
+    runtime = _ensure_ingest_runtime()
+    queue = list(st.session_state.get("ingest_queue", []))
+    if queue:
+        for item in queue:
+            entry = _normalise_ingest_item(item)
+            if entry is None:
                 continue
+            _submit_ingest_job(runtime, entry)
+        st.session_state["ingest_queue"] = []
 
-            response = requests.get(resolved_url, timeout=60)
-            response.raise_for_status()
-
-            filename = derived_name or f"overlay-{uuid.uuid4().hex[:8]}"
-            try:
-                payload = ingest_local_file(filename, response.content)
-            except LocalIngestError as exc:
-                st.warning(f"Unable to ingest {label}: {exc}")
-                continue
-
-            payload = dict(payload)
-            payload.setdefault("label", label)
-            if provider_hint and not payload.get("provider"):
-                payload["provider"] = str(provider_hint)
-
-            metadata = dict(payload.get("metadata") or {})
-            metadata.setdefault("source", "Target overlay queue")
-            payload["metadata"] = metadata
-
-            provenance = dict(payload.get("provenance") or {})
-            ingest_info = dict(provenance.get("ingest") or {})
-            ingest_info.setdefault("method", "overlay_queue")
-            ingest_info["source_url"] = url
-            if resolved_url and resolved_url != url:
-                ingest_info.setdefault("resolved_url", resolved_url)
+    _refresh_ingest_jobs(runtime)
 
 
+def _render_ingest_queue_panel(container: DeltaGenerator) -> None:
+    container.divider()
+    container.markdown("### Overlay downloads")
 
+    runtime = st.session_state.get("ingest_runtime")
+    jobs = _snapshot_ingest_jobs(runtime)
+    if not jobs:
+        container.caption(
+            "Queued overlays will appear here while downloads run in the background."
+        )
+        return
 
-            ingest_info.setdefault("label", label)
-            provenance["ingest"] = ingest_info
-            payload["provenance"] = provenance
+    jobs_sorted = sorted(jobs, key=lambda job: job.get("submitted_at") or 0.0)
+    for job in jobs_sorted:
+        label = str(job.get("label") or "").strip() or "Remote overlay"
+        provider = job.get("provider")
+        if provider:
+            provider_str = str(provider).strip()
+            if provider_str:
+                label = f"{label} ({provider_str})"
 
-            added, message = _add_overlay_payload(payload)
-            (st.success if added else st.info)(message)
-        except Exception as exc:  # pragma: no cover - network/runtime failure
-            st.warning(f"Failed to ingest {label}: {exc}")
+        status = str(job.get("status") or "queued")
+        detail = str(job.get("detail") or "").strip()
+        status_title = _OVERLAY_STATUS_LABELS.get(
+            status, status.replace("_", " ").title()
+        )
+        summary = status_title if not detail else f"{status_title}: {detail}"
 
-    st.session_state["ingest_queue"] = []
+        progress = job.get("progress")
+        try:
+            progress_value = max(0.0, min(1.0, float(progress)))
+        except Exception:
+            progress_value = _OVERLAY_STATUS_PROGRESS.get(status, 0.0)
+
+        entry = container.container()
+        entry.markdown(f"**{label}**")
+        if status == "success":
+            entry.success(summary)
+        elif status == "info":
+            entry.info(summary)
+        elif status == "error":
+            entry.error(summary)
+        else:
+            entry.progress(progress_value)
+            entry.caption(summary)
 
 
 def _get_overlays() -> List[OverlayTrace]:
@@ -3192,6 +3434,7 @@ def render() -> None:
     sidebar = st.sidebar
     controls_panel = sidebar.container()
     _render_settings_group(controls_panel)
+    _render_ingest_queue_panel(controls_panel)
 
     overlay_tab, diff_tab, library_tab, docs_tab = st.tabs(
         ["Overlay", "Differential", "Library", "Docs & Provenance"]
