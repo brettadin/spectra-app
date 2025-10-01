@@ -12,3 +12,5 @@ Spectra App — Patch Log (append-only)
 - v1.2.0a (REF 1.2.0-A02 / 1.2.0-D01): normalised Angstrom aliases in FITS ingestion, extended regression coverage, and refreshed continuity docs for the hotfix.
 - v1.2.0b (REF 1.2.0b-A01 / 1.2.0b-D01): taught FITS table ingestion to recognise time-series axes, updated overlay/metadata UX to label time units, refreshed regression coverage, and rolled continuity docs for the release.
 - v1.2.0c (REF 1.2.0c-A01): fixed the example browser provider selector to respect session persistence without triggering Streamlit widget warnings, refreshed UI docs, and logged the QA verification.
+- v1.2.0d (REF 1.2.0d-A01): wired the Docs tab banner to current patch metadata so release summaries track `app/version.json`, added regression coverage, and refreshed continuity collateral.
+- v1.2.0e (REF 1.2.0e-A01): align the app header caption with active patch metadata and extend UI coverage to prevent regressions.

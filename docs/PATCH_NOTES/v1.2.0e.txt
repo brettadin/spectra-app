@@ -1,0 +1,1 @@
+v1.2.0e — App header caption now mirrors the active patch metadata and ships new regression coverage to prevent drift.

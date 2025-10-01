@@ -2540,13 +2540,11 @@ def _render_library_tab() -> None:
     _render_uploads_group(uploads_container)
 
 
-def _render_docs_tab() -> None:
+def _render_docs_tab(version_info: Mapping[str, object]) -> None:
     st.header("Docs & provenance")
-    st.info(
-        "v1.1.9 adds reliable Target catalog overlays: buttons use unique keys, "
-        "ledger lock respects confirmation flows, and queued spectra ingest "
-        "directly into the overlay workspace."
-    )
+    _, patch_summary, patch_line = _resolve_patch_metadata(version_info)
+    banner_text = patch_line or patch_summary or "No summary recorded."
+    st.info(banner_text)
     if not DOC_LIBRARY:
         st.info("Documentation library is empty.")
         return
@@ -2619,14 +2617,10 @@ def _render_docs_tab() -> None:
 # Entry points
 
 
-def render() -> None:
-    _ensure_session_state()
-    _process_ingest_queue()
-    version_info = get_version_info()
-    _, patch_summary, _ = _resolve_patch_metadata(version_info)
-
+def _render_app_header(version_info: Mapping[str, object]) -> None:
     st.title("Spectra App")
-    build_version = str(version_info.get("version") or "v?")
+    patch_version, patch_summary, _ = _resolve_patch_metadata(version_info)
+    build_version = patch_version or str(version_info.get("version") or "v?")
     timestamp = _format_version_timestamp(version_info.get("date_utc"))
     caption_parts = [build_version]
     if timestamp:
@@ -2634,6 +2628,14 @@ def render() -> None:
     if patch_summary:
         caption_parts.append(str(patch_summary))
     st.caption(" • ".join(part for part in caption_parts if part))
+
+
+def render() -> None:
+    _ensure_session_state()
+    _process_ingest_queue()
+    version_info = get_version_info()
+
+    _render_app_header(version_info)
 
     _render_example_browser()
     sidebar = st.sidebar
@@ -2650,7 +2652,7 @@ def render() -> None:
     with library_tab:
         _render_library_tab()
     with docs_tab:
-        _render_docs_tab()
+        _render_docs_tab(version_info)
 
     _render_status_bar(version_info)
 
