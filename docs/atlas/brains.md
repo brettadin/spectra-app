@@ -1,3 +1,8 @@
+# Runtime manifest continuity — 2025-10-13
+- **REF 1.2.0w-A01**: Restored `docs/runtime.json` to a single JSON object so tooling can parse python, platform, and library metadata without errors. 【F:docs/runtime.json†L1-L23】
+- Recorded the fix in the v1.2.0w patch notes and AI log while bumping the version manifest to keep release metadata aligned. 【F:docs/patch_notes/v1.2.0w.md†L1-L15】【F:docs/ai_log/2025-10-01.md†L1-L15】【F:app/version.json†L1-L5】
+- Alternative considered: mirror the runtime manifest into YAML for readability, but JSON remains the contract consumed by automation so we kept the format and corrected structure instead.
+
 # Patch log continuity — 2025-10-13
 - **REF 1.2.0v-A01**: Added the `v1.2.0v` patch log entry so `_resolve_patch_metadata()` keeps the header and Docs banner in sync with version metadata. 【F:PATCHLOG.txt†L24-L26】【F:app/_version.py†L30-L64】
 - Locked the Docs tab and header regression against the quick-add summary so continuity helpers surface the expected copy without manual updates. 【F:tests/ui/test_docs_tab.py†L16-L78】
