@@ -1033,6 +1033,17 @@ def _render_nist_form(container: DeltaGenerator) -> None:
 
 def _render_display_section(container: DeltaGenerator) -> None:
     container.markdown("#### Display & viewport")
+    overlays = _get_overlays()
+    cleared = container.button(
+        "Clear overlays",
+        key="clear_overlays_button",
+        help="Remove all overlays from the session.",
+        disabled=not overlays,
+    )
+    if cleared:
+        _clear_overlays()
+        st.session_state["overlay_clear_message"] = "Cleared all overlays."
+
     units = container.selectbox(
         "Wavelength units",
         ["nm", "Å", "µm", "cm^-1"],
@@ -1059,7 +1070,6 @@ def _render_display_section(container: DeltaGenerator) -> None:
     )
     st.session_state["display_full_resolution"] = bool(full_resolution)
 
-    overlays = _get_overlays()
     target_overlays = [trace for trace in overlays if trace.visible] or overlays
     if not target_overlays:
         st.session_state["auto_viewport"] = True
@@ -2376,8 +2386,7 @@ def _render_reference_controls(overlays: Sequence[OverlayTrace]) -> None:
     elif options:
         st.session_state["reference_trace_id"] = options[0]
 
-    col_select, col_action = st.columns([4, 1])
-    selection = col_select.selectbox(
+    selection = st.selectbox(
         "Reference trace",
         options,
         index=default_index,
@@ -2386,18 +2395,13 @@ def _render_reference_controls(overlays: Sequence[OverlayTrace]) -> None:
     )
     st.session_state["reference_trace_id"] = selection
 
-    cleared = False
-    if col_action.button("Clear overlays", key="clear_overlays_button"):
-        _clear_overlays()
-        cleared = True
-
-    if cleared:
-        st.warning("Cleared all overlays.")
-
 
 def _render_overlay_tab(version_info: Dict[str, str]) -> None:
     st.header("Overlay workspace")
     _render_local_upload()
+    cleared_message = st.session_state.pop("overlay_clear_message", None)
+    if cleared_message:
+        st.warning(str(cleared_message))
     overlays = _get_overlays()
     if not overlays:
         st.info("Upload a recorded spectrum or fetch from the archive tab to begin.")

@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.0l",
+  "version": "v1.2.0m",
   "date_utc": "2025-10-08T00:00:00Z",
-  "summary": "Segment overlay viewports by axis kind so time-series traces no longer clamp spectral plots."
+  "summary": "Move overlay clearing into display controls and confirm actions within the overlay workspace."
 }
