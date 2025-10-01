@@ -297,11 +297,12 @@ def render_targets_panel(
         manifest = json.loads(man_path.read_text())
         selected_row = filtered.loc[filtered["name"] == name].iloc[0]
 
+        layout_section = expander.container()
+        layout_section.markdown(f"### {manifest['canonical_name']}")
+
         summary = manifest.get("summaries", {}).get("auto", "")
-        summary_container = expander.container()
-        summary_container.markdown(f"### {manifest['canonical_name']}")
         if summary:
-            summary_container.info(summary)
+            layout_section.info(summary)
 
         mast_summary = manifest.get("datasets", {}).get("mast_summary", {})
         mast_products, total_count, truncated = _extract_mast_products(manifest)
@@ -309,7 +310,7 @@ def render_targets_panel(
         total_obs = mast_summary.get("total_count")
         planet_value = selected_row.get("n_planets", 0)
         planet_count = 0 if pd.isna(planet_value) else int(planet_value)
-        status_cols = summary_container.columns(3)
+        status_cols = layout_section.columns(3)
         status_cols[0].metric("Curated spectra", str(curated_count))
         status_cols[1].metric(
             "Total MAST hits", str(total_obs) if total_obs else "—"
@@ -329,7 +330,7 @@ def render_targets_panel(
             dec = coords.get("dec_deg")
             if ra is not None and dec is not None:
                 coord_caption.append(f"RA {ra:.3f}° | Dec {dec:.3f}°")
-        summary_container.caption(
+        layout_section.caption(
             " • ".join(flags + coord_caption)
             if flags or coord_caption
             else "Target metadata unavailable."
@@ -340,16 +341,11 @@ def render_targets_panel(
             and curated_count is not None
             and curated_count < total_obs
         ):
-            summary_container.caption(
+            layout_section.caption(
                 f"Showing {curated_count} curated MAST observations from {total_obs} total results."
             )
 
-        catalog_view = expander.container()
-        catalog_view.dataframe(
-            filtered[["name", "sptype", "n_planets", "has_mast", "has_eso", "summary"]]
-        )
-
-        product_section = expander.container()
+        product_section = layout_section.container()
         if mast_products:
             product_section.subheader("Curated MAST spectra")
             product_intro, product_filters = product_section.columns([3, 2])
@@ -440,6 +436,13 @@ def render_targets_panel(
                 )
         else:
             product_section.info("No curated MAST spectra found for this target.")
+
+        table_expander = expander.expander(
+            "Browse catalog entries", expanded=False
+        )
+        table_expander.dataframe(
+            filtered[["name", "sptype", "n_planets", "has_mast", "has_eso", "summary"]]
+        )
 
 
 # In your existing main.py, sidebar area:
