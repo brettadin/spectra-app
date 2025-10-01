@@ -36,7 +36,6 @@ from app.similarity import (
     viewport_alignment,
 )
 from app.similarity_panel import render_similarity_panel
-from app.ui.example_browser import ExamplePreview, render_example_browser_sheet
 from app.utils.downsample import build_downsample_tiers, build_lttb_downsample
 from app.utils.duplicate_ledger import DuplicateLedger
 from app.utils.flux import flux_percentile_range
@@ -475,11 +474,7 @@ def _ensure_session_state() -> None:
     st.session_state.setdefault("differential_result", None)
     st.session_state.setdefault("differential_sample_points", 2000)
     st.session_state.setdefault("network_available", True)
-    st.session_state.setdefault("example_browser_visible", False)
-    st.session_state.setdefault("example_browser_search", "")
-    st.session_state.setdefault("example_favourites", [])
     st.session_state.setdefault("example_recent", [])
-    st.session_state.setdefault("example_preview_cache", {})
     st.session_state.setdefault("duplicate_base_policy", "skip")
     st.session_state.setdefault("duplicate_ledger_lock", False)
     st.session_state.setdefault("duplicate_ledger_pending_action", None)
@@ -860,22 +855,6 @@ def _register_example_usage(spec: ExampleSpec, *, success: bool) -> None:
         recents.remove(spec.slug)
     recents.insert(0, spec.slug)
     st.session_state["example_recent"] = recents[:5]
-
-
-def _toggle_example_favourite(slug: str, desired: bool) -> None:
-    favourites = list(st.session_state.get("example_favourites", []))
-    if desired:
-        if slug not in favourites:
-            favourites.insert(0, slug)
-    else:
-        favourites = [item for item in favourites if item != slug]
-    st.session_state["example_favourites"] = favourites[:10]
-
-
-def _resolve_examples(slugs: Sequence[str]) -> List[ExampleSpec]:
-    return [spec for slug in slugs if (spec := EXAMPLE_MAP.get(slug))]
-
-
 def _ensure_reference_consistency() -> None:
     overlays = _get_overlays()
     current = st.session_state.get("reference_trace_id")
@@ -1238,55 +1217,11 @@ def _load_example(spec: ExampleSpec) -> Tuple[bool, str]:
     return added, message
 
 
-def _load_example_preview(
-    spec: ExampleSpec, *, allow_network: bool
-) -> Optional[ExamplePreview]:
-    cache: Dict[str, Dict[str, Tuple[float, ...]]] = st.session_state.setdefault(
-        "example_preview_cache", {}
-    )
-    cached = cache.get(spec.slug)
-    if cached:
-        return ExamplePreview(tuple(cached["wavelengths"]), tuple(cached["flux"]))
-    if not allow_network:
-        return None
-    try:
-        hits = provider_search(spec.provider, spec.query)
-    except Exception:
-        return None
-    if not hits:
-        return None
-    hit = hits[0]
-    wavelengths = [float(value) for value in hit.wavelengths_nm]
-    flux = [float(value) for value in hit.flux]
-    if not wavelengths or not flux:
-        return None
-    if len(wavelengths) != len(flux):
-        size = min(len(wavelengths), len(flux))
-        wavelengths = wavelengths[:size]
-        flux = flux[:size]
-    max_samples = 200
-    if len(wavelengths) > max_samples:
-        step = max(1, len(wavelengths) // max_samples)
-        wavelengths = wavelengths[::step]
-        flux = flux[::step]
-    preview = ExamplePreview(tuple(wavelengths), tuple(flux))
-    cache[spec.slug] = {"wavelengths": preview.wavelengths, "flux": preview.flux}
-    return preview
-
-
 def _render_examples_group(container: DeltaGenerator) -> None:
     container.markdown("#### Examples library")
     if not EXAMPLE_LIBRARY:
         container.caption("Example library unavailable.")
         return
-
-    container.button(
-        "Browse example library",
-        key="example_browser_open",
-        help="Open the example browser to search curated spectra.",
-        on_click=lambda: st.session_state.__setitem__("example_browser_visible", True),
-        use_container_width=True,
-    )
 
     quick_form = container.form("example_quick_add_form")
     quick_form.caption("Quick add")
@@ -1303,46 +1238,6 @@ def _render_examples_group(container: DeltaGenerator) -> None:
     if submitted:
         added, message = _load_example(selection)
         (container.success if added else container.info)(message)
-
-    favourites = _resolve_examples(st.session_state.get("example_favourites", []))
-    if favourites:
-        favourites_panel = container.expander("Favourites", expanded=False)
-        with favourites_panel:
-            fav_form = st.form("example_favourites_form")
-            favourite = fav_form.selectbox(
-                "Favourite example",
-                favourites,
-                format_func=lambda spec: spec.label,
-                key="example_favourite_select",
-                label_visibility="collapsed",
-            )
-            fav_submit = fav_form.form_submit_button(
-                "Load favourite", use_container_width=True
-            )
-            if fav_submit:
-                added, message = _load_example(favourite)
-                (favourites_panel.success if added else favourites_panel.info)(message)
-    else:
-        container.caption("Mark favourites in the browser to pin them here.")
-
-    recents = _resolve_examples(st.session_state.get("example_recent", []))
-    if recents:
-        recent_panel = container.expander("Recent", expanded=False)
-        with recent_panel:
-            recent_form = st.form("example_recent_form")
-            recent = recent_form.selectbox(
-                "Recent example",
-                recents,
-                format_func=lambda spec: spec.label,
-                key="example_recent_select",
-                label_visibility="collapsed",
-            )
-            recent_submit = recent_form.form_submit_button(
-                "Reload recent", use_container_width=True
-            )
-            if recent_submit:
-                added, message = _load_example(recent)
-                (recent_panel.success if added else recent_panel.info)(message)
 
     overlays = _get_overlays()
     if not overlays:
@@ -1507,25 +1402,6 @@ def _render_settings_group(container: DeltaGenerator) -> None:
     _render_examples_group(container)
     container.divider()
     _render_line_catalog_group(container)
-
-
-def _render_example_browser() -> None:
-    network_available = bool(st.session_state.get("network_available", True))
-    render_example_browser_sheet(
-        examples=EXAMPLE_LIBRARY,
-        visible=bool(st.session_state.get("example_browser_visible", False)),
-        favourites=list(st.session_state.get("example_favourites", [])),
-        recents=list(st.session_state.get("example_recent", [])),
-        load_callback=_load_example,
-        toggle_favourite=_toggle_example_favourite,
-        preview_loader=lambda spec: _load_example_preview(
-            spec, allow_network=network_available
-        ),
-        resolve_spec=_get_example_spec,
-        network_available=network_available,
-    )
-
-
 def _render_uploads_group(container: DeltaGenerator) -> None:
     container.markdown("#### Duplicate handling")
     base_options = {"skip": "Skip duplicates (session)", "allow": "Allow duplicates"}
@@ -3438,7 +3314,6 @@ def render() -> None:
 
     _render_app_header(version_info)
 
-    _render_example_browser()
     sidebar = st.sidebar
     controls_panel = sidebar.container()
     _render_settings_group(controls_panel)

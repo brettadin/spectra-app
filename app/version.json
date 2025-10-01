@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.0u",
-  "date_utc": "2025-10-12T09:00:00Z",
-  "summary": "Stabilise example browser provider persistence so reruns keep selections without Streamlit warnings."
+  "version": "v1.2.0v",
+  "date_utc": "2025-10-13T09:00:00Z",
+  "summary": "Retire the example browser and streamline the Examples sidebar around quick-add shortcuts."
 }
