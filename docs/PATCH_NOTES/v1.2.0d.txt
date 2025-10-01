@@ -1,1 +1,5 @@
+
+v1.2.0d — Docs tab banner now mirrors the active patch metadata, backed by new regression coverage and refreshed continuity logs.
+
 v1.2.0d — Overlay buttons now activate only for 1-D spectra, SEDs, or time-series; image/cube products render a disabled control with context and new tests assert the annotation.
+
