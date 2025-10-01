@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.0r",
-  "date_utc": "2025-10-11T18:00:00Z",
-  "summary": "Consolidate normalization and similarity controls into the differential workspace."
+  "version": "v1.2.0s",
+  "date_utc": "2025-10-12T18:00:00Z",
+  "summary": "Stabilise the example browser provider filter so reruns keep selections without Streamlit warnings."
 }
