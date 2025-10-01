@@ -392,7 +392,31 @@ def test_parse_fits_table_handles_byte_tunit_for_wavelength(monkeypatch):
     metadata = result["metadata"]
     assert metadata["axis_kind"] == "wavelength"
     assert metadata["reported_wavelength_unit"] == "Angstroms"
+    assert metadata["original_wavelength_unit"] == "Angstrom"
     assert result["wavelength"]["unit"] == "nm"
+
+
+def test_parse_fits_image_handles_plural_cunit_bytes(monkeypatch):
+    flux_values = np.array([1.0, 2.0, 3.0], dtype=float)
+
+    def _builder():
+        header = fits.Header()
+        header["CRVAL1"] = 4000.0
+        header["CDELT1"] = 2.0
+        header["CRPIX1"] = 1.0
+        header["CTYPE1"] = "WAVE"
+        header["CUNIT1"] = "Angstroms"
+        header.cards["CUNIT1"]._value = b"Angstroms"
+        image_hdu = fits.ImageHDU(data=flux_values, header=header, name="SCI")
+        return fits.HDUList([fits.PrimaryHDU(), image_hdu])
+
+    result = _parse_with_custom_hdul(monkeypatch, _builder)
+
+    assert result["axis_kind"] == "wavelength"
+    assert result["wavelength"]["unit"] == "nm"
+    metadata = result["metadata"]
+    assert metadata["reported_wavelength_unit"] == "Angstroms"
+    assert metadata["original_wavelength_unit"] == "m"
 
 
 def test_parse_fits_accepts_time_series_units(tmp_path):
