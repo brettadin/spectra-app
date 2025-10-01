@@ -4,6 +4,7 @@ from astropy import units as u
 from astropy.io import fits
 from astropy.wcs import WCS
 
+import app.server.ingest_fits as ingest_module
 from app.server.ingest_fits import parse_fits
 
 
@@ -67,6 +68,15 @@ def _write_time_series_table(tmp_path, *, unit: str, name: str):
     hdul.close()
 
     return path, time
+
+
+def _parse_with_custom_hdul(monkeypatch, builder):
+    def _fake_open(content, filename_hint=None):
+        hdul = builder()
+        return hdul, filename_hint or "in-memory.fits", None
+
+    monkeypatch.setattr(ingest_module, "_open_hdul", _fake_open)
+    return parse_fits(b"")
 
 
 def test_parse_fits_handles_logarithmic_dispersion(tmp_path):
@@ -361,6 +371,30 @@ def test_parse_fits_accepts_convertible_units_without_spectral_ctype(tmp_path):
     assert result["wavelength"]["unit"] == "nm"
     assert result["wavelength"]["values"] == pytest.approx(expected_wavelength_nm)
 
+
+def test_parse_fits_table_handles_byte_tunit_for_wavelength(monkeypatch):
+    wavelengths = np.array([400.0, 401.0, 402.0], dtype=float)
+    flux = np.array([1.0, 1.5, 1.75], dtype=float)
+
+    def _builder():
+        columns = [
+            fits.Column(name="WAVE", array=wavelengths, format="D"),
+            fits.Column(name="FLUX", array=flux, format="D"),
+        ]
+        table_hdu = fits.BinTableHDU.from_columns(columns, name="SPECTRUM")
+        table_hdu.header["TUNIT1"] = "Angstroms"
+        table_hdu.header.cards["TUNIT1"]._value = b"Angstroms"
+        return fits.HDUList([fits.PrimaryHDU(), table_hdu])
+
+    result = _parse_with_custom_hdul(monkeypatch, _builder)
+
+    assert result["axis_kind"] == "wavelength"
+    metadata = result["metadata"]
+    assert metadata["axis_kind"] == "wavelength"
+    assert metadata["reported_wavelength_unit"] == "Angstroms"
+    assert result["wavelength"]["unit"] == "nm"
+
+
 def test_parse_fits_accepts_time_series_units(tmp_path):
     time = np.array([0.0, 1.5, 3.25, 4.0], dtype=float)
     flux = np.array([10.0, 11.0, 12.0, 11.5], dtype=float)
@@ -403,6 +437,33 @@ def test_parse_fits_accepts_time_series_units(tmp_path):
     metadata = result["metadata"]
     assert metadata.get("time_range") == [pytest.approx(time.min()), pytest.approx(time.max())]
     assert metadata.get("points") == len(time)
+
+
+def test_parse_fits_table_handles_byte_time_unit(monkeypatch):
+    time = np.array([0.0, 1.0, 2.0, 3.0], dtype=float)
+    flux = np.array([5.0, 5.5, 6.0, 6.5], dtype=float)
+
+    def _builder():
+        columns = [
+            fits.Column(name="TIME", array=time, format="D"),
+            fits.Column(name="FLUX", array=flux, format="D", unit="e-/s"),
+        ]
+        table_hdu = fits.BinTableHDU.from_columns(columns, name="LC")
+        table_hdu.header["TUNIT1"] = "BJD - 2457000, days"
+        table_hdu.header.cards["TUNIT1"]._value = b"BJD - 2457000, days"
+        table_hdu.header["CUNIT1"] = "BJD - 2457000, days"
+        table_hdu.header.cards["CUNIT1"]._value = b"BJD - 2457000, days"
+        return fits.HDUList([fits.PrimaryHDU(), table_hdu])
+
+    result = _parse_with_custom_hdul(monkeypatch, _builder)
+
+    assert result["axis_kind"] == "time"
+    metadata = result["metadata"]
+    assert metadata["axis_kind"] == "time"
+    assert metadata["time_unit"] == "day"
+    assert metadata.get("time_frame") == "BJD"
+    assert metadata.get("time_offset") == pytest.approx(2457000.0)
+    assert result["time"]["unit"] == "day"
 
 
 def test_parse_fits_time_unit_btjd_with_offset(tmp_path):

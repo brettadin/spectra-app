@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.0n",
-  "date_utc": "2025-10-10T00:00:00Z",
-  "summary": "Add FITS image overlay ingestion with a dedicated viewer and metadata pipeline."
+  "version": "v1.2.0o",
+  "date_utc": "2025-10-10T00:15:00Z",
+  "summary": "Handle FITS byte-string axis units during spectral and time-series ingestion."
 }
