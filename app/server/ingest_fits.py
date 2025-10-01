@@ -208,7 +208,9 @@ _TIME_LABEL_TOKENS = {
 }
 
 
-_TIME_FRAME_PATTERN = re.compile(r"\b([bhmt]jd)\b", re.IGNORECASE)
+_TIME_FRAME_PATTERN = re.compile(
+    r"\b([a-z]{0,4}jd(?:[_-][a-z]+)*)\b", re.IGNORECASE
+)
 
 
 _TIME_UNIT_MAP = {
@@ -230,6 +232,10 @@ _TIME_UNIT_MAP = {
     "day": ("day", u.day),
     "days": ("day", u.day),
     "d": ("day", u.day),
+    "btjd": ("day", u.day),
+    "bmjd": ("day", u.day),
+    "bjd_tdb": ("day", u.day),
+    "bjd-tdb": ("day", u.day),
 }
 
 
@@ -255,8 +261,9 @@ def _parse_time_unit_hint(unit_text: Optional[str]) -> Optional[Dict[str, object
 
     if frame_match:
         # Look for an offset pattern like "BJD - 2457000"
+        token = re.escape(frame_match.group(0))
         pattern = re.compile(
-            rf"{re.escape(frame_match.group(0))}\s*[+-]\s*([0-9]+(?:\.[0-9]+)?)",
+            rf"{token}\s*[+-]\s*([0-9]+(?:\.[0-9]+)?)",
             re.IGNORECASE,
         )
         offset_match = pattern.search(lowered)

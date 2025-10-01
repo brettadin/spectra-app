@@ -50,6 +50,25 @@ def _assert_wavelength_quantity(payload, expected):
     assert quantity.to_value(u.nm) == pytest.approx(expected)
 
 
+def _write_time_series_table(tmp_path, *, unit: str, name: str):
+    time = np.array([0.0, 1.0, 2.0], dtype=float)
+    flux = np.array([10.0, 11.0, 12.0], dtype=float)
+
+    columns = [
+        fits.Column(name="TIME", array=time, format="D", unit=unit),
+        fits.Column(name="FLUX", array=flux, format="D", unit="e-/s"),
+    ]
+
+    table_hdu = fits.BinTableHDU.from_columns(columns, name=name)
+    hdul = fits.HDUList([fits.PrimaryHDU(), table_hdu])
+
+    path = tmp_path / f"{name.lower()}_table.fits"
+    hdul.writeto(path, overwrite=True)
+    hdul.close()
+
+    return path, time
+
+
 def test_parse_fits_handles_logarithmic_dispersion(tmp_path):
     flux_values = np.linspace(1.0, 5.0, 5)
 
@@ -344,6 +363,41 @@ def test_parse_fits_accepts_time_series_units(tmp_path):
     metadata = result["metadata"]
     assert metadata.get("time_range") == [pytest.approx(time.min()), pytest.approx(time.max())]
     assert metadata.get("points") == len(time)
+
+
+def test_parse_fits_time_unit_btjd_with_offset(tmp_path):
+    fits_path, time = _write_time_series_table(
+        tmp_path, unit="BTJD - 2457000", name="BTJD"
+    )
+
+    result = parse_fits(str(fits_path))
+
+    assert result["axis_kind"] == "time"
+    assert result["metadata"]["axis_kind"] == "time"
+    metadata = result["metadata"]
+    assert metadata.get("time_frame") == "BTJD"
+    assert metadata.get("time_offset") == pytest.approx(2457000.0)
+    provenance_units = result["provenance"].get("units", {})
+    assert provenance_units.get("time_frame") == "BTJD"
+    assert provenance_units.get("time_offset") == pytest.approx(2457000.0)
+    assert result["wavelength_nm"] == pytest.approx(time)
+
+
+def test_parse_fits_time_unit_bjd_tdb_with_offset(tmp_path):
+    fits_path, time = _write_time_series_table(
+        tmp_path, unit="BJD_TDB - 2454833.0", name="BJD_TDB"
+    )
+
+    result = parse_fits(str(fits_path))
+
+    assert result["axis_kind"] == "time"
+    metadata = result["metadata"]
+    assert metadata.get("time_frame") == "BJD_TDB"
+    assert metadata.get("time_offset") == pytest.approx(2454833.0)
+    provenance_units = result["provenance"].get("units", {})
+    assert provenance_units.get("time_frame") == "BJD_TDB"
+    assert provenance_units.get("time_offset") == pytest.approx(2454833.0)
+    assert result["wavelength_nm"] == pytest.approx(time)
 
 
 def test_parse_fits_assumes_nm_for_wavelength_column_without_units(tmp_path):
