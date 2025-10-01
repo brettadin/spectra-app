@@ -1,0 +1,3 @@
+Spectra App — v1.2.0k
+- Reorganize the target catalog with search filters, manifest metrics, and grouped overlay actions.
+- Add Streamlit snapshot coverage to lock the new layout and manifest summary ordering.

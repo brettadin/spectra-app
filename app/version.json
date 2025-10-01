@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.0j",
-  "date_utc": "2025-10-06T00:00:00Z",
-  "summary": "Relocate similarity analysis into the differential workspace and refresh coverage."
+  "version": "v1.2.0k",
+  "date_utc": "2025-10-07T00:00:00Z",
+  "summary": "Reorganize the target catalog with search, manifest highlights, and grouped overlay actions."
 }

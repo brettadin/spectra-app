@@ -3,6 +3,7 @@
 ## Target catalog overlay queue
 - **Flow:** Target catalog → Overlay queue → ingestion processor. Selecting "Overlay" on a curated spectrum now enqueues the remote URL with a stable label. The main app loop downloads each entry, routes it through the existing local ingest pipeline, and publishes the overlay with provenance.
 - **State:** The queue is processed on every rerun and is cleared after ingestion. Ledger-lock decisions continue to gate duplicate handling; the checkbox mirrors the `duplicate_ledger_lock` model state and no longer mutates widget keys directly.
+- **UX:** The sidebar expander now opens with search + filter controls above the catalog table, followed by a manifest summary block (name, curated counts, archive flags, coordinates) before the grouped overlay actions.
 
 ## Support notes
 - **Ingestion failures:** Users see a toast explaining which overlay failed. Inspect Streamlit server logs for stack traces and retry by re-queuing the spectrum. Network outages or malformed payloads will leave the queue empty after processing.
