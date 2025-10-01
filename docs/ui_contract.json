@@ -22,7 +22,7 @@
   "plot": [
     "legend_non_empty"
   ],
-  "v": "v1.2.0j",
+  "v": "v1.2.0n",
   "must_have": [
     "Overlay tab present",
     "Differential tab present",
@@ -35,6 +35,7 @@
     "Export manifest contains fetch_provenance when traces are fetched",
     "Differential A/B selections persist; epsilon guard toggle exists",
     "Similarity analysis panel lives in Differential tab when two spectra loaded",
-    "NIST line catalog fetch available from sidebar when online"
+    "NIST line catalog fetch available from sidebar when online",
+    "Image overlays render a zoomable panel with intensity clip control"
   ]
 }

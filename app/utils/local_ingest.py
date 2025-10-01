@@ -455,23 +455,49 @@ def ingest_local_file(name: str, content: bytes) -> Dict[str, object]:
         conversions["flux_unit"] = {"from": reported_flux, "to": flux_unit}
     if conversions:
         ingest_info.setdefault("conversions", conversions)
-    ingest_info.setdefault("samples", len(parsed.get("wavelength_nm") or []))
+    axis_kind = parsed.get("axis_kind")
+    normalized_axis_kind = str(axis_kind).lower() if axis_kind else None
+
+    if normalized_axis_kind == "image":
+        image_payload = parsed.get("image") if isinstance(parsed.get("image"), Mapping) else {}
+        shape = image_payload.get("shape") if isinstance(image_payload, Mapping) else None
+        if isinstance(shape, (list, tuple)):
+            try:
+                ingest_info.setdefault("samples", int(np.prod([int(dim) for dim in shape])))
+            except Exception:
+                ingest_info.setdefault("samples", 0)
+        else:
+            ingest_info.setdefault("samples", 0)
+    else:
+        ingest_info.setdefault("samples", len(parsed.get("wavelength_nm") or []))
 
     label = _choose_label(original_name, parsed)
-    summary = parsed.get("summary") or _build_summary(
-        len(parsed.get("wavelength_nm") or []), metadata, flux_unit
-    )
+    if parsed.get("summary"):
+        summary = parsed["summary"]
+    elif normalized_axis_kind == "image":
+        image_payload = parsed.get("image") if isinstance(parsed.get("image"), Mapping) else {}
+        shape = image_payload.get("shape") if isinstance(image_payload, Mapping) else None
+        if isinstance(shape, (list, tuple)) and shape:
+            dims = " × ".join(str(int(dim)) for dim in shape)
+            summary = f"{dims} image"
+        else:
+            summary = "Image overlay"
+    else:
+        summary = _build_summary(
+            len(parsed.get("wavelength_nm") or []), metadata, flux_unit
+        )
 
     wavelengths = list(parsed.get("wavelength_nm") or [])
     flux_values = list(parsed.get("flux") or [])
 
     fallback_info = (parsed.get("provenance") or {}).get("dense_parser_fallback")
     min_samples = 2 if fallback_info else 3
-    if len(wavelengths) < min_samples or len(flux_values) < min_samples:
-        raise LocalIngestError(
-            f"{original_name} contains only {min(len(wavelengths), len(flux_values))} samples; "
-            "expected a spectral table rather than metadata."
-        )
+    if normalized_axis_kind != "image":
+        if len(wavelengths) < min_samples or len(flux_values) < min_samples:
+            raise LocalIngestError(
+                f"{original_name} contains only {min(len(wavelengths), len(flux_values))} samples; "
+                "expected a spectral table rather than metadata."
+            )
 
     wavelength_axis = parsed.get("wavelength")
     if isinstance(wavelength_axis, Mapping):
@@ -500,9 +526,11 @@ def ingest_local_file(name: str, content: bytes) -> Dict[str, object]:
         "cache_dataset_id": metadata.get("cache_dataset_id"),
     }
 
-    axis_kind = parsed.get("axis_kind")
     if axis_kind is not None:
         payload["axis_kind"] = axis_kind
+
+    if normalized_axis_kind == "image" and isinstance(parsed.get("image"), Mapping):
+        payload["image"] = dict(parsed.get("image"))
 
     time_payload = parsed.get("time")
     if isinstance(time_payload, Mapping):

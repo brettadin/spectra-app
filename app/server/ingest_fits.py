@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import io
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 
 import re
 
@@ -329,8 +329,8 @@ def _unit_is_wavelength(unit: Optional[str]) -> bool:
     if not unit:
         return False
     try:
-        canonical_unit(str(unit))
-    except ValueError:
+        to_nm([1.0], unit)
+    except Exception:
         return False
     return True
 
@@ -774,9 +774,10 @@ def _is_wavenumber_unit(unit: Optional[str]) -> bool:
     if not unit:
         return False
     try:
-        return canonical_unit(str(unit)) == "cm^-1"
+        resolved = canonical_unit(str(unit))
     except ValueError:
         return False
+    return resolved in {"cm^-1", "cm-1", "1/cm"}
 
 
 
@@ -1118,7 +1119,44 @@ def _ingest_table_hdu(
         "table",
         provenance_details,
         axis_details,
+        None,
     )
+
+
+def _summarize_wcs(header) -> Dict[str, object]:
+    summary: Dict[str, object] = {}
+    try:
+        wcs = WCS(header)
+    except Exception as exc:  # pragma: no cover - defensive WCS branch
+        return {"error": str(exc)}
+
+    if getattr(wcs, "naxis", 0) <= 0:
+        return summary
+
+    if getattr(wcs, "world_axis_physical_types", None):
+        summary["world_axis_physical_types"] = [
+            _coerce_header_value(value)
+            for value in wcs.world_axis_physical_types
+            if value is not None
+        ]
+
+    axis_units: List[Optional[str]] = []
+    for unit in getattr(wcs, "world_axis_units", []) or []:
+        axis_units.append(str(unit) if unit else None)
+    if any(axis_units):
+        summary["world_axis_units"] = axis_units
+
+    try:
+        header_obj = wcs.to_header(relax=True)
+    except Exception:  # pragma: no cover - Astropy relax path
+        header_obj = None
+    if header_obj is not None:
+        summary["header"] = {
+            str(key): _coerce_header_value(header_obj[key])
+            for key in header_obj.keys()
+        }
+
+    return summary
 
 
 def _ingest_image_hdu(
@@ -1133,16 +1171,102 @@ def _ingest_image_hdu(
     bool,
     str,
     Dict[str, object],
+    Dict[str, object],
 ]:
     masked = np.ma.array(hdu.data)
+    if masked.size == 0:
+        raise ValueError("FITS data array is empty.")
+
+    axis_type = hdu.header.get("CTYPE1")
+    unit_hint_raw = hdu.header.get("CUNIT1") or hdu.header.get("XUNIT")
+    has_spectral_axis = _ctype_is_spectral(axis_type) or _unit_is_wavelength(unit_hint_raw)
+    if not has_spectral_axis:
+        try:
+            wcs = WCS(hdu.header)
+        except Exception:  # pragma: no cover - defensive WCS parsing
+            wcs = None
+        if wcs is not None:
+            physical_types = getattr(wcs, "world_axis_physical_types", None)
+            if physical_types:
+                has_spectral_axis = any(
+                    isinstance(kind, str)
+                    and (
+                        "spectral" in kind.lower()
+                        or kind.lower().startswith("em.")
+                    )
+                    for kind in physical_types
+                )
+
+    flux_unit_hint = (
+        hdu.header.get("BUNIT")
+        or hdu.header.get("BUNIT1")
+        or hdu.header.get("FLUXUNIT")
+    )
+
+    if not has_spectral_axis and masked.ndim >= 2:
+        data_array = np.array(np.ma.getdata(masked), dtype=float)
+        mask_array = np.ma.getmaskarray(masked)
+        mask_flag = bool(np.any(mask_array)) and mask_array is not np.ma.nomask
+        shape = list(int(dim) for dim in masked.shape)
+        finite = data_array[np.isfinite(data_array)]
+        if finite.size:
+            value_min = float(np.min(finite))
+            value_max = float(np.max(finite))
+        else:
+            value_min = float("nan")
+            value_max = float("nan")
+
+        image_payload: Dict[str, Any] = {
+            "data": data_array.tolist(),
+            "shape": shape,
+            "dtype": str(data_array.dtype),
+        }
+        if mask_flag:
+            image_payload["mask"] = np.array(mask_array, dtype=bool).tolist()
+        image_payload["range"] = [value_min, value_max]
+
+        wcs_meta = _summarize_wcs(hdu.header)
+        provenance_details: Dict[str, object] = {
+            "wcs": wcs_meta,
+            "image_shape": shape,
+        }
+        if mask_flag:
+            provenance_details["mask_applied"] = True
+
+        axis_details: Dict[str, object] = {"kind": "image"}
+        if wcs_meta:
+            axis_details["wcs"] = wcs_meta
+
+        unit_inference = {
+            "header": _coerce_header_value(unit_hint_raw) if unit_hint_raw else None,
+            "resolved": None,
+        }
+
+        empty_axis = u.Quantity(np.array([], dtype=float), u.dimensionless_unscaled)
+        empty_flux = np.array([], dtype=float)
+
+        extra_payload = {"image": image_payload}
+
+        return (
+            empty_axis,
+            empty_flux,
+            "pixel",
+            None,
+            flux_unit_hint,
+            unit_inference,
+            mask_flag,
+            "image",
+            provenance_details,
+            axis_details,
+            extra_payload,
+        )
+
     flux_array, mask_flat, collapse_meta = _collapse_image_data(masked)
 
     if flux_array.size == 0:
         raise ValueError("FITS data array is empty.")
 
-    axis_type = hdu.header.get("CTYPE1")
-    unit_hint_raw = hdu.header.get("CUNIT1") or hdu.header.get("XUNIT")
-    if not (_ctype_is_spectral(axis_type) or _unit_is_wavelength(unit_hint_raw)):
+    if not has_spectral_axis:
         axis_display = _coerce_header_value(axis_type) if axis_type is not None else None
         unit_display = _coerce_header_value(unit_hint_raw) if unit_hint_raw is not None else None
         raise ValueError(
@@ -1180,11 +1304,6 @@ def _ingest_image_hdu(
     if flux_array.size == 0:
         raise ValueError("FITS ingestion yielded no positive wavelength samples.")
 
-    flux_unit_hint = (
-        hdu.header.get("BUNIT")
-        or hdu.header.get("BUNIT1")
-        or hdu.header.get("FLUXUNIT")
-    )
     unit_inference = {
         "header": _coerce_header_value(
             hdu.header.get("CUNIT1") or hdu.header.get("XUNIT")
@@ -1225,6 +1344,7 @@ def _ingest_image_hdu(
         "image",
         provenance_details,
         axis_details,
+        {},
     )
 
 
@@ -1283,6 +1403,7 @@ def parse_fits(content: HeaderInput, *, filename: Optional[str] = None) -> Dict[
             data_mode,
             provenance_details,
             axis_details,
+            extra_payload,
         ) = details
 
         header = data_hdu.header
@@ -1293,6 +1414,9 @@ def parse_fits(content: HeaderInput, *, filename: Optional[str] = None) -> Dict[
 
         axis_details = axis_details or {}
         axis_kind = axis_details.get("kind", "wavelength")
+
+        if extra_payload is None:
+            extra_payload = {}
 
         if axis_kind == "time":
             canonical_unit = axis_details.get("canonical_unit") or resolved_unit or "day"
@@ -1332,6 +1456,31 @@ def parse_fits(content: HeaderInput, *, filename: Optional[str] = None) -> Dict[
                     reported_wavelength_unit
                 )
             axis_payload_unit = canonical_unit
+        elif axis_kind == "image":
+            axis_values = np.asarray([], dtype=float)
+            metadata = {
+                "axis_kind": axis_kind,
+                "flux_unit": flux_unit,
+                "reported_flux_unit": _coerce_header_value(flux_unit_hint)
+                if flux_unit_hint
+                else None,
+            }
+            image_payload = extra_payload.get("image") if isinstance(extra_payload, Mapping) else None
+            if isinstance(image_payload, Mapping):
+                shape = image_payload.get("shape")
+                if isinstance(shape, (list, tuple)):
+                    metadata["image_shape"] = list(int(s) for s in shape)
+                    try:
+                        metadata["points"] = int(np.prod([int(s) for s in shape]))
+                    except Exception:
+                        pass
+                value_range = image_payload.get("range")
+                if isinstance(value_range, (list, tuple)) and len(value_range) == 2:
+                    try:
+                        metadata["image_range"] = [float(value_range[0]), float(value_range[1])]
+                    except (TypeError, ValueError):
+                        pass
+            axis_payload_unit = None
         else:
             axis_unit = u.nm
             axis_values = np.asarray(
@@ -1381,9 +1530,11 @@ def parse_fits(content: HeaderInput, *, filename: Optional[str] = None) -> Dict[
 
         if axis_kind == "time":
             metadata.setdefault("time_axis_type", header.get("CTYPE1"))
-        else:
+        elif axis_kind == "wavelength":
             metadata.setdefault("wavelength_axis_type", header.get("CTYPE1"))
             metadata.setdefault("spectral_reference", header.get("SPECSYS"))
+        else:
+            metadata.setdefault("image_axis_ctype", header.get("CTYPE1"))
 
         label_candidates: List[str] = []
         for field in ("target", "source"):
@@ -1404,6 +1555,15 @@ def parse_fits(content: HeaderInput, *, filename: Optional[str] = None) -> Dict[
             "data_mode": data_mode,
             "samples": int(flux_array.size),
         }
+        if axis_kind == "image":
+            image_payload = extra_payload.get("image") if isinstance(extra_payload, Mapping) else None
+            if isinstance(image_payload, Mapping):
+                shape = image_payload.get("shape")
+                if isinstance(shape, (list, tuple)):
+                    try:
+                        provenance["samples"] = int(np.prod([int(s) for s in shape]))
+                    except Exception:
+                        pass
         provenance["hdu_type"] = type(data_hdu).__name__
         if filtered_unit_inference:
             provenance["unit_inference"] = filtered_unit_inference
@@ -1430,7 +1590,7 @@ def parse_fits(content: HeaderInput, *, filename: Optional[str] = None) -> Dict[
                 provenance_units["time_reported"] = _coerce_header_value(
                     reported_wavelength_unit
                 )
-        else:
+        elif axis_kind == "wavelength":
             provenance_units["wavelength_converted_to"] = "nm"
             if resolved_unit:
                 provenance_units["wavelength_input"] = resolved_unit
@@ -1438,6 +1598,8 @@ def parse_fits(content: HeaderInput, *, filename: Optional[str] = None) -> Dict[
                 provenance_units["wavelength_reported"] = _coerce_header_value(
                     reported_wavelength_unit
                 )
+        else:
+            provenance_units["image_axes"] = axis_details.get("wcs")
         if flux_unit_hint:
             provenance_units["flux_input"] = _coerce_header_value(flux_unit_hint)
         if derived_flux_unit:
@@ -1451,7 +1613,7 @@ def parse_fits(content: HeaderInput, *, filename: Optional[str] = None) -> Dict[
                     "from": resolved_unit,
                     "to": axis_payload_unit,
                 }
-        elif resolved_unit and str(resolved_unit).lower() != "nm":
+        elif axis_kind == "wavelength" and resolved_unit and str(resolved_unit).lower() != "nm":
             conversions["wavelength_unit"] = {"from": resolved_unit, "to": "nm"}
         if flux_unit_hint and str(flux_unit_hint) != flux_unit:
             conversions["flux_unit"] = {
@@ -1481,10 +1643,10 @@ def parse_fits(content: HeaderInput, *, filename: Optional[str] = None) -> Dict[
             if header.get(key) is not None
         }
 
-        axis = "emission"
+        axis = "image" if axis_kind == "image" else "emission"
 
-        axis_values_list = axis_values.tolist()
-        flux_list = flux_array.tolist()
+        axis_values_list = axis_values.tolist() if axis_kind != "image" else []
+        flux_list = flux_array.tolist() if axis_kind != "image" else []
         axis_payload: Dict[str, object] = {
             "values": axis_values_list,
             "unit": axis_payload_unit,
@@ -1497,10 +1659,14 @@ def parse_fits(content: HeaderInput, *, filename: Optional[str] = None) -> Dict[
                 axis_payload["frame"] = axis_details["frame"]
             if axis_details.get("offset") is not None:
                 axis_payload["offset"] = axis_details["offset"]
+        elif axis_kind == "image":
+            image_payload = extra_payload.get("image") if isinstance(extra_payload, Mapping) else None
+            if isinstance(image_payload, Mapping):
+                axis_payload.update({k: v for k, v in image_payload.items() if k not in {"data"}})
 
         payload_time = axis_payload if axis_kind == "time" else None
 
-        return {
+        result: Dict[str, object] = {
             "label_hint": label_hint,
             "wavelength_nm": axis_values_list,
             "axis_values": axis_values_list,
@@ -1516,5 +1682,15 @@ def parse_fits(content: HeaderInput, *, filename: Optional[str] = None) -> Dict[
             "time": payload_time,
             "kind": "spectrum",
         }
+        if axis_kind == "image":
+            image_payload = extra_payload.get("image") if isinstance(extra_payload, Mapping) else None
+            if isinstance(image_payload, Mapping):
+                result["image"] = image_payload
+            result["kind"] = "image"
+            result["flux"] = []
+            result["wavelength_nm"] = []
+            result["axis_values"] = []
+
+        return result
     finally:
         hdul.close()

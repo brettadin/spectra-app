@@ -73,12 +73,16 @@ class OverlayTrace:
     flux_kind: str = "relative"
     axis: str = "emission"
     axis_kind: str = "wavelength"
+    image: Optional[Dict[str, object]] = None
     downsample: Dict[int, Tuple[Tuple[float, ...], Tuple[float, ...]]] = field(
         default_factory=dict
     )
     cache_dataset_id: Optional[str] = None
 
     def to_dataframe(self) -> pd.DataFrame:
+        if str(self.axis_kind).strip().lower() == "image":
+            return pd.DataFrame(columns=["wavelength_nm", "flux"])
+
         data: Dict[str, Iterable[object]] = {
             "wavelength_nm": self.wavelength_nm,
             "flux": self.flux,
@@ -97,6 +101,9 @@ class OverlayTrace:
         max_points: Optional[int] = 8000,
         include_hover: bool = True,
     ) -> Tuple[np.ndarray, np.ndarray, Optional[List[str]], bool]:
+        if str(self.axis_kind).strip().lower() == "image":
+            return np.array([], dtype=float), np.array([], dtype=float), None, True
+
         wavelengths = np.asarray(self.wavelength_nm, dtype=float)
         flux_values = np.asarray(self.flux, dtype=float)
         hover_values = list(self.hover) if include_hover and self.hover else None
@@ -165,6 +172,8 @@ class OverlayTrace:
         max_points: Optional[int] = None,
         viewport: Tuple[float | None, float | None] | None = None,
     ) -> TraceVectors:
+        if str(self.axis_kind).strip().lower() == "image":
+            raise ValueError("Image overlays cannot be vectorised.")
         if max_points is None and viewport is None:
             df = self.to_dataframe()
             return TraceVectors(
@@ -191,6 +200,14 @@ class OverlayTrace:
 
     @property
     def points(self) -> int:
+        if str(self.axis_kind).strip().lower() == "image":
+            shape = self.image.get("shape") if isinstance(self.image, Mapping) else None
+            if isinstance(shape, (list, tuple)):
+                try:
+                    return int(np.prod([int(dim) for dim in shape]))
+                except Exception:
+                    return 0
+            return 0
         return len(self.wavelength_nm)
 
 
@@ -413,6 +430,8 @@ def _determine_primary_axis_kind(
     if groups.get("wavelength"):
         return "wavelength"
     for kind, traces in groups.items():
+        if kind == "image":
+            continue
         if traces:
             return kind
     return "wavelength"
@@ -643,6 +662,26 @@ def _compute_fingerprint(wavelengths: Sequence[float], flux: Sequence[float]) ->
     return hashlib.sha1(combined.tobytes()).hexdigest()
 
 
+def _compute_image_fingerprint(image: Mapping[str, object]) -> str:
+    data = image.get("data")
+    arr = np.asarray(data, dtype=np.float64)
+    flattened = np.round(arr.reshape(-1), 6)
+    payload_parts = [flattened.tobytes()]
+    mask = image.get("mask")
+    if mask is not None:
+        mask_arr = np.asarray(mask, dtype=np.bool_).reshape(-1)
+        payload_parts.append(mask_arr.tobytes())
+    shape = image.get("shape")
+    if isinstance(shape, (list, tuple)):
+        shape_tuple = tuple(int(dim) for dim in shape)
+    else:
+        shape_tuple = tuple(int(dim) for dim in arr.shape)
+    payload_parts.append(repr(shape_tuple).encode("utf-8"))
+    dtype_label = str(image.get("dtype") or arr.dtype)
+    payload_parts.append(dtype_label.encode("utf-8"))
+    return hashlib.sha1(b"".join(payload_parts)).hexdigest()
+
+
 def _add_overlay(
     label: str,
     wavelengths: Sequence[float],
@@ -660,7 +699,84 @@ def _add_overlay(
     axis_kind: Optional[str] = None,
     downsample: Optional[Mapping[int, Mapping[str, Sequence[float]]]] = None,
     cache_dataset_id: Optional[str] = None,
+    image: Optional[Mapping[str, object]] = None,
 ) -> Tuple[bool, str]:
+    normalized_axis_kind = _normalize_axis_kind(
+        axis_kind or (metadata or {}).get("axis_kind") if metadata else axis_kind
+    )
+
+    if normalized_axis_kind == "image":
+        if not isinstance(image, Mapping):
+            return False, "No image payload provided."
+        data = image.get("data")
+        try:
+            data_array = np.asarray(data, dtype=float)
+        except Exception as exc:
+            return False, f"Unable to interpret image pixels: {exc}"
+        if data_array.size == 0:
+            return False, "Image payload contains no pixels."
+        overlays = _get_overlays()
+        fingerprint = _compute_image_fingerprint(image)
+        policy = st.session_state.get("duplicate_policy", "allow")
+        if policy in {"skip", "ledger"}:
+            for existing in overlays:
+                if existing.fingerprint == fingerprint:
+                    return False, f"Skipped duplicate trace: {label}"
+            if policy == "ledger":
+                ledger: DuplicateLedger = st.session_state["duplicate_ledger"]
+                if ledger.seen(fingerprint):
+                    return False, f"Trace already recorded in ledger: {label}"
+
+        trace = OverlayTrace(
+            trace_id=str(uuid.uuid4()),
+            label=label,
+            wavelength_nm=tuple(),
+            flux=tuple(),
+            kind=kind,
+            provider=provider,
+            summary=summary,
+            metadata=dict(metadata or {}),
+            provenance=dict(provenance or {}),
+            fingerprint=fingerprint,
+            hover=None,
+            flux_unit=str(flux_unit or "arb"),
+            flux_kind=str(flux_kind or "relative"),
+            axis=str(axis or "image"),
+            axis_kind="image",
+            image=dict(image),
+            downsample={},
+            cache_dataset_id=cache_dataset_id,
+        )
+        overlays = _get_overlays()
+        overlays.append(trace)
+        _set_overlays(overlays)
+
+        if st.session_state.get("duplicate_policy", "allow") == "ledger":
+            ledger = st.session_state["duplicate_ledger"]
+            ledger.record(
+                fingerprint,
+                {
+                    "label": label,
+                    "provider": provider,
+                    "session_id": st.session_state.get("session_id"),
+                    "added_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                },
+            )
+
+        if not st.session_state.get("reference_trace_id"):
+            spectral_candidates = [
+                existing
+                for existing in overlays
+                if _normalize_axis_kind(existing.axis_kind) != "image"
+            ]
+            if spectral_candidates:
+                st.session_state["reference_trace_id"] = spectral_candidates[0].trace_id
+
+        message = f"Added {label}"
+        if provider:
+            message += f" ({provider})"
+        return True, message
+
     try:
         values_w = [float(v) for v in wavelengths]
         values_f = [float(v) for v in flux]
@@ -718,6 +834,8 @@ def _add_overlay(
             if ledger.seen(fingerprint):
                 return False, f"Trace already recorded in ledger: {label}"
 
+    resolved_axis_kind = normalized_axis_kind or "wavelength"
+
     trace = OverlayTrace(
         trace_id=str(uuid.uuid4()),
         label=label,
@@ -735,7 +853,8 @@ def _add_overlay(
         flux_unit=str(flux_unit or "arb"),
         flux_kind=str(flux_kind or "relative"),
         axis=str(axis or "emission"),
-        axis_kind=str(axis_kind or metadata.get("axis_kind") if metadata else "wavelength"),
+        axis_kind=resolved_axis_kind,
+        image=None,
         downsample=downsample_map,
         cache_dataset_id=cache_dataset_id,
     )
@@ -781,6 +900,7 @@ def _add_overlay_payload(payload: Dict[str, object]) -> Tuple[bool, str]:
         or ((payload.get("metadata") or {}).get("axis_kind") if isinstance(payload.get("metadata"), Mapping) else None),
         downsample=payload.get("downsample"),
         cache_dataset_id=payload.get("cache_dataset_id"),
+        image=payload.get("image") if isinstance(payload.get("image"), Mapping) else None,
     )
     additional = payload.get("additional_traces")
     extra_success = 0
@@ -818,6 +938,9 @@ def _add_overlay_payload(payload: Dict[str, object]) -> Tuple[bool, str]:
                 downsample=entry.get("downsample"),
                 cache_dataset_id=entry.get("cache_dataset_id")
                 or payload.get("cache_dataset_id"),
+                image=entry.get("image")
+                if isinstance(entry.get("image"), Mapping)
+                else (payload.get("image") if isinstance(payload.get("image"), Mapping) else None),
             )
             if success:
                 extra_success += 1
@@ -1661,6 +1784,8 @@ def _build_overlay_figure(
             continue
 
         axis_kind = _axis_kind_for_trace(trace)
+        if axis_kind == "image":
+            continue
         viewport = viewport_lookup.get(axis_kind, (None, None))
         visible_axis_kinds.append(axis_kind)
 
@@ -1849,6 +1974,115 @@ def _render_overlay_table(overlays: Sequence[OverlayTrace]) -> None:
         st.success(f"Removed {len(selected)} overlays.")
 
 
+def _render_image_overlay_panels(overlays: Sequence[OverlayTrace]) -> None:
+    image_traces = [
+        trace
+        for trace in overlays
+        if trace.visible and _axis_kind_for_trace(trace) == "image"
+    ]
+    if not image_traces:
+        return
+
+    st.markdown("#### Image overlays")
+    for trace in image_traces:
+        payload = trace.image if isinstance(trace.image, Mapping) else {}
+        data = payload.get("data")
+        try:
+            data_array = np.asarray(data, dtype=float)
+        except Exception:
+            st.warning(f"{trace.label}: Unable to display image data.")
+            continue
+        if data_array.size == 0:
+            st.info(f"{trace.label}: No pixels available.")
+            continue
+
+        mask_array = None
+        if isinstance(payload, Mapping) and payload.get("mask") is not None:
+            try:
+                mask_candidate = np.asarray(payload.get("mask"), dtype=bool)
+                if mask_candidate.shape == data_array.shape:
+                    mask_array = mask_candidate
+            except Exception:
+                mask_array = None
+        if mask_array is not None:
+            data_plot = np.where(mask_array, np.nan, data_array)
+        else:
+            data_plot = np.array(data_array, dtype=float)
+
+        finite = data_plot[np.isfinite(data_plot)]
+        try:
+            default_min = float(np.nanmin(finite if finite.size else data_plot))
+        except ValueError:
+            default_min = 0.0
+        try:
+            default_max = float(np.nanmax(finite if finite.size else data_plot))
+        except ValueError:
+            default_max = default_min + 1.0
+        if not math.isfinite(default_min):
+            default_min = 0.0
+        if not math.isfinite(default_max):
+            default_max = default_min + 1.0
+
+        clip = st.slider(
+            f"Intensity clip (%) • {trace.label}",
+            min_value=0.0,
+            max_value=25.0,
+            value=1.0,
+            step=0.5,
+            key=f"image_clip_{trace.trace_id}",
+        )
+
+        if finite.size:
+            lower = float(np.percentile(finite, clip))
+            upper = float(np.percentile(finite, 100 - clip))
+            if not math.isfinite(lower) or not math.isfinite(upper) or math.isclose(lower, upper):
+                lower = default_min
+                upper = default_max
+        else:
+            lower = default_min
+            upper = default_max
+        if not math.isfinite(lower) or not math.isfinite(upper):
+            lower, upper = 0.0, 1.0
+        if upper <= lower:
+            upper = lower + 1.0
+
+        fig = go.Figure(
+            data=go.Heatmap(
+                z=data_plot,
+                colorscale="Viridis",
+                zmin=lower,
+                zmax=upper,
+                colorbar=dict(title=str(trace.flux_unit or "")),
+            )
+        )
+        fig.update_layout(
+            dragmode="zoom",
+            xaxis=dict(title="X (pixel)"),
+            yaxis=dict(title="Y (pixel)", autorange="reversed"),
+            margin=dict(t=30, b=40, l=40, r=20),
+            height=420,
+        )
+        st.plotly_chart(fig, use_container_width=True, key=f"image_plot_{trace.trace_id}")
+
+        shape = payload.get("shape") if isinstance(payload, Mapping) else None
+        if isinstance(shape, (list, tuple)):
+            dims = " × ".join(str(int(dim)) for dim in shape)
+        else:
+            dims = " × ".join(str(size) for size in data_array.shape)
+        wcs_info = trace.provenance.get("wcs") if isinstance(trace.provenance, Mapping) else None
+        wcs_axes = None
+        if isinstance(wcs_info, Mapping):
+            axes = wcs_info.get("world_axis_physical_types")
+            if isinstance(axes, (list, tuple)):
+                wcs_axes = ", ".join(str(axis) for axis in axes if axis)
+        caption_parts = [f"Shape: {dims} px"]
+        if trace.flux_unit:
+            caption_parts.append(f"Flux: {trace.flux_unit}")
+        if wcs_axes:
+            caption_parts.append(f"WCS axes: {wcs_axes}")
+        st.caption(" • ".join(caption_parts))
+
+
 def _remove_overlays(trace_ids: Sequence[str]) -> None:
     remaining = [
         trace for trace in _get_overlays() if trace.trace_id not in set(trace_ids)
@@ -1903,6 +2137,16 @@ def _format_axis_range(trace: OverlayTrace, meta: Mapping[str, object]) -> str:
                         )
                 suffix = f" {unit}" if unit else ""
                 return f"{low:.4f} – {high:.4f}{suffix}"
+        return "—"
+    if axis_kind == "image":
+        shape = meta.get("image_shape")
+        if isinstance(shape, (list, tuple)) and shape:
+            try:
+                dims = " × ".join(str(int(dim)) for dim in shape)
+            except Exception:
+                dims = None
+            if dims:
+                return f"{dims} px"
         return "—"
 
     range_candidates = [
@@ -2414,11 +2658,12 @@ def _render_overlay_tab(version_info: Dict[str, str]) -> None:
     differential_mode = st.session_state.get("differential_mode", "Off")
     target_overlays = [trace for trace in overlays if trace.visible] or overlays
     axis_groups = _group_overlays_by_axis_kind(target_overlays)
+    plottable_groups = {kind: group for kind, group in axis_groups.items() if kind != "image"}
     viewport_store = _get_viewport_store()
     auto_enabled = bool(st.session_state.get("auto_viewport", True))
     effective_viewports: Dict[str, Tuple[float | None, float | None]] = {}
     filter_viewports: Dict[str, Tuple[float | None, float | None]] = {}
-    for kind, group in axis_groups.items():
+    for kind, group in plottable_groups.items():
         stored = viewport_store.get(kind, (None, None))
         effective = _effective_viewport(group, stored, axis_kind=kind)
         effective_viewports[kind] = effective
@@ -2426,7 +2671,7 @@ def _render_overlay_tab(version_info: Dict[str, str]) -> None:
             filter_viewports[kind] = (None, None)
         else:
             filter_viewports[kind] = effective
-    visible_axis_kinds = [kind for kind, traces in axis_groups.items() if traces]
+    visible_axis_kinds = [kind for kind, traces in plottable_groups.items() if traces]
     single_axis = len(visible_axis_kinds) == 1
 
     reference = next(
@@ -2435,8 +2680,19 @@ def _render_overlay_tab(version_info: Dict[str, str]) -> None:
             for trace in overlays
             if trace.trace_id == st.session_state.get("reference_trace_id")
         ),
-        overlays[0],
+        None,
     )
+    if reference is None or _axis_kind_for_trace(reference) == "image":
+        reference = next(
+            (
+                trace
+                for trace in overlays
+                if _axis_kind_for_trace(trace) != "image"
+            ),
+            overlays[0] if overlays else None,
+        )
+    if reference is not None and _axis_kind_for_trace(reference) == "image":
+        reference = None
 
     fig, axis_title = _build_overlay_figure(
         overlays,
@@ -2450,6 +2706,7 @@ def _render_overlay_tab(version_info: Dict[str, str]) -> None:
         axis_viewport_by_kind=effective_viewports if single_axis else None,
     )
     st.plotly_chart(fig, use_container_width=True)
+    _render_image_overlay_panels(overlays)
 
     if len(visible_axis_kinds) > 1:
         friendly = " + ".join(kind.replace("_", " ") for kind in sorted(visible_axis_kinds))
