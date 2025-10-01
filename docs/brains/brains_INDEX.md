@@ -16,6 +16,8 @@ It tracks the latest continuity documents and the required cross-links between t
 | --- | --- | --- | --- |
 | v1.2.0e | [docs/brains/brains_v1.2.0e.md](brains_v1.2.0e.md) | [docs/patch_notes/v1.2.0e.md](../patch_notes/v1.2.0e.md) | [docs/ai_handoff/AI_HANDOFF_PROMPT_v1.2.0e.md](../ai_handoff/AI_HANDOFF_PROMPT_v1.2.0e.md) |
 | v1.2.0d | [docs/brains/brains_v1.2.0d.md](brains_v1.2.0d.md) | [docs/patch_notes/v1.2.0d.md](../patch_notes/v1.2.0d.md) | [docs/ai_handoff/AI_HANDOFF_PROMPT_v1.2.0d.md](../ai_handoff/AI_HANDOFF_PROMPT_v1.2.0d.md) |
+| v1.2.0d | [docs/brains/brains_v1.2.0d.md](brains_v1.2.0d.md) | [docs/patch_notes/v1.2.0d.md](../patch_notes/v1.2.0d.md) | [docs/ai_handoff/AI_HANDOFF_PROMPT_v1.2.0d.md](../ai_handoff/AI_HANDOFF_PROMPT_v1.2.0d.md) |
+| v1.2.0d | [docs/brains/brains_v1.2.0d.md](brains_v1.2.0d.md) | [docs/patch_notes/v1.2.0d.md](../patch_notes/v1.2.0d.md) | — |
 | v1.2.0c | — | [docs/patch_notes/v1.2.0c.md](../patch_notes/v1.2.0c.md) | — |
 | v1.2.0b | [docs/brains/brains_v1.2.0b.md](brains_v1.2.0b.md) | [docs/patch_notes/v1.2.0b.md](../patch_notes/v1.2.0b.md) | [docs/ai_handoff/AI_HANDOFF_PROMPT_v1.2.0b.md](../ai_handoff/AI_HANDOFF_PROMPT_v1.2.0b.md) |
 | v1.2.0a | [docs/brains/brains_v1.2.0a.md](brains_v1.2.0a.md) | [docs/patch_notes/PATCH_NOTES_v1.2.0a.md](../patch_notes/PATCH_NOTES_v1.2.0a.md) | [docs/ai_handoff/AI_HANDOFF_PROMPT_v1.2.0a.md](../ai_handoff/AI_HANDOFF_PROMPT_v1.2.0a.md) |
