@@ -24,6 +24,107 @@ SUPPORTED_OVERLAY_TYPES = {
     "time series",
 }
 
+SPECTRAL_OVERLAY_TYPES = {"spectrum", "sed"}
+TIME_SERIES_TYPES = {"timeseries", "time-series", "time series"}
+
+AXIS_SPECTRAL_KEYWORDS = {
+    "wave",
+    "wl",
+    "lambda",
+    "freq",
+    "frequency",
+    "energy",
+    "wavenumber",
+}
+
+AXIS_TIME_KEYWORDS = {
+    "time",
+    "mjd",
+    "bjd",
+    "jd",
+    "timedel",
+}
+
+CUBE_KEYWORDS = {
+    "calint",
+    "calints",
+    "cube",
+}
+
+
+def _normalise_text(value: Any) -> str:
+    if isinstance(value, str):
+        return value.strip()
+    return ""
+
+
+def _safe_int(value: Any) -> Optional[int]:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _collect_axis_hints(product: Dict[str, Any]) -> Tuple[set[str], Optional[int]]:
+    """Return axis keywords and the largest dimensionality hinted by extensions."""
+
+    axis_hints: set[str] = set()
+    max_dimensionality: Optional[int] = None
+
+    extensions = product.get("extensions")
+    if isinstance(extensions, list):
+        for ext in extensions:
+            if isinstance(ext, dict):
+                axes = ext.get("axes")
+                if isinstance(axes, list):
+                    for axis in axes:
+                        if isinstance(axis, dict):
+                            for key in ("axis", "name", "type", "kind"):
+                                val = axis.get(key)
+                                if isinstance(val, str):
+                                    axis_hints.add(val.lower())
+                        elif isinstance(axis, str):
+                            axis_hints.add(axis.lower())
+                else:
+                    for key in ("axis", "name", "type", "kind"):
+                        val = ext.get(key)
+                        if isinstance(val, str):
+                            axis_hints.add(val.lower())
+
+                axis_count = _safe_int(ext.get("naxis"))
+                if axis_count is None:
+                    dimensions = ext.get("dimensions") or ext.get("shape")
+                    if isinstance(dimensions, (list, tuple)):
+                        axis_count = len(dimensions)
+                if axis_count is None and isinstance(axes, list):
+                    axis_count = len(axes)
+
+                if axis_count is not None:
+                    if max_dimensionality is None or axis_count > max_dimensionality:
+                        max_dimensionality = axis_count
+            elif isinstance(ext, str):
+                axis_hints.add(ext.lower())
+
+    return axis_hints, max_dimensionality
+
+
+def _summarise_reasons(reasons: List[str]) -> str:
+    if not reasons:
+        return ""
+    if len(reasons) == 1:
+        return reasons[0]
+    return ", ".join(reasons[:-1]) + f", and {reasons[-1]}"
+
+
+def _has_axis_keyword(axis_hints: set[str], keywords: set[str]) -> bool:
+    if not axis_hints:
+        return False
+    for hint in axis_hints:
+        for keyword in keywords:
+            if keyword in hint:
+                return True
+    return False
+
 
 def _extract_mast_products(
     manifest: Dict[str, Any],
@@ -45,10 +146,54 @@ def _extract_mast_products(
 def _product_overlay_support(product: Dict[str, Any]) -> Dict[str, Any]:
     """Classify whether a MAST product should expose the Overlay action."""
 
-    raw_type = str(product.get("dataproduct_type", "") or "").strip()
+    raw_type = _normalise_text(product.get("dataproduct_type", "") or "")
     normalized = raw_type.lower()
 
+    axis_hints, max_dimensionality = _collect_axis_hints(product)
+
+    text_fields = [
+        product.get("productType"),
+        product.get("productSubGroupDescription"),
+        product.get("productGroupDescription"),
+        product.get("productFilename"),
+        product.get("description"),
+    ]
+    text_blob = " ".join(filter(None, (_normalise_text(value) for value in text_fields))).lower()
+
     if normalized in SUPPORTED_OVERLAY_TYPES:
+        reasons: List[str] = []
+
+        if normalized in TIME_SERIES_TYPES and axis_hints and not _has_axis_keyword(
+            axis_hints, AXIS_TIME_KEYWORDS
+        ):
+            reasons.append("its manifest extensions do not advertise a time axis")
+
+        if normalized in SPECTRAL_OVERLAY_TYPES and axis_hints and not _has_axis_keyword(
+            axis_hints, AXIS_SPECTRAL_KEYWORDS
+        ):
+            reasons.append("its manifest extensions do not advertise a spectral axis")
+
+        if max_dimensionality and max_dimensionality > 2:
+            reasons.append(
+                f"the listed HDUs are {max_dimensionality}-D and overlay expects 1-D samples"
+            )
+
+        if normalized in TIME_SERIES_TYPES and any(
+            keyword in text_blob for keyword in CUBE_KEYWORDS
+        ):
+            reasons.append(
+                "JWST CALINTS integration cubes provide multi-dimensional stacks instead of 1-D time samples"
+            )
+
+        if reasons:
+            reason_text = _summarise_reasons(reasons)
+            note = (
+                "Cannot overlay this product: "
+                f"{reason_text}. "
+                "Overlay is limited to 1-D spectra, SEDs, or time-series."
+            )
+            return {"supported": False, "normalized_type": normalized or None, "note": note}
+
         return {
             "supported": True,
             "normalized_type": normalized or None,

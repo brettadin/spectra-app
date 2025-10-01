@@ -35,3 +35,8 @@
 - Move normalization and differential-mode selectors into the differential tab so the compute form and explanatory caption live together, avoiding sidebar context switches during analysis. 【F:app/ui/main.py†L3097-L3130】【F:app/ui/main.py†L3285-L3288】
 - House similarity metric, weighting, and normalization widgets in a tab expander so users configure comparisons beside the plotted results instead of scrolling the sidebar. 【F:app/ui/main.py†L3132-L3190】
 - Verified the relocation with focused UI tests that assert the sidebar no longer exposes these controls while the differential tab does. 【F:tests/ui/test_sidebar_display_controls.py†L1-L33】【F:tests/ui/test_differential_form.py†L1-L109】
+
+## Target library overlay gating — 2025-10-01
+- Parse manifest extension metadata for axis keywords and dimensionality before enabling overlays so only 1-D spectra and time series remain interactive. 【F:app/ui/targets.py†L19-L219】
+- Treat JWST CALINTS cubes as unsupported even when labelled as time-series, wiring the disabled overlay button to explain the axis mismatch. 【F:app/ui/targets.py†L181-L199】
+- Extended regression coverage proving axis-hint parsing blocks CALINTS cubes and missing time axes. 【F:tests/ui/test_targets_overlay_support.py†L24-L98】
