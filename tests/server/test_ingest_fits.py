@@ -215,6 +215,46 @@ def test_parse_fits_collapses_image_data(tmp_path):
     assert collapse_meta.get("collapsed_axes") == [0]
 
 
+def test_parse_fits_preserves_spatial_image(tmp_path):
+    image_data = np.arange(16, dtype=float).reshape(4, 4)
+
+    header = fits.Header()
+    header["CTYPE1"] = "RA---TAN"
+    header["CTYPE2"] = "DEC--TAN"
+    header["CUNIT1"] = "deg"
+    header["CUNIT2"] = "deg"
+    header["CRPIX1"] = 2.0
+    header["CRPIX2"] = 2.0
+    header["CRVAL1"] = 180.0
+    header["CRVAL2"] = 45.0
+    header["CDELT1"] = -0.0002777778
+    header["CDELT2"] = 0.0002777778
+
+    image_hdu = fits.ImageHDU(data=image_data, header=header, name="IMAGE")
+    hdul = fits.HDUList([fits.PrimaryHDU(), image_hdu])
+    fits_path = tmp_path / "spatial_image.fits"
+    hdul.writeto(fits_path, overwrite=True)
+    hdul.close()
+
+    result = parse_fits(str(fits_path))
+
+    assert result["axis_kind"] == "image"
+    assert result["kind"] == "image"
+    assert result["wavelength_nm"] == []
+    assert result["flux"] == []
+    image_payload = result.get("image")
+    assert isinstance(image_payload, dict)
+    assert image_payload.get("shape") == [4, 4]
+    assert result["metadata"].get("image_shape") == [4, 4]
+    provenance = result["provenance"]
+    assert provenance.get("axis_kind") == "image"
+    assert provenance.get("samples") == 16
+    units_meta = provenance.get("units", {})
+    assert "image_axes" in units_meta
+    wcs_info = provenance.get("wcs", {})
+    assert isinstance(wcs_info.get("world_axis_physical_types"), list)
+
+
 def test_parse_fits_handles_cd_matrix_wcs(tmp_path):
     flux_values = np.array(
         [
@@ -446,7 +486,7 @@ def test_parse_fits_table_drops_nonpositive_wavelengths(tmp_path):
 
     result = parse_fits(str(fits_path))
 
-    assert result["wavelength_nm"] == [500.0]
+    assert result["wavelength_nm"] == pytest.approx([500.0])
 
     assert result["flux"] == [3.0]
     provenance = result["provenance"]
@@ -498,17 +538,13 @@ def test_parse_fits_table_filters_nonpositive_wavenumbers(tmp_path):
     hdul.writeto(fits_path, overwrite=True)
     hdul.close()
 
-    with pytest.raises(ValueError) as excinfo:
-        parse_fits(str(fits_path))
+    result = parse_fits(str(fits_path))
 
-    assert result["wavelength_nm"] == [500.0]
+    assert result["wavelength_nm"] == pytest.approx([500.0])
     assert result["flux"] == [5.0]
     provenance = result["provenance"]
     assert provenance.get("dropped_nonpositive_wavenumbers") == 2
     assert provenance.get("dropped_nonpositive_rows") == 2
-
-    message = str(excinfo.value)
-    assert "no positive wavelength samples" in message.lower()
 
 
 
@@ -579,7 +615,7 @@ def test_parse_fits_rejects_table_with_negative_wavelengths_microns(tmp_path):
 
     normalised = message.lower().replace("-", " ")
     assert "no positive wavelength" in normalised
-    assert "no positive wavelengths" in message
+    assert "no positive wavelength samples" in message.lower()
     assert "conversion to nm" in message
 
     assert "no positive wavelength samples" in message.lower()

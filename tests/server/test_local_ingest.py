@@ -678,3 +678,26 @@ def test_ingest_local_fits_time_series_preserves_axis_metadata():
     assert isinstance(summary, str)
     assert "4 samples" in summary
 
+
+def test_ingest_local_image_returns_image_payload(tmp_path):
+    image_data = np.arange(9, dtype=float).reshape(3, 3)
+    header = fits.Header()
+    header["CTYPE1"] = "RA---TAN"
+    header["CTYPE2"] = "DEC--TAN"
+    header["CUNIT1"] = "deg"
+    header["CUNIT2"] = "deg"
+
+    image_hdu = fits.ImageHDU(data=image_data, header=header, name="IMAGE")
+    hdul = fits.HDUList([fits.PrimaryHDU(), image_hdu])
+    path = tmp_path / "image_product.fits"
+    hdul.writeto(path, overwrite=True)
+    hdul.close()
+
+    payload = ingest_local_file(str(path), path.read_bytes())
+
+    assert payload["axis_kind"] == "image"
+    assert payload["kind"] == "image"
+    assert payload.get("image", {}).get("shape") == [3, 3]
+    assert payload["metadata"].get("image_shape") == [3, 3]
+    assert payload["summary"].startswith("3 × 3 image")
+    assert payload["provenance"].get("axis_kind") == "image"

@@ -7,3 +7,8 @@
 - Move the destructive "Clear overlays" action into the Display & viewport cluster so overlay management lives beside viewport tools.
 - Raise a transient warning banner within the overlay tab after clearing so users receive immediate confirmation in the workspace context.
 - Differential tab keeps its reference selector without destructive controls, reducing the risk of accidental overlay loss while preparing comparisons.
+
+## Image overlay ingestion — 2025-10-10
+- Treat FITS HDUs lacking spectral axes but carrying WCS metadata as `axis_kind="image"`, preserving masks, shape, and WCS serialisation for downstream viewers. 【F:app/server/ingest_fits.py†L1120-L1350】
+- Skip spectral sample requirements in local ingest, summarising images via pixel dimensions while leaving existing spectral flows untouched. 【F:app/utils/local_ingest.py†L433-L517】
+- Overlay UI renders Plotly heatmaps with intensity sliders and excludes image traces from spectral viewport math to keep axis warnings accurate. 【F:app/ui/main.py†L1910-L2079】【F:app/ui/main.py†L1608-L1756】

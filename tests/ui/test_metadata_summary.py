@@ -27,6 +27,7 @@ def _overlay_from_payload(payload: dict) -> OverlayTrace:
         axis=payload.get("axis", "emission"),
         axis_kind=payload.get("axis_kind")
         or ((payload.get("metadata") or {}).get("axis_kind") if isinstance(payload.get("metadata"), dict) else "wavelength"),
+        image=payload.get("image") if isinstance(payload.get("image"), dict) else None,
     )
 
 
@@ -154,6 +155,28 @@ def test_metadata_summary_time_series_axis():
     assert rows[0]["Axis range"] == "0.0000 – 2.0000 BJD - 2457000, days"
 
 
+def test_metadata_summary_image_axis():
+    payload = {
+        "label": "Sky Image",
+        "axis_kind": "image",
+        "metadata": {
+            "axis_kind": "image",
+            "image_shape": [4, 4],
+            "flux_unit": "adu",
+        },
+        "image": {
+            "data": [[0.0, 1.0], [2.0, 3.0]],
+            "shape": [2, 2],
+        },
+        "provenance": {"units": {"image_axes": ["celestial"]}},
+        "flux_unit": "adu",
+    }
+
+    overlay = _overlay_from_payload(payload)
+    rows = _build_metadata_summary_rows([overlay])
+    assert rows[0]["Axis range"] == "4 × 4 px"
+
+
 def test_overlay_tab_retains_metadata_and_line_tables():
     app = AppTest.from_function(_render_overlay_tab_entrypoint)
 
@@ -168,6 +191,18 @@ def test_overlay_tab_retains_metadata_and_line_tables():
             "observation_date": "2025-10-05",
         },
         provenance={"units": {"wavelength_converted_to": "nm"}},
+    )
+    image_overlay = OverlayTrace(
+        trace_id="img-1",
+        label="Sky Image",
+        wavelength_nm=tuple(),
+        flux=tuple(),
+        axis="image",
+        axis_kind="image",
+        image={"data": [[0.0, 1.0], [2.0, 3.0]], "shape": [2, 2]},
+        metadata={"axis_kind": "image", "image_shape": [2, 2]},
+        provenance={"axis_kind": "image", "wcs": {"world_axis_physical_types": ["celestial"]}},
+        flux_unit="adu",
     )
     line_overlay = OverlayTrace(
         trace_id="line-1",
@@ -191,7 +226,7 @@ def test_overlay_tab_retains_metadata_and_line_tables():
         },
     )
 
-    app.session_state.overlay_traces = [spectral_overlay, line_overlay]
+    app.session_state.overlay_traces = [spectral_overlay, image_overlay, line_overlay]
     app.session_state.viewport_nm = (None, None)
     app.session_state.auto_viewport = True
     app.session_state.display_units = "nm"
@@ -208,3 +243,6 @@ def test_overlay_tab_retains_metadata_and_line_tables():
     assert "#### Metadata summary" in headings
     expander_labels = [exp.label for exp in app.expander]
     assert "Line metadata tables" in expander_labels
+    clip_key = f"image_clip_{image_overlay.trace_id}"
+    assert clip_key in app.session_state
+    assert app.session_state[clip_key] == 1.0

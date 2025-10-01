@@ -38,3 +38,35 @@ def test_mixed_axis_overlays_use_independent_viewports():
     assert max(spectral_trace.x) <= 530.0
     assert min(time_series_trace.x) == 0.0
     assert max(time_series_trace.x) == 10.0
+
+
+def test_build_overlay_figure_ignores_image_axes():
+    spectral_trace = OverlayTrace(
+        trace_id="spec",
+        label="Spectrum",
+        wavelength_nm=(500.0, 510.0, 520.0),
+        flux=(1.0, 0.9, 1.1),
+    )
+    image_trace = OverlayTrace(
+        trace_id="img",
+        label="Image",
+        wavelength_nm=tuple(),
+        flux=tuple(),
+        axis="image",
+        axis_kind="image",
+        image={"data": [[0.0, 1.0], [2.0, 3.0]], "shape": [2, 2]},
+    )
+
+    fig, axis_title = _build_overlay_figure(
+        overlays=[spectral_trace, image_trace],
+        display_units="nm",
+        display_mode="Flux (raw)",
+        normalization_mode="none",
+        viewport_by_kind={"wavelength": (None, None)},
+        reference=None,
+        differential_mode="Off",
+        version_tag="vtest",
+    )
+
+    assert axis_title == "Wavelength (nm)"
+    assert len(fig.data) == 1
