@@ -1,0 +1,3 @@
+Spectra App — v1.2.0h
+- Move the examples quick-add controls into the sidebar beneath the display settings and trim the Library tab copy to point at the new placement.
+- Update the UI contract, add sidebar-specific regression coverage, and refresh continuity collateral.

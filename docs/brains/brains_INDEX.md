@@ -1,6 +1,6 @@
 # MAKE NEW BRAINS EACH TIME YOU MAKE A CHANGE. DO NOT OVER WRITE PREVIOUS BRAINS * unless needed
 # Spectra App — Brains Index
-_Last updated: 2025-10-03T03:30:00Z_
+_Last updated: 2025-10-04T00:00:00Z_
 
 This index is the mandated entry point before touching the codebase.
 It tracks the latest continuity documents and the required cross-links between them.
@@ -14,6 +14,7 @@ It tracks the latest continuity documents and the required cross-links between t
 ## Continuity Table
 | Version | Brains Log | Patch Notes | AI Handoff |
 | --- | --- | --- | --- |
+| v1.2.0h | [docs/brains/brains_v1.2.0h.md](brains_v1.2.0h.md) | [docs/patch_notes/v1.2.0h.md](../patch_notes/v1.2.0h.md) | [docs/ai_handoff/AI_HANDOFF_PROMPT_v1.2.0e.md](../ai_handoff/AI_HANDOFF_PROMPT_v1.2.0e.md) |
 | v1.2.0g | [docs/brains/brains_v1.2.0g.md](brains_v1.2.0g.md) | [docs/patch_notes/v1.2.0g.md](../patch_notes/v1.2.0g.md) | [docs/ai_handoff/AI_HANDOFF_PROMPT_v1.2.0e.md](../ai_handoff/AI_HANDOFF_PROMPT_v1.2.0e.md) |
 | v1.2.0f | [docs/brains/brains_v1.2.0f.md](brains_v1.2.0f.md) | [docs/patch_notes/v1.2.0f.md](../patch_notes/v1.2.0f.md) | [docs/ai_handoff/AI_HANDOFF_PROMPT_v1.2.0e.md](../ai_handoff/AI_HANDOFF_PROMPT_v1.2.0e.md) |
 | v1.2.0e | [docs/brains/brains_v1.2.0e.md](brains_v1.2.0e.md) | [docs/patch_notes/v1.2.0e.md](../patch_notes/v1.2.0e.md) | [docs/ai_handoff/AI_HANDOFF_PROMPT_v1.2.0e.md](../ai_handoff/AI_HANDOFF_PROMPT_v1.2.0e.md) |
@@ -33,6 +34,8 @@ It tracks the latest continuity documents and the required cross-links between t
 
 Older releases remain in `docs/brains/` and `docs/patches/` for archeology, but the table above is the active continuity contract.
 
+- Patch notes (md) for v1.2.0h: docs/patch_notes/v1.2.0h.md
+- Patch notes (txt) for v1.2.0h: docs/PATCH_NOTES/v1.2.0h.txt
 - Patch notes (md) for v1.2.0g: docs/patch_notes/v1.2.0g.md
 - Patch notes (txt) for v1.2.0g: docs/PATCH_NOTES/v1.2.0g.txt
 - Patch notes (md) for v1.2.0f: docs/patch_notes/v1.2.0f.md
