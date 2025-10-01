@@ -1096,6 +1096,8 @@ def _render_settings_group(container: DeltaGenerator) -> None:
     _render_differential_section(container)
     with container.expander("Similarity settings", expanded=False) as similarity_panel:
         _render_similarity_sidebar(similarity_panel)
+    container.divider()
+    _render_line_catalog_group(container)
 
 
 def _render_example_browser() -> None:
@@ -2514,7 +2516,7 @@ def _render_differential_tab() -> None:
 def _render_library_tab() -> None:
     st.header("Data library")
     st.caption(
-        "Browse curated examples, target manifests, line catalogs, and upload policies "
+        "Browse curated examples, target manifests, and upload policies "
         "from a single workspace panel."
     )
 
@@ -2528,11 +2530,6 @@ def _render_library_tab() -> None:
         render_targets_panel(expanded=True, sidebar=targets_container)
     except RegistryUnavailableError as exc:
         targets_container.info(str(exc))
-
-    st.divider()
-
-    line_catalog_container = st.container()
-    _render_line_catalog_group(line_catalog_container)
 
     st.divider()
 
