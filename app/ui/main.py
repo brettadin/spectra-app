@@ -1489,91 +1489,6 @@ def _render_display_section(container: DeltaGenerator) -> None:
     )
 
 
-def _render_differential_section(container: DeltaGenerator) -> None:
-    container.markdown("#### Differential & normalization")
-    norm_map = {
-        "Unit vector (L2)": "unit",
-        "Peak normalised": "max",
-        "Z-score": "zscore",
-        "None": "none",
-    }
-    current_norm = st.session_state.get("normalization_mode", "unit")
-    norm_labels = list(norm_map.keys())
-    try:
-        index = norm_labels.index(
-            next(label for label, code in norm_map.items() if code == current_norm)
-        )
-    except StopIteration:
-        index = 0
-    selection = container.selectbox("Normalization", norm_labels, index=index)
-    st.session_state["normalization_mode"] = norm_map[selection]
-
-    diff_options = ["Off", "Relative to reference"]
-    diff_mode = st.session_state.get("differential_mode", "Off")
-    diff_index = diff_options.index(diff_mode) if diff_mode in diff_options else 0
-    st.session_state["differential_mode"] = container.selectbox(
-        "Differential mode", diff_options, index=diff_index
-    )
-    if st.session_state["differential_mode"] != "Off":
-        container.caption("Traces are regridded onto the reference before subtracting.")
-
-
-def _render_similarity_sidebar(container: Optional[DeltaGenerator] = None) -> None:
-    target = container or st
-    target.markdown("#### Similarity settings")
-    metric_options = ["cosine", "rmse", "xcorr", "line_match"]
-    current_metrics = st.session_state.get("similarity_metrics", metric_options)
-    metrics = target.multiselect(
-        "Metrics",
-        options=metric_options,
-        default=current_metrics if current_metrics else metric_options[:1],
-        format_func=lambda m: m.replace("_", " ").title(),
-    )
-    if not metrics:
-        metrics = metric_options[:1]
-    st.session_state["similarity_metrics"] = metrics
-
-    primary = st.session_state.get("similarity_primary_metric", metrics[0])
-    if primary not in metrics:
-        primary = metrics[0]
-    st.session_state["similarity_primary_metric"] = target.selectbox(
-        "Primary metric",
-        metrics,
-        index=metrics.index(primary),
-        format_func=lambda m: m.replace("_", " ").title(),
-    )
-
-    line_peaks = target.slider(
-        "Line peak count",
-        min_value=3,
-        max_value=20,
-        value=int(st.session_state.get("similarity_line_peaks", 8)),
-        help="Number of strongest samples considered for the line-match metric.",
-    )
-    st.session_state["similarity_line_peaks"] = int(line_peaks)
-
-    norm_labels = ["Unit vector (L2)", "Peak normalised", "Z-score", "None"]
-    norm_codes = {
-        "Unit vector (L2)": "unit",
-        "Peak normalised": "max",
-        "Z-score": "zscore",
-        "None": "none",
-    }
-    current_code = st.session_state.get(
-        "similarity_normalization", st.session_state.get("normalization_mode", "unit")
-    )
-    current_label = next(
-        (label for label, code in norm_codes.items() if code == current_code),
-        norm_labels[0],
-    )
-    selection = target.selectbox(
-        "Similarity normalization",
-        norm_labels,
-        index=norm_labels.index(current_label),
-    )
-    st.session_state["similarity_normalization"] = norm_codes[selection]
-
-
 def _render_settings_group(container: DeltaGenerator) -> None:
     container.markdown("### Session controls")
     online = container.checkbox(
@@ -1590,10 +1505,6 @@ def _render_settings_group(container: DeltaGenerator) -> None:
     _render_display_section(container)
     container.divider()
     _render_examples_group(container)
-    container.divider()
-    _render_differential_section(container)
-    with container.expander("Similarity settings", expanded=False) as similarity_panel:
-        _render_similarity_sidebar(similarity_panel)
     container.divider()
     _render_line_catalog_group(container)
 
@@ -3183,6 +3094,103 @@ def _render_differential_tab() -> None:
         st.info("Add at least two spectra to compare differentially.")
         return
 
+    norm_map = {
+        "Unit vector (L2)": "unit",
+        "Peak normalised": "max",
+        "Z-score": "zscore",
+        "None": "none",
+    }
+    norm_labels = list(norm_map.keys())
+    current_norm = st.session_state.get("normalization_mode", "unit")
+    try:
+        norm_index = norm_labels.index(
+            next(label for label, code in norm_map.items() if code == current_norm)
+        )
+    except StopIteration:
+        norm_index = 0
+
+    diff_options = ["Off", "Relative to reference"]
+    diff_mode = st.session_state.get("differential_mode", "Off")
+    diff_index = diff_options.index(diff_mode) if diff_mode in diff_options else 0
+
+    norm_col, diff_col = st.columns(2)
+    norm_selection = norm_col.selectbox(
+        "Normalization",
+        norm_labels,
+        index=norm_index,
+    )
+    st.session_state["normalization_mode"] = norm_map[norm_selection]
+    diff_selection = diff_col.selectbox(
+        "Differential mode",
+        diff_options,
+        index=diff_index,
+    )
+    st.session_state["differential_mode"] = diff_selection
+    if diff_selection != "Off":
+        diff_col.caption("Traces are regridded onto the reference before subtracting.")
+
+    with st.expander("Similarity settings", expanded=False):
+        metric_options = ["cosine", "rmse", "xcorr", "line_match"]
+        current_metrics = st.session_state.get("similarity_metrics", metric_options)
+        metrics = st.multiselect(
+            "Metrics",
+            options=metric_options,
+            default=current_metrics if current_metrics else metric_options[:1],
+            format_func=lambda m: m.replace("_", " ").title(),
+        )
+        if not metrics:
+            metrics = metric_options[:1]
+        st.session_state["similarity_metrics"] = metrics
+
+        primary_metric = st.session_state.get("similarity_primary_metric", metrics[0])
+        if primary_metric not in metrics:
+            primary_metric = metrics[0]
+        st.session_state["similarity_primary_metric"] = st.selectbox(
+            "Primary metric",
+            metrics,
+            index=metrics.index(primary_metric),
+            format_func=lambda m: m.replace("_", " ").title(),
+        )
+
+        line_peaks = st.slider(
+            "Line peak count",
+            min_value=3,
+            max_value=20,
+            value=int(st.session_state.get("similarity_line_peaks", 8)),
+            help="Number of strongest samples considered for the line-match metric.",
+        )
+        st.session_state["similarity_line_peaks"] = int(line_peaks)
+
+        similarity_norm_labels = ["Unit vector (L2)", "Peak normalised", "Z-score", "None"]
+        similarity_norm_codes = {
+            "Unit vector (L2)": "unit",
+            "Peak normalised": "max",
+            "Z-score": "zscore",
+            "None": "none",
+        }
+        similarity_current_code = st.session_state.get(
+            "similarity_normalization",
+            st.session_state.get("normalization_mode", "unit"),
+        )
+        similarity_current_label = next(
+            (
+                label
+                for label, code in similarity_norm_codes.items()
+                if code == similarity_current_code
+            ),
+            similarity_norm_labels[0],
+        )
+        similarity_selection = st.selectbox(
+            "Similarity normalization",
+            similarity_norm_labels,
+            index=similarity_norm_labels.index(similarity_current_label),
+        )
+        st.session_state["similarity_normalization"] = similarity_norm_codes[
+            similarity_selection
+        ]
+
+    st.divider()
+
     trace_map = {trace.trace_id: trace for trace in spectral_overlays}
     options = list(trace_map.keys())
     default_a = st.session_state.get("differential_trace_a_id")
@@ -3275,8 +3283,8 @@ def _render_differential_tab() -> None:
                 st.session_state["differential_sample_points"] = int(sample_points)
 
     st.caption(
-        "Differential maths uses the normalization selected in the sidebar "
-        "and resamples both traces onto a shared wavelength grid."
+        "Differential maths uses the normalization chosen above and resamples "
+        "both traces onto a shared wavelength grid."
     )
     if "similarity_cache" not in st.session_state:
         st.session_state["similarity_cache"] = SimilarityCache()

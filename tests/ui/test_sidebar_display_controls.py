@@ -35,4 +35,8 @@ def test_clear_overlays_button_present_in_sidebar():
     sidebar_buttons = [button.label for button in app.sidebar.button]
     assert "Clear overlays" in sidebar_buttons
 
+    sidebar_selects = [select.label for select in getattr(app.sidebar, "selectbox", [])]
+    assert "Normalization" not in sidebar_selects
+    assert "Differential mode" not in sidebar_selects
+
 

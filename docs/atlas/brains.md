@@ -26,3 +26,8 @@
 - Manage overlay downloads through a session-scoped executor that tracks queued, running, and completed jobs with shared progress snapshots for reruns to consume. 【F:app/ui/main.py†L526-L792】
 - Render an “Overlay downloads” sidebar cluster so users can watch job states resolve without leaving the workspace controls. 【F:app/ui/main.py†L795-L839】【F:app/ui/main.py†L3426-L3451】
 - Locked a regression that stalls network fetches to prove reruns stay responsive and jobs surface success once the worker completes. 【F:tests/ui/test_overlay_ingest_queue_async.py†L12-L112】
+
+## Differential controls relocate to workspace — 2025-10-11
+- Move normalization and differential-mode selectors into the differential tab so the compute form and explanatory caption live together, avoiding sidebar context switches during analysis. 【F:app/ui/main.py†L3097-L3130】【F:app/ui/main.py†L3285-L3288】
+- House similarity metric, weighting, and normalization widgets in a tab expander so users configure comparisons beside the plotted results instead of scrolling the sidebar. 【F:app/ui/main.py†L3132-L3190】
+- Verified the relocation with focused UI tests that assert the sidebar no longer exposes these controls while the differential tab does. 【F:tests/ui/test_sidebar_display_controls.py†L1-L33】【F:tests/ui/test_differential_form.py†L1-L109】

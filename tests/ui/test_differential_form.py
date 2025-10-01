@@ -76,6 +76,29 @@ def test_reference_controls_render_in_differential_tab():
     assert "Clear overlays" not in button_labels
 
 
+def test_differential_controls_shifted_into_tab():
+    app = AppTest.from_function(_render_differential_tab_entrypoint)
+
+    app.session_state.overlay_traces = [
+        _simple_overlay("a"),
+        _simple_overlay("b"),
+    ]
+    app.session_state.reference_trace_id = "a"
+
+    app.run()
+
+    select_labels = [select.label for select in app.selectbox]
+    assert "Normalization" in select_labels
+    assert "Differential mode" in select_labels
+    assert "Similarity normalization" in select_labels
+
+    multiselect_labels = [multi.label for multi in getattr(app, "multiselect", [])]
+    assert "Metrics" in multiselect_labels
+
+    slider_labels = [slider.label for slider in app.slider]
+    assert "Line peak count" in slider_labels
+
+
 def test_similarity_panel_renders_with_differential_inputs():
     app = AppTest.from_function(_render_differential_tab_entrypoint)
 
