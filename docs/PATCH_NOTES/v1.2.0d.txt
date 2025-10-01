@@ -1,0 +1,1 @@
+v1.2.0d — Docs tab banner now mirrors the active patch metadata, backed by new regression coverage and refreshed continuity logs.

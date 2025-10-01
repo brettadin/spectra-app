@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.0c",
-  "date_utc": "2025-10-01T00:00:00Z",
-  "summary": "Fix example browser provider filter session persistence and remove redundant widget warning."
+  "version": "v1.2.0d",
+  "date_utc": "2025-10-02T00:00:00Z",
+  "summary": "Docs tab banner now reflects the current patch metadata."
 }
