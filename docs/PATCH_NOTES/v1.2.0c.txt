@@ -1,0 +1,1 @@
+v1.2.0c — Fixed the example browser provider filter so persisted selections survive reruns without Streamlit key warnings; updated UI docs, patch log, and AI log for the hotfix.
