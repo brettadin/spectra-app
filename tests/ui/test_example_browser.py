@@ -111,21 +111,21 @@ def test_provider_filter_persists_session_state():
     app.run()
 
     assert app.session_state.example_browser_provider_filter == ["ESO", "MAST"]
-    assert not app.warning
+    _assert_no_warning(app)
 
     # Simulate the user narrowing providers to a subset and rerun.
     app.session_state.example_browser_provider_filter = ["ESO"]
     app.run()
 
     assert app.session_state.example_browser_provider_filter == ["ESO"]
-    assert not app.warning
+    _assert_no_warning(app)
 
     # Stale providers are pruned while preserving surviving selections.
     app.session_state.example_browser_provider_filter = ["ESO", "GALEX"]
     app.run()
 
     assert app.session_state.example_browser_provider_filter == ["ESO"]
-    assert not app.warning
+    _assert_no_warning(app)
 
 
 def test_register_example_usage_tracks_recent(monkeypatch):
@@ -208,3 +208,8 @@ def test_ensure_session_state_defaults(monkeypatch):
     assert state["network_available"] is True
     assert state["example_recent"] == []
     assert state["example_favourites"] == []
+
+
+def _assert_no_warning(app: AppTest) -> None:
+    warnings = list(app.warning)
+    assert warnings == [], f"Unexpected Streamlit warnings: {warnings}"

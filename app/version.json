@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.0t",
-  "date_utc": "2025-10-01T21:04:17Z",
-  "summary": "Harden overlay gating so JWST CALINTS cubes and HDUs without 1-D axes stay disabled in the target library."
+  "version": "v1.2.0u",
+  "date_utc": "2025-10-12T09:00:00Z",
+  "summary": "Stabilise example browser provider persistence so reruns keep selections without Streamlit warnings."
 }

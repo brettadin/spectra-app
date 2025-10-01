@@ -26,6 +26,10 @@
 - Populate the provider filter session key via `setdefault` and mutate the cached list in place so reruns keep user selections without triggering Streamlit's state reassignment warning. 【F:app/ui/example_browser.py†L189-L207】
 - Keep the UI regression that drives reruns with narrowed and stale providers to ensure the warning stays silent while selections persist. 【F:tests/ui/test_example_browser.py†L63-L97】
 
+## Example browser provider setdefault guard — 2025-10-12
+- Seed the provider filter session key before constructing the widget and defer normalisation until after the multiselect returns so reruns avoid Streamlit's "widget has already been registered" warning. 【F:app/ui/example_browser.py†L185-L220】
+- Extended the AppTest assertions to capture warning output explicitly while verifying narrowed and stale selections persist across reruns. 【F:tests/ui/test_example_browser.py†L107-L128】【F:tests/ui/test_example_browser.py†L213-L215】
+
 ## Asynchronous overlay ingest queue — 2025-10-11
 - Manage overlay downloads through a session-scoped executor that tracks queued, running, and completed jobs with shared progress snapshots for reruns to consume. 【F:app/ui/main.py†L526-L792】
 - Render an “Overlay downloads” sidebar cluster so users can watch job states resolve without leaving the workspace controls. 【F:app/ui/main.py†L795-L839】【F:app/ui/main.py†L3426-L3451】
