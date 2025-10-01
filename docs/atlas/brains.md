@@ -1,3 +1,8 @@
+# Overlay ingest thread-safety — 2025-10-14
+- **REF 1.2.0x-A01**: Route overlay payload additions through the main thread by returning ingest results from worker futures and finalising state updates in `_refresh_ingest_jobs`, eliminating cross-thread Streamlit mutations. 【F:app/ui/main.py†L621-L678】【F:app/ui/main.py†L680-L713】
+- Hardened the ingest queue regression to assert queued overlays complete without `ScriptRunContext` warnings while preserving async progress. 【F:tests/ui/test_overlay_ingest_queue_async.py†L9-L128】
+- Recorded the thread-safety fix in the v1.2.0x patch notes and AI activity log alongside the version bump. 【F:docs/patch_notes/v1.2.0x.md†L1-L17】【F:app/version.json†L1-L5】【F:docs/ai_log/2025-10-13.md†L19-L33】
+
 # Runtime manifest continuity — 2025-10-13
 - **REF 1.2.0w-A01**: Restored `docs/runtime.json` to a single JSON object so tooling can parse python, platform, and library metadata without errors. 【F:docs/runtime.json†L1-L23】
 - Recorded the fix in the v1.2.0w patch notes and AI log while bumping the version manifest to keep release metadata aligned. 【F:docs/patch_notes/v1.2.0w.md†L1-L15】【F:docs/ai_log/2025-10-01.md†L1-L15】【F:app/version.json†L1-L5】

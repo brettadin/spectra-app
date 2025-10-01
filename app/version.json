@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.0w",
-  "date_utc": "2025-10-13T09:30:00Z",
-  "summary": "Repair runtime.json so python/platform metadata lives inside the top-level manifest."
+  "version": "v1.2.0x",
+  "date_utc": "2025-10-14T09:30:00Z",
+  "summary": "Finalize overlay ingestion on the main thread to avoid ScriptRunContext warnings."
 }
