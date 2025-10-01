@@ -144,16 +144,17 @@ def render_example_browser_sheet(
 
         provider_options = sorted({spec.provider for spec in examples})
         st.session_state.setdefault("example_browser_search", "")
-        stored_providers = [
-            provider
-            for provider in st.session_state.get(
-                "example_browser_provider_filter", provider_options
-            )
-            if provider in provider_options
+        providers_key = "example_browser_provider_filter"
+        session_providers = st.session_state.setdefault(providers_key, provider_options)
+        valid_providers = [
+            provider for provider in session_providers if provider in provider_options
         ]
-        if not stored_providers:
-            stored_providers = provider_options
-        st.session_state["example_browser_provider_filter"] = stored_providers
+        if valid_providers != session_providers:
+            st.session_state[providers_key] = valid_providers
+            session_providers = valid_providers
+        if not session_providers and provider_options:
+            st.session_state[providers_key] = provider_options
+            session_providers = provider_options
         st.session_state.setdefault("example_browser_favourites_only", False)
 
         search_value = st.text_input(
@@ -165,8 +166,7 @@ def render_example_browser_sheet(
         selected_providers = st.multiselect(
             "Providers",
             provider_options,
-            default=stored_providers,
-            key="example_browser_provider_filter",
+            key=providers_key,
         )
         favourites_only = st.checkbox(
             "Show favourites only",

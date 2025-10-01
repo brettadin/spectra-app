@@ -29,6 +29,7 @@ The table below lists the key dependencies and their official documentation sour
 
 - Streamlit allows the team to prototype interactive front-ends quickly. Its markdown support and simple widget API make the example browser easy to implement.
 - The UI code uses dynamic lists of examples and provider filters; it updates UI state without requiring page reloads.
+- Recent hotfix ensures provider multiselect state in the example browser persists via `st.session_state` without triggering widget key warnings.
 
 **Issues:**
 
