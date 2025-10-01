@@ -189,6 +189,18 @@ def render_example_browser_sheet(
             provider_options, stored_selection
         )
 
+        multiselect_kwargs = {
+            "label": "Providers",
+            "options": provider_options,
+            "key": providers_key,
+        }
+
+        if providers_key in st.session_state:
+            if provider_defaults != list(st.session_state[providers_key]):
+                st.session_state[providers_key] = provider_defaults
+        else:
+            multiselect_kwargs["default"] = provider_defaults
+
         search_key = "example_browser_search"
         favourites_key = "example_browser_favourites_only"
 
@@ -198,12 +210,7 @@ def render_example_browser_sheet(
             key=search_key,
             help="Filter by label, description, provider, or query metadata.",
         )
-        selected_providers = st.multiselect(
-            "Providers",
-            provider_options,
-            default=provider_defaults,
-            key=providers_key,
-        )
+        selected_providers = st.multiselect(**multiselect_kwargs)
         favourites_only = st.checkbox(
             "Show favourites only",
             value=st.session_state.get(favourites_key, False),

@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.0o",
-  "date_utc": "2025-10-10T00:15:00Z",
-  "summary": "Handle FITS byte-string axis units during spectral and time-series ingestion."
+  "version": "v1.2.0p",
+  "date_utc": "2025-10-11T02:45:00Z",
+  "summary": "Stabilise example browser provider persistence to prevent warning banners."
 }
