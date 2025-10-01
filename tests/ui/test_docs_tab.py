@@ -51,16 +51,19 @@ def test_docs_tab_banner_uses_patch_metadata(monkeypatch, tmp_path):
     monkeypatch.setattr(main_module, "_get_overlays", lambda: [])
 
     version_info = {
-        "version": "v1.2.0d",
-        "patch_version": "v1.2.0d",
-        "patch_summary": "Docs tab banner pulls from patch log",
-        "patch_raw": "v1.2.0d: Docs tab banner pulls from patch log",
+        "version": "v1.2.0v",
+        "patch_version": "v1.2.0v",
+        "patch_summary": "Retire the example browser and streamline the Examples sidebar around quick-add shortcuts.",
+        "patch_raw": "v1.2.0v: Retire the example browser and streamline the Examples sidebar around quick-add shortcuts.",
     }
 
     main_module._render_docs_tab(version_info)
 
     assert captured_info
-    assert captured_info[0] == "v1.2.0d: Docs tab banner pulls from patch log"
+    assert (
+        captured_info[0]
+        == "v1.2.0v: Retire the example browser and streamline the Examples sidebar around quick-add shortcuts."
+    )
 
 
 def test_header_prefers_patch_version(monkeypatch):
@@ -72,14 +75,14 @@ def test_header_prefers_patch_version(monkeypatch):
 
     version_info = {
         "version": "v0.0.0-dev",
-        "patch_version": "v1.2.0e",
-        "patch_summary": "(REF 1.2.0e-A01): Header pulls from patch metadata",
-        "patch_raw": "v1.2.0e (REF 1.2.0e-A01): Header pulls from patch metadata",
-        "date_utc": "2025-10-02T18:30:00Z",
+        "patch_version": "v1.2.0v",
+        "patch_summary": "Retire the example browser and streamline the Examples sidebar around quick-add shortcuts.",
+        "patch_raw": "v1.2.0v: Retire the example browser and streamline the Examples sidebar around quick-add shortcuts.",
+        "date_utc": "2025-10-13T09:00:00Z",
     }
 
     main_module._render_app_header(version_info)
 
     assert captured_caption
-    assert captured_caption[0].startswith("v1.2.0e • Updated 2025-10-02 18:30 UTC")
-    assert "Header pulls from patch metadata" in captured_caption[0]
+    assert captured_caption[0].startswith("v1.2.0v • Updated 2025-10-13 09:00 UTC")
+    assert "Retire the example browser" in captured_caption[0]
