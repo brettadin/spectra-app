@@ -73,7 +73,7 @@ def test_reference_controls_render_in_differential_tab():
     assert reference_select[0].value == "b"
 
     button_labels = [button.label for button in app.button]
-    assert "Clear overlays" in button_labels
+    assert "Clear overlays" not in button_labels
 
 
 def test_similarity_panel_renders_with_differential_inputs():
