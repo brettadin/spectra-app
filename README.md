@@ -55,6 +55,8 @@ Overlay that with raw sun data, sourced sun data, spectral data of many differen
 identify comonalities and properties of spectra across various star types/compositions. 
 
 *basically use the differentiation tab to grab all the data from these stars/planets/collected spectra, and well.. see if we can easily predict the compositions of exoplanets*
+
+
 If we analyze known types of planets/stars, and see how they interact, we can quickly classify/characterize planets *(if im doing this right, and im not crazy and just wasting time doing nothing of worth lol)*
 
 
