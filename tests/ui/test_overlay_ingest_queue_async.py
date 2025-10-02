@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import Future
 import logging
 import threading
 import time
@@ -180,3 +181,56 @@ def test_ingest_queue_completes_without_script_context_warning(monkeypatch, capl
         executor = runtime.get("executor") if isinstance(runtime, dict) else None
         if executor:
             executor.shutdown(wait=True)
+
+
+def test_refresh_ingest_jobs_accepts_legacy_result(monkeypatch):
+    """Legacy ingest results with status/detail/payload attributes are accepted."""
+
+    from app.ui import main as main_module
+
+    payload = {"label": "Legacy", "flux": [1.0], "wavelength_nm": [500.0]}
+
+    class LegacyOverlayIngestResult:
+        def __init__(self, status: str, detail: str, payload: Dict[str, Any]):
+            self.status = status
+            self.detail = detail
+            self.payload = payload
+
+    legacy_result = LegacyOverlayIngestResult(
+        "success", "Prepared Legacy", dict(payload)
+    )
+
+    future = Future()
+    future.set_result(legacy_result)
+
+    added_payloads: List[Dict[str, Any]] = []
+
+    def _fake_add_overlay_payload(data: Dict[str, Any]) -> tuple[bool, str]:
+        added_payloads.append(data)
+        label = data.get("label") or "overlay"
+        return True, f"Added {label}"
+
+    monkeypatch.setattr(main_module, "_add_overlay_payload", _fake_add_overlay_payload)
+
+    runtime = {
+        "lock": threading.Lock(),
+        "jobs": {
+            "legacy": {
+                "id": "legacy",
+                "status": "queued",
+                "detail": "Waiting to start",
+                "progress": 0.0,
+                "submitted_at": time.time(),
+                "started_at": None,
+                "finished_at": None,
+            }
+        },
+        "futures": {"legacy": future},
+    }
+
+    main_module._refresh_ingest_jobs(runtime)
+
+    assert added_payloads == [payload]
+    job = runtime["jobs"]["legacy"]
+    assert job["status"] == "success"
+    assert "Added Legacy" in job["detail"]

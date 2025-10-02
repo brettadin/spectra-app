@@ -1,3 +1,7 @@
+# Overlay ingest result continuity — 2025-10-18
+- Duck-type overlay ingest futures on their `status`, `detail`, and `payload` attributes so cached dataclass instances from previous reruns continue to resolve successfully on the UI thread. 【F:app/ui/main.py†L761-L777】
+- Added regression coverage that submits a completed future with a legacy-style ingest result and verifies `_add_overlay_payload` executes without "Unexpected ingest result" failures. 【F:tests/ui/test_overlay_ingest_queue_async.py†L186-L236】
+
 # Overlay trace helper relocation — 2025-10-17
 - Shifted dataframe conversion, sampling, vectorisation, and point counting helpers onto `OverlayTrace` so downstream UI logic works directly with the trace model instead of ingest result shims. 【F:app/ui/main.py†L43-L174】
 - Updated overlay regressions to rely on the embedded helpers while covering mixed-axis figure builds and metadata summaries. 【F:tests/ui/test_overlay_mixed_axes.py†L9-L118】【F:tests/ui/test_metadata_summary.py†L1-L229】
