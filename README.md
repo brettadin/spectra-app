@@ -44,9 +44,9 @@ _and im going to continue working on it slowly over time_
 
 but right now i think i have the core model of what i need to progress onto the next part of my stec 4800 (4300? idk)
 
-- Next *phase* is gas phase chromotography on Gaseous H2O, CO2 and CH4. in the lab. Gotta make the procedure for that, finish the write up for this.
+- Next *phase* is gas phase chromotography on Gaseous H_2 O, CO_2 and CH_4. in the lab. Gotta make the procedure for that, finish the write up for this.
 
--  Collect spectral data for the new lamps we ordered in the lab, H2O, CO, Hydrogen, H/He mix (star emulation lamp) and an air lamp.
+-  Collect spectral data for the new lamps we ordered in the lab, H_2 O, CO, Hydrogen, H/He mix (star emulation lamp) and an air lamp.
 
 -  I'm also going to continue to collect spectral data of the sun by hand at different times/days/conditions. 
 
