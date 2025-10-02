@@ -376,6 +376,8 @@ def _group_overlays_by_axis_kind(
     groups: Dict[str, List[OverlayTrace]] = {}
     for trace in overlays:
         kind = _axis_kind_for_trace(trace)
+        if kind == "time":
+            continue
         groups.setdefault(kind, []).append(trace)
     return groups
 
@@ -969,6 +971,12 @@ def _add_overlay(
         axis_kind or (metadata or {}).get("axis_kind") if metadata else axis_kind
     )
 
+    if normalized_axis_kind == "time":
+        return (
+            False,
+            "Time-series overlays are not supported. Provide a spectral product instead.",
+        )
+
     if normalized_axis_kind == "image":
         if not isinstance(image, Mapping):
             return False, "No image payload provided."
@@ -1031,7 +1039,7 @@ def _add_overlay(
             spectral_candidates = [
                 existing
                 for existing in overlays
-                if _normalize_axis_kind(existing.axis_kind) != "image"
+                if _normalize_axis_kind(existing.axis_kind) not in {"image", "time"}
             ]
             if spectral_candidates:
                 st.session_state["reference_trace_id"] = spectral_candidates[0].trace_id
@@ -1891,7 +1899,7 @@ def _build_overlay_figure(
         else {}
     )
     reference_vectors: Optional[TraceVectors] = None
-    if reference and _axis_kind_for_trace(reference) != "image":
+    if reference and _axis_kind_for_trace(reference) not in {"image", "time"}:
         ref_kind = _axis_kind_for_trace(reference)
         reference_vectors = reference.to_vectors(
             max_points=max_points,
@@ -1906,7 +1914,7 @@ def _build_overlay_figure(
             continue
 
         axis_kind = _axis_kind_for_trace(trace)
-        if axis_kind == "image":
+        if axis_kind in {"image", "time"}:
             continue
         viewport = viewport_lookup.get(axis_kind, (None, None))
         visible_axis_kinds.append(axis_kind)
@@ -2773,7 +2781,11 @@ def _render_overlay_tab(version_info: Dict[str, str]) -> None:
     differential_mode = st.session_state.get("differential_mode", "Off")
     target_overlays = [trace for trace in overlays if trace.visible] or overlays
     axis_groups = _group_overlays_by_axis_kind(target_overlays)
-    plottable_groups = {kind: group for kind, group in axis_groups.items() if kind != "image"}
+    plottable_groups = {
+        kind: group
+        for kind, group in axis_groups.items()
+        if kind not in {"image", "time"}
+    }
     viewport_store = _get_viewport_store()
     auto_enabled = bool(st.session_state.get("auto_viewport", True))
     effective_viewports: Dict[str, Tuple[float | None, float | None]] = {}
@@ -2797,16 +2809,16 @@ def _render_overlay_tab(version_info: Dict[str, str]) -> None:
         ),
         None,
     )
-    if reference is None or _axis_kind_for_trace(reference) == "image":
+    if reference is None or _axis_kind_for_trace(reference) in {"image", "time"}:
         reference = next(
             (
                 trace
                 for trace in overlays
-                if _axis_kind_for_trace(trace) != "image"
+                if _axis_kind_for_trace(trace) not in {"image", "time"}
             ),
             overlays[0] if overlays else None,
         )
-    if reference is not None and _axis_kind_for_trace(reference) == "image":
+    if reference is not None and _axis_kind_for_trace(reference) in {"image", "time"}:
         reference = None
 
     fig, axis_title = _build_overlay_figure(
@@ -3051,7 +3063,11 @@ def _render_differential_tab() -> None:
     st.header("Differential analysis")
     overlays = _get_overlays()
     _render_reference_controls(overlays)
-    spectral_overlays = [trace for trace in overlays if trace.kind != "lines"]
+    spectral_overlays = [
+        trace
+        for trace in overlays
+        if trace.kind != "lines" and _axis_kind_for_trace(trace) not in {"image", "time"}
+    ]
     if len(spectral_overlays) < 2:
         st.info("Add at least two spectra to compare differentially.")
         return
@@ -3174,13 +3190,13 @@ def _render_differential_tab() -> None:
     similarity_sources = [
         trace
         for trace in spectral_overlays
-        if trace.visible and _axis_kind_for_trace(trace) != "image"
+        if trace.visible and _axis_kind_for_trace(trace) not in {"image", "time"}
     ]
     if len(similarity_sources) < 2:
         similarity_sources = [
             trace
             for trace in spectral_overlays
-            if _axis_kind_for_trace(trace) != "image"
+            if _axis_kind_for_trace(trace) not in {"image", "time"}
         ]
     wavelength_sources = [
         trace for trace in similarity_sources if _axis_kind_for_trace(trace) == "wavelength"
