@@ -3,14 +3,27 @@ oh theres no readme in here wtf
 
 well.
 today is 10/1/25 ~11:30pm . This is, at least as far as this iteration of the application goes. v1.2.1b.
+
 I've been working on this and other versions of this app for about a month now using only 'vibe coding'
+
 In this time, I'm 100% certain I could have learned how to code this myself. But I really liked the idea of trading off with an ai, and I would do the bug fixing.
 It was painful as hell. I can't lie. Lots of lost sleep. Lots of lost study time. Time with loved ones.
-I really should have just learned how to code lol.
-The idea is simple. Find credible spectral data from telescopes.
+
+**I really should have just learned how to code lol.**
+
+The idea is simple. 
+Find credible spectral data from telescopes.
+
 Match it up with user uploaded data, in the form of (for now) elemental lamp spectra collected via an Ocean Optics USB4000 Fiber Optic Spectrometer.
+
 Pull in spectral lines from NIST to see atomic emission spectra, and how it aligns with stars as seen from telescopes and our lamp data.
-Then I got carried away with bug fixing, and trying to tiddy up the UI/functionality of it. Lots of time spent getting to read files for data consistently.
+
+*Then I got carried away with bug fixing, and trying to tiddy up the UI/functionality of it.* 
+
+
+
+Lots of time spent getting to read files for data consistently.
+
 Or trying to get data points plotted correctly.
 Trying to get units right.. and converted...
 Getting sources accounted for
