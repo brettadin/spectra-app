@@ -1,3 +1,8 @@
+# Differential similarity image guard — 2025-10-20
+- Filtered differential similarity sources to drop image overlays so vectorisation never calls `to_vectors` on image payloads. 【F:app/ui/main.py†L3174-L3184】
+- Skip building reference vectors when the active overlay is an image, preventing similarity helpers from raising ValueError. 【F:app/ui/main.py†L1893-L1899】
+- Added a differential tab regression that mixes spectral and image overlays to prove the UI renders without exceptions. 【F:tests/ui/test_differential_form.py†L137-L151】
+
 # Patch log v1.2.1 summary alignment — 2025-10-19
 - Added the v1.2.1 patch log entry so `_resolve_patch_metadata()` surfaces the overlay trace helper relocation summary across the Docs banner and app header. 【F:PATCHLOG.txt†L31-L31】【F:app/ui/main.py†L3308-L3392】
 - Updated the Docs tab regression to assert the v1.2.1 summary and header caption so UI surfaces the new copy. 【F:tests/ui/test_docs_tab.py†L16-L105】

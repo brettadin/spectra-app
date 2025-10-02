@@ -21,6 +21,18 @@ def _simple_overlay(trace_id: str) -> OverlayTrace:
     )
 
 
+def _image_overlay(trace_id: str) -> OverlayTrace:
+    return OverlayTrace(
+        trace_id=trace_id,
+        label=f"Image {trace_id}",
+        wavelength_nm=tuple(),
+        flux=tuple(),
+        kind="image",
+        axis_kind="image",
+        image={"data": [[1.0, 2.0], [3.0, 4.0]]},
+    )
+
+
 def test_differential_form_has_single_submit_button():
     app = AppTest.from_function(_render_differential_tab_entrypoint)
 
@@ -120,3 +132,20 @@ def test_similarity_panel_renders_with_differential_inputs():
 
     headings = [block.body for block in app.markdown]
     assert "### Similarity analysis" in headings
+
+
+def test_differential_tab_handles_image_overlays():
+    app = AppTest.from_function(_render_differential_tab_entrypoint)
+
+    app.session_state.overlay_traces = [
+        _simple_overlay("a"),
+        _simple_overlay("b"),
+        _image_overlay("img"),
+    ]
+    app.session_state.reference_trace_id = "a"
+    app.session_state.normalization_mode = "unit"
+    app.session_state.similarity_cache = SimilarityCache()
+
+    app.run()
+
+    assert not app.exception
