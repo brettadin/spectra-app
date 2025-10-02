@@ -1,18 +1,36 @@
 import numpy as np
 import pytest
 
-from types import MethodType
-
-from app.ui.main import OverlayIngestResult, OverlayTrace, _build_overlay_figure
+from app.ui.main import OverlayTrace, _build_overlay_figure
 
 
 def _build_overlay(**kwargs) -> OverlayTrace:
     trace = OverlayTrace(**kwargs)
-    trace.to_dataframe = MethodType(OverlayIngestResult.to_dataframe, trace)
-    trace.sample = MethodType(OverlayIngestResult.sample, trace)
-    trace.to_vectors = MethodType(OverlayIngestResult.to_vectors, trace)
-    trace.points = len(trace.wavelength_nm)
     return trace
+
+
+def test_overlay_trace_methods_available_for_build():
+    overlay = _build_overlay(
+        trace_id="trace",
+        label="Trace",
+        wavelength_nm=(500.0, 510.0, 520.0),
+        flux=(1.0, 0.9, 1.1),
+    )
+
+    fig, axis_title = _build_overlay_figure(
+        overlays=[overlay],
+        display_units="nm",
+        display_mode="Flux (raw)",
+        normalization_mode="none",
+        viewport_by_kind={"wavelength": (None, None)},
+        reference=None,
+        differential_mode="Off",
+        version_tag="vtest",
+    )
+
+    assert axis_title == "Wavelength (nm)"
+    assert len(fig.data) == 1
+    assert fig.data[0].x[0] == pytest.approx(500.0)
 
 
 @pytest.fixture

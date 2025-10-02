@@ -1,3 +1,7 @@
+# Overlay trace helper relocation — 2025-10-17
+- Shifted dataframe conversion, sampling, vectorisation, and point counting helpers onto `OverlayTrace` so downstream UI logic works directly with the trace model instead of ingest result shims. 【F:app/ui/main.py†L43-L174】
+- Updated overlay regressions to rely on the embedded helpers while covering mixed-axis figure builds and metadata summaries. 【F:tests/ui/test_overlay_mixed_axes.py†L9-L118】【F:tests/ui/test_metadata_summary.py†L1-L229】
+
 # Time-axis offset normalization — 2025-10-16
 - Subtract detected FITS time-axis offsets before storing payload values so time-series overlays render near zero while keeping the original epoch in metadata and provenance. 【F:app/server/ingest_fits.py†L1468-L1505】
 - Extend the UI helpers to reuse time-axis provenance for axis titles and metadata summaries, surfacing reference epochs alongside the de-offset ranges. 【F:app/ui/main.py†L1693-L1753】【F:app/ui/main.py†L2230-L2249】

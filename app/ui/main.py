@@ -77,13 +77,6 @@ class OverlayTrace:
     )
     cache_dataset_id: Optional[str] = None
 
-
-@dataclass
-class OverlayIngestResult:
-    status: str
-    detail: str
-    payload: Optional[Dict[str, Any]] = None
-
     def to_dataframe(self) -> pd.DataFrame:
         if str(self.axis_kind).strip().lower() == "image":
             return pd.DataFrame(columns=["wavelength_nm", "flux"])
@@ -128,7 +121,6 @@ class OverlayIngestResult:
                 ]
 
         if max_points is None:
-
             return wavelengths, flux_values, hover_values, True
 
         if wavelengths.size <= max_points:
@@ -214,6 +206,13 @@ class OverlayIngestResult:
                     return 0
             return 0
         return len(self.wavelength_nm)
+
+
+@dataclass
+class OverlayIngestResult:
+    status: str
+    detail: str
+    payload: Optional[Dict[str, Any]] = None
 
 
 @dataclass(frozen=True)
