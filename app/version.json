@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.0z",
-  "date_utc": "2025-10-16T11:00:00Z",
-  "summary": "Normalize FITS time-series axes by removing epoch offsets and surface reference notes in the UI."
+  "version": "v1.2.0aa",
+  "date_utc": "2025-10-17T11:00:00Z",
+  "summary": "Move overlay trace helpers onto the trace model and harden UI regressions for mixed-axis sampling."
 }

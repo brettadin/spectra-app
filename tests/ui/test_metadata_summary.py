@@ -6,22 +6,8 @@ import pytest
 from astropy.io import fits
 from streamlit.testing.v1 import AppTest
 
-from types import MethodType
-
-from app.ui.main import (
-    OverlayIngestResult,
-    OverlayTrace,
-    _build_metadata_summary_rows,
-)
+from app.ui.main import OverlayTrace, _build_metadata_summary_rows
 from app.utils.local_ingest import ingest_local_file
-
-
-def _attach_overlay_methods(trace: OverlayTrace) -> OverlayTrace:
-    trace.to_dataframe = MethodType(OverlayIngestResult.to_dataframe, trace)
-    trace.sample = MethodType(OverlayIngestResult.sample, trace)
-    trace.to_vectors = MethodType(OverlayIngestResult.to_vectors, trace)
-    trace.points = len(trace.wavelength_nm)
-    return trace
 
 
 def _overlay_from_payload(payload: dict) -> OverlayTrace:
@@ -42,8 +28,11 @@ def _overlay_from_payload(payload: dict) -> OverlayTrace:
         axis_kind=payload.get("axis_kind")
         or ((payload.get("metadata") or {}).get("axis_kind") if isinstance(payload.get("metadata"), dict) else "wavelength"),
         image=payload.get("image") if isinstance(payload.get("image"), dict) else None,
+        downsample=payload.get("downsample")
+        if isinstance(payload.get("downsample"), dict)
+        else {},
     )
-    return _attach_overlay_methods(trace)
+    return trace
 
 
 def _render_overlay_tab_entrypoint() -> None:
@@ -200,41 +189,36 @@ def test_metadata_summary_image_axis():
 def test_overlay_tab_retains_metadata_and_line_tables():
     app = AppTest.from_function(_render_overlay_tab_entrypoint)
 
-    spectral_overlay = _attach_overlay_methods(
-        OverlayTrace(
-            trace_id="spec-1",
-            label="Spectrum",
-            wavelength_nm=(500.0, 510.0, 520.0),
-            flux=(1.0, 1.1, 0.9),
-            metadata={
-                "instrument": "SpecOne",
-                "telescope": "ScopeOne",
-                "observation_date": "2025-10-05",
-            },
-            provenance={"units": {"wavelength_converted_to": "nm"}},
-        )
+    spectral_overlay = OverlayTrace(
+        trace_id="spec-1",
+        label="Spectrum",
+        wavelength_nm=(500.0, 510.0, 520.0),
+        flux=(1.0, 1.1, 0.9),
+        metadata={
+            "instrument": "SpecOne",
+            "telescope": "ScopeOne",
+            "observation_date": "2025-10-05",
+        },
+        provenance={"units": {"wavelength_converted_to": "nm"}},
     )
-    image_overlay = _attach_overlay_methods(
-        OverlayTrace(
-            trace_id="img-1",
-            label="Sky Image",
-            wavelength_nm=tuple(),
-            flux=tuple(),
-            axis="image",
+    image_overlay = OverlayTrace(
+        trace_id="img-1",
+        label="Sky Image",
+        wavelength_nm=tuple(),
+        flux=tuple(),
+        axis="image",
         axis_kind="image",
         image={"data": [[0.0, 1.0], [2.0, 3.0]], "shape": [2, 2]},
-            metadata={"axis_kind": "image", "image_shape": [2, 2]},
-            provenance={"axis_kind": "image", "wcs": {"world_axis_physical_types": ["celestial"]}},
-            flux_unit="adu",
-        )
+        metadata={"axis_kind": "image", "image_shape": [2, 2]},
+        provenance={"axis_kind": "image", "wcs": {"world_axis_physical_types": ["celestial"]}},
+        flux_unit="adu",
     )
-    line_overlay = _attach_overlay_methods(
-        OverlayTrace(
-            trace_id="line-1",
-            label="Lines",
-            wavelength_nm=(500.1,),
-            flux=(0.0,),
-            kind="lines",
+    line_overlay = OverlayTrace(
+        trace_id="line-1",
+        label="Lines",
+        wavelength_nm=(500.1,),
+        flux=(0.0,),
+        kind="lines",
         metadata={
             "lines": [
                 {
@@ -245,11 +229,10 @@ def test_overlay_tab_retains_metadata_and_line_tables():
                     "relative_intensity_normalized": 0.9,
                     "lower_level": "a",
                     "upper_level": "b",
-                        "transition_type": "E1",
-                    }
-                ]
-            },
-        )
+                    "transition_type": "E1",
+                }
+            ]
+        },
     )
 
     app.session_state.overlay_traces = [spectral_overlay, image_overlay, line_overlay]
