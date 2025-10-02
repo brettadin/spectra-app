@@ -1871,7 +1871,7 @@ def _build_overlay_figure(
     fig = go.Figure()
     axis_title = "Wavelength (nm)"
     full_resolution = _is_full_resolution_enabled()
-    max_points = None if full_resolution else 12000
+    max_points = 3000000 if full_resolution else 1500000
     viewport_lookup = {
         _normalize_axis_kind(kind): _normalize_viewport_tuple(viewport)
         for kind, viewport in (viewport_by_kind or {}).items()
