@@ -1468,6 +1468,20 @@ def parse_fits(content: HeaderInput, *, filename: Optional[str] = None) -> Dict[
             axis_values = np.asarray(
                 wavelength_quantity.to_value(axis_unit), dtype=float
             )
+            offset_value = axis_details.get("offset")
+            if offset_value is not None:
+                try:
+                    offset_float = float(offset_value)
+                except (TypeError, ValueError):
+                    offset_float = None
+                if offset_float is not None:
+                    axis_values = axis_values - offset_float
+                    try:
+                        wavelength_quantity = wavelength_quantity - (
+                            offset_float * axis_unit
+                        )
+                    except Exception:
+                        pass
             if axis_values.size == 0:
                 raise ValueError("FITS table ingestion yielded no time samples.")
             range_min = float(np.min(axis_values))

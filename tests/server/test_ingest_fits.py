@@ -1,3 +1,5 @@
+import re
+
 import numpy as np
 import pytest
 from astropy import units as u
@@ -52,7 +54,18 @@ def _assert_wavelength_quantity(payload, expected):
 
 
 def _write_time_series_table(tmp_path, *, unit: str, name: str):
-    time = np.array([0.0, 1.0, 2.0], dtype=float)
+    base_time = np.array([0.0, 1.0, 2.0], dtype=float)
+    offset = None
+    offset_match = re.search(r"-\s*([0-9]+(?:\.[0-9]+)?)", unit)
+    if offset_match:
+        try:
+            offset = float(offset_match.group(1))
+        except ValueError:
+            offset = None
+    if offset is not None:
+        time = base_time + offset
+    else:
+        time = base_time
     flux = np.array([10.0, 11.0, 12.0], dtype=float)
 
     columns = [
@@ -67,7 +80,7 @@ def _write_time_series_table(tmp_path, *, unit: str, name: str):
     hdul.writeto(path, overwrite=True)
     hdul.close()
 
-    return path, time
+    return path, base_time
 
 
 def _parse_with_custom_hdul(monkeypatch, builder):
@@ -420,7 +433,9 @@ def test_parse_fits_image_handles_plural_cunit_bytes(monkeypatch):
 
 
 def test_parse_fits_accepts_time_series_units(tmp_path):
-    time = np.array([0.0, 1.5, 3.25, 4.0], dtype=float)
+    base_time = np.array([0.0, 1.5, 3.25, 4.0], dtype=float)
+    offset = 2457000.0
+    time = base_time + offset
     flux = np.array([10.0, 11.0, 12.0, 11.5], dtype=float)
 
     columns = [
@@ -437,34 +452,46 @@ def test_parse_fits_accepts_time_series_units(tmp_path):
     result = parse_fits(str(fits_path))
 
     assert result["axis_kind"] == "time"
-    assert result["metadata"]["axis_kind"] == "time"
-    assert result["metadata"]["time_unit"] == "day"
-    assert "BJD" in result["metadata"].get("time_original_unit", "")
+    metadata = result["metadata"]
+    assert metadata["axis_kind"] == "time"
+    assert metadata["time_unit"] == "day"
+    assert "BJD" in metadata.get("time_original_unit", "")
+    assert metadata.get("time_offset") == pytest.approx(offset)
 
     time_values = np.asarray(result["wavelength_nm"], dtype=float)
-    assert time_values == pytest.approx(time)
+    assert time_values == pytest.approx(base_time)
 
     time_payload = result.get("time")
     assert isinstance(time_payload, dict)
     assert time_payload.get("unit") == "day"
     assert time_payload.get("kind") == "time"
+    assert time_payload.get("values") == pytest.approx(base_time.tolist())
 
     quantity = result.get("wavelength_quantity")
     assert quantity is not None
     assert quantity.unit.is_equivalent(u.day)
-    assert quantity.to_value(u.day) == pytest.approx(time)
+    assert quantity.to_value(u.day) == pytest.approx(base_time)
 
     provenance_units = result["provenance"].get("units", {})
     assert provenance_units.get("time_converted_to") == "day"
+    assert provenance_units.get("time_offset") == pytest.approx(offset)
     assert "wavelength_converted_to" not in provenance_units
 
-    metadata = result["metadata"]
-    assert metadata.get("time_range") == [pytest.approx(time.min()), pytest.approx(time.max())]
-    assert metadata.get("points") == len(time)
+    assert metadata.get("time_range") == [
+        pytest.approx(base_time.min()),
+        pytest.approx(base_time.max()),
+    ]
+    assert metadata.get("data_time_range") == [
+        pytest.approx(base_time.min()),
+        pytest.approx(base_time.max()),
+    ]
+    assert metadata.get("points") == len(base_time)
 
 
 def test_parse_fits_table_handles_byte_time_unit(monkeypatch):
-    time = np.array([0.0, 1.0, 2.0, 3.0], dtype=float)
+    base_time = np.array([0.0, 1.0, 2.0, 3.0], dtype=float)
+    offset = 2457000.0
+    time = base_time + offset
     flux = np.array([5.0, 5.5, 6.0, 6.5], dtype=float)
 
     def _builder():
@@ -487,7 +514,12 @@ def test_parse_fits_table_handles_byte_time_unit(monkeypatch):
     assert metadata["time_unit"] == "day"
     assert metadata.get("time_frame") == "BJD"
     assert metadata.get("time_offset") == pytest.approx(2457000.0)
+    assert metadata.get("time_range") == [
+        pytest.approx(base_time.min()),
+        pytest.approx(base_time.max()),
+    ]
     assert result["time"]["unit"] == "day"
+    assert result["time"].get("values") == pytest.approx(base_time.tolist())
 
 
 def test_parse_fits_time_unit_btjd_with_offset(tmp_path):
