@@ -760,6 +760,12 @@ def _refresh_ingest_jobs(runtime: Dict[str, Any]) -> None:
         else:
             if isinstance(result, OverlayIngestResult):
                 status, detail, payload = result.status, result.detail, result.payload
+            elif all(
+                hasattr(result, attr) for attr in ("status", "detail")
+            ):
+                status = getattr(result, "status")  # type: ignore[assignment]
+                detail = getattr(result, "detail")  # type: ignore[assignment]
+                payload = getattr(result, "payload", None)
             elif isinstance(result, tuple):  # pragma: no cover - legacy tuple result
                 if len(result) == 3:
                     status, detail, payload = result  # type: ignore[misc]
