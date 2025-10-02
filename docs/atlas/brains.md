@@ -107,3 +107,8 @@
 - Render the target manifest name, narrative summary, and status metrics in a dedicated container before offering the registry grid so the curated context stays visible. 【F:app/ui/targets.py†L260-L326】
 - Tuck the full catalog dataframe into an optional “Browse catalog entries” expander, keeping the manifest summary adjacent to the curated product groups. 【F:app/ui/targets.py†L328-L352】
 - Locked a regression asserting the new expander label is present and the grid remains available for discovery. 【F:tests/ui/test_targets_panel_layout.py†L53-L74】
+
+## Curated CALSPEC library via astroquery — 2025-10-02
+- Swap the MAST CALSPEC downloader to `astroquery.mast.Observations.download_file`, capturing the download agent and cache metadata in the returned provenance. 【F:app/server/fetchers/mast.py†L1-L210】
+- Replace the sample shim with a curated-library materialiser that walks the vetted CALSPEC roster and persists per-target provenance summaries. 【F:app/server/fetch_archives.py†L1-L74】【F:scripts/fetch_samples.py†L1-L15】
+- Rebuilt `data_registry` and `catalog.csv` so UI metrics and manifests surface only the curated CALSPEC spectra. 【F:data_registry/catalog.csv†L1-L10】【F:data_registry/Vega/manifest.json†L1-L44】

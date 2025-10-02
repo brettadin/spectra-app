@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List
+from typing import List, Tuple
 
 import numpy as np
 import pytest
@@ -10,59 +10,59 @@ from app.server.fetchers import mast
 
 
 class _FakeResponse:
-    def __init__(self, *, text: str | None = None, content: bytes | None = None) -> None:
+    def __init__(self, text: str) -> None:
         self._text = text
-        self._content = content or b""
         self.status_code = 200
 
     def raise_for_status(self) -> None:  # pragma: no cover - trivial
         if self.status_code >= 400:
             raise RuntimeError(f"HTTP {self.status_code}")
 
-    def iter_content(self, chunk_size: int = 8192):  # pragma: no cover - trivial
-        data = self._content
-        if not data:
-            return
-        start = 0
-        length = len(data)
-        while start < length:
-            end = min(length, start + chunk_size)
-            yield data[start:end]
-            start = end
-
-    def __enter__(self):  # pragma: no cover - trivial
-        return self
-
-    def __exit__(self, exc_type, exc, tb):  # pragma: no cover - trivial
-        return False
-
     @property
     def text(self) -> str:  # pragma: no cover - simple accessor
-        if self._text is None:
-            raise AttributeError("No text payload")
         return self._text
 
 
-def _prepare_fakes(sample_path: Path, urls: List[str]):
+def _prepare_index_stub() -> _FakeResponse:
     sample_html = '<html><a href="sirius_stis_003.fits">sirius_stis_003.fits</a></html>'
+    return _FakeResponse(text=sample_html)
+
+
+def _prepare_download_stub(
+    sample_path: Path,
+    calls: List[Tuple[str, str | None, str | None, bool]],
+):
     sample_bytes = sample_path.read_bytes()
 
-    def fake_get(url: str, *args, **kwargs):
-        urls.append(url)
-        if url == mast.CALSPEC_INDEX_URL:
-            return _FakeResponse(text=sample_html)
-        if url == mast.CALSPEC_INDEX_URL + "sirius_stis_003.fits":
-            return _FakeResponse(content=sample_bytes)
-        raise AssertionError(f"Unexpected URL requested: {url}")
+    def fake_download(
+        filename: str,
+        *,
+        base_url: str | None = None,
+        local_path: str | None = None,
+        cache: bool = True,
+        verbose: bool = False,
+    ) -> Tuple[str, None, None]:
+        calls.append((filename, base_url, local_path, cache))
+        assert base_url == mast.CALSPEC_INDEX_URL
+        target_dir = Path(local_path or ".")
+        target_dir.mkdir(parents=True, exist_ok=True)
+        dest = target_dir / filename
+        dest.write_bytes(sample_bytes)
+        return ("COMPLETE", None, None)
 
-    return fake_get
+    return fake_download
 
 
 def test_fetch_sirius_from_cached_directory(monkeypatch, tmp_path):
     mast.reset_index_cache()
-    calls: List[str] = []
+    download_calls: List[Tuple[str, str | None, str | None, bool]] = []
     sample_file = Path(__file__).resolve().parent.parent / "data" / "calspec" / "sirius_stis_003_subset.fits"
-    monkeypatch.setattr(mast.requests, "get", _prepare_fakes(sample_file, calls))
+    monkeypatch.setattr(mast.requests, "get", lambda url, *args, **kwargs: _prepare_index_stub())
+    monkeypatch.setattr(
+        mast.Observations,
+        "download_file",
+        _prepare_download_stub(sample_file, download_calls),
+    )
 
     result = mast.fetch(target="Sirius", cache_dir=tmp_path)
 
@@ -74,13 +74,19 @@ def test_fetch_sirius_from_cached_directory(monkeypatch, tmp_path):
     assert len(result["wavelength_nm"]) == 20
     cached_file = tmp_path / mast._resolve_target("Sirius").cache_key / "sirius_stis_003.fits"
     assert cached_file.exists()
-    assert mast.CALSPEC_INDEX_URL in calls
-    assert mast.CALSPEC_INDEX_URL + "sirius_stis_003.fits" in calls
+    assert download_calls == [
+        (
+            "sirius_stis_003.fits",
+            mast.CALSPEC_INDEX_URL,
+            str(cached_file.parent),
+            True,
+        )
+    ]
 
-    calls.clear()
+    download_calls.clear()
     second = mast.fetch(target="Sirius", cache_dir=tmp_path)
     assert second["meta"]["cache_hit"] is True
-    assert calls == []
+    assert download_calls == []
 
 
 def test_unknown_target_raises():
@@ -102,7 +108,7 @@ def test_fetch_computes_effective_range(monkeypatch, tmp_path):
     mast.reset_index_cache()
     monkeypatch.setattr(mast, "_list_remote_files", lambda: ["sirius_stis_003.fits"])
 
-    def fake_download(url, destination):
+    def fake_download(url, destination, *, force_refresh: bool = False):
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_bytes(b"stub")
 
