@@ -488,6 +488,31 @@ def test_parse_fits_accepts_time_series_units(tmp_path):
     assert metadata.get("points") == len(base_time)
 
 
+def test_extract_table_data_applies_time_offset(tmp_path):
+    fits_path, base_time = _write_time_series_table(
+        tmp_path, unit="BTJD - 2457000", name="LIGHTCURVE"
+    )
+
+    with fits.open(str(fits_path)) as hdul:
+        (
+            quantity,
+            flux,
+            resolved_unit,
+            reported_unit,
+            flux_unit,
+            provenance,
+            axis_details,
+        ) = ingest_module._extract_table_data(hdul[1])
+
+    assert axis_details["kind"] == "time"
+    assert axis_details.get("offset_subtracted") is True
+    assert quantity.to_value(u.day) == pytest.approx(base_time)
+    assert resolved_unit == "day"
+    assert reported_unit == "BTJD - 2457000"
+    units_meta = provenance.get("axis_unit_resolution", {})
+    assert units_meta.get("offset") == pytest.approx(2457000.0)
+
+
 def test_parse_fits_table_handles_byte_time_unit(monkeypatch):
     base_time = np.array([0.0, 1.0, 2.0, 3.0], dtype=float)
     offset = 2457000.0

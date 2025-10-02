@@ -1,3 +1,8 @@
+# Overlay time-series policy — 2025-10-20
+- Subtract FITS time-axis offsets inside `_extract_table_data`, flag provenance with `offset_subtracted`, and skip duplicate subtraction during payload assembly so canonical values remain relative to the advertised frame. 【F:app/server/ingest_fits.py†L519-L550】【F:app/server/ingest_fits.py†L1475-L1527】
+- Reject time-series overlays in `_add_overlay` and `ingest_local_file`, surface the policy in error messages, and treat time traces like images when grouping, reference selection, and plotting overlays. 【F:app/ui/main.py†L970-L1050】【F:app/ui/main.py†L373-L382】【F:app/ui/main.py†L1885-L1934】【F:app/utils/local_ingest.py†L461-L482】
+- Added TESS-inspired regression coverage confirming FITS ingest normalises offsets, local ingest surfaces the new error, and overlay rendering drops time traces from figures. 【F:tests/server/test_ingest_fits.py†L491-L513】【F:tests/server/test_local_ingest.py†L517-L691】【F:tests/ui/test_overlay_time_policy.py†L15-L65】
+
 # Differential similarity image guard — 2025-10-20
 - Filtered differential similarity sources to drop image overlays so vectorisation never calls `to_vectors` on image payloads. 【F:app/ui/main.py†L3174-L3184】
 - Skip building reference vectors when the active overlay is an image, preventing similarity helpers from raising ValueError. 【F:app/ui/main.py†L1893-L1899】

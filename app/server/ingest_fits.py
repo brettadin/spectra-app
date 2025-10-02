@@ -532,6 +532,20 @@ def _extract_table_data(
         time_unit = time_info.get("astropy_unit", u.day)
         resolved_unit = axis_details.get("canonical_unit") or "day"
         axis_quantity = u.Quantity(wavelength_values, time_unit, copy=False)
+        offset_value = time_info.get("offset")
+        if offset_value is not None:
+            try:
+                offset_float = float(offset_value)
+            except (TypeError, ValueError):
+                offset_float = None
+            if offset_float is not None and np.isfinite(offset_float):
+                try:
+                    axis_quantity = axis_quantity - (offset_float * time_unit)
+                except Exception:  # pragma: no cover - defensive subtraction guard
+                    pass
+                else:
+                    axis_details["offset"] = offset_float
+                    axis_details["offset_subtracted"] = True
         wavelength_quantity = axis_quantity
         wavelength_nm_values = np.asarray(axis_quantity.to_value(time_unit), dtype=float)
     else:
@@ -1469,7 +1483,8 @@ def parse_fits(content: HeaderInput, *, filename: Optional[str] = None) -> Dict[
                 wavelength_quantity.to_value(axis_unit), dtype=float
             )
             offset_value = axis_details.get("offset")
-            if offset_value is not None:
+            offset_already_applied = bool(axis_details.get("offset_subtracted"))
+            if offset_value is not None and not offset_already_applied:
                 try:
                     offset_float = float(offset_value)
                 except (TypeError, ValueError):

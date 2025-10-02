@@ -458,6 +458,29 @@ def ingest_local_file(name: str, content: bytes) -> Dict[str, object]:
     axis_kind = parsed.get("axis_kind")
     normalized_axis_kind = str(axis_kind).lower() if axis_kind else None
 
+    if normalized_axis_kind == "time":
+        time_meta = metadata if isinstance(metadata, Mapping) else {}
+        time_payload = parsed.get("time") if isinstance(parsed.get("time"), Mapping) else {}
+        unit_label = (
+            time_meta.get("time_unit")
+            or time_meta.get("reported_time_unit")
+            or time_payload.get("unit")
+        )
+        frame_label = time_meta.get("time_frame") or time_payload.get("frame")
+        offset_value = time_meta.get("time_offset") or time_payload.get("offset")
+        detail_parts: List[str] = []
+        if unit_label:
+            detail_parts.append(f"unit {unit_label}")
+        if frame_label:
+            detail_parts.append(str(frame_label))
+        if offset_value is not None:
+            detail_parts.append(f"offset {offset_value}")
+        detail_hint = f" ({', '.join(detail_parts)})" if detail_parts else ""
+        raise LocalIngestError(
+            "Time-series products are not supported for overlays."
+            f" Detected a time axis{detail_hint}."
+        )
+
     if normalized_axis_kind == "image":
         image_payload = parsed.get("image") if isinstance(parsed.get("image"), Mapping) else {}
         shape = image_payload.get("shape") if isinstance(image_payload, Mapping) else None

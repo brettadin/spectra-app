@@ -514,6 +514,41 @@ def test_ingest_local_dense_ascii_falls_back_for_tab_delimited(monkeypatch):
 
 
 
+def test_ingest_local_rejects_tess_light_curve(tmp_path):
+    base_time = np.array([0.0, 0.5, 1.0, 1.5], dtype=float)
+    offset = 2457000.0
+    tess_time = base_time + offset
+    flux = np.array([1200.0, 1195.0, 1187.0, 1180.0], dtype=float)
+
+    columns = [
+        fits.Column(name="TIME", array=tess_time, format="D", unit="BTJD - 2457000"),
+        fits.Column(name="SAP_FLUX", array=flux, format="E", unit="e-/s"),
+    ]
+
+    table_hdu = fits.BinTableHDU.from_columns(columns, name="LIGHTCURVE")
+    table_hdu.header["TELESCOP"] = "TESS"
+    table_hdu.header["INSTRUME"] = "TESS Photometer"
+    table_hdu.header["EXTNAME"] = "LIGHTCURVE"
+    table_hdu.header["TIMEUNIT"] = "d"
+    table_hdu.header["TIMESYS"] = "TDB"
+    table_hdu.header["BJDREFI"] = offset
+    table_hdu.header["BJDREFF"] = 0.0
+    table_hdu.header["CTYPE1"] = "TIME"
+    table_hdu.header["CUNIT1"] = "d"
+
+    hdul = fits.HDUList([fits.PrimaryHDU(), table_hdu])
+    fits_path = tmp_path / "tess_lightcurve.fits"
+    hdul.writeto(fits_path, overwrite=True)
+    hdul.close()
+
+    with pytest.raises(local_ingest.LocalIngestError) as excinfo:
+        ingest_local_file("tess_lightcurve.fits", fits_path.read_bytes())
+
+    message = str(excinfo.value)
+    assert "Time-series products are not supported for overlays" in message
+    assert "time axis" in message
+
+
 def test_ingest_local_fits_enriches_metadata():
     flux_values = np.array([1.0, 2.0, 3.0], dtype=float)
 
@@ -630,7 +665,7 @@ def test_ingest_local_fits_event_table_bins_counts():
     assert provenance["units"]["flux_derived"] == "count"
     assert provenance["conversions"]["flux_unit"] == {"from": "pixel", "to": "count"}
 
-def test_ingest_local_fits_time_series_preserves_axis_metadata():
+def test_ingest_local_fits_time_series_rejected():
     base_time = np.array([0.0, 1.5, 3.25, 4.0], dtype=float)
     offset = 2457000.0
     time = base_time + offset
@@ -648,46 +683,12 @@ def test_ingest_local_fits_time_series_preserves_axis_metadata():
     hdul.writeto(bio)
     hdul.close()
 
-    payload = ingest_local_file("lightcurve.fits", bio.getvalue())
+    with pytest.raises(local_ingest.LocalIngestError) as excinfo:
+        ingest_local_file("lightcurve.fits", bio.getvalue())
 
-    assert payload["axis_kind"] == "time"
-    assert payload["wavelength_nm"] == pytest.approx(base_time.tolist())
-
-    wavelength_axis = payload["wavelength"]
-    assert wavelength_axis["kind"] == "time"
-    assert wavelength_axis["unit"] == "day"
-    assert wavelength_axis["values"] == pytest.approx(base_time.tolist())
-    assert wavelength_axis.get("frame") == "BJD"
-    assert wavelength_axis.get("offset") == pytest.approx(offset)
-
-    time_payload = payload.get("time")
-    assert isinstance(time_payload, dict)
-    assert time_payload.get("unit") == "day"
-    assert time_payload.get("kind") == "time"
-    assert time_payload.get("values") == pytest.approx(base_time.tolist())
-
-    metadata = payload["metadata"]
-    assert metadata["axis_kind"] == "time"
-    assert metadata["time_unit"] == "day"
-    assert metadata.get("time_offset") == pytest.approx(offset)
-    assert metadata["time_range"] == [
-        pytest.approx(base_time.min()),
-        pytest.approx(base_time.max()),
-    ]
-    assert metadata.get("data_time_range") == [
-        pytest.approx(base_time.min()),
-        pytest.approx(base_time.max()),
-    ]
-    assert metadata["time_original_unit"].startswith("BJD")
-    assert metadata["points"] == len(base_time)
-
-    provenance_units = payload["provenance"].get("units", {})
-    assert provenance_units.get("time_converted_to") == "day"
-    assert provenance_units.get("time_offset") == pytest.approx(offset)
-
-    summary = payload.get("summary")
-    assert isinstance(summary, str)
-    assert "4 samples" in summary
+    message = str(excinfo.value)
+    assert "Time-series products are not supported for overlays" in message
+    assert "time axis" in message
 
 
 def test_ingest_local_image_returns_image_payload(tmp_path):
