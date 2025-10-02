@@ -1891,7 +1891,7 @@ def _build_overlay_figure(
         else {}
     )
     reference_vectors: Optional[TraceVectors] = None
-    if reference:
+    if reference and _axis_kind_for_trace(reference) != "image":
         ref_kind = _axis_kind_for_trace(reference)
         reference_vectors = reference.to_vectors(
             max_points=max_points,
@@ -3171,9 +3171,17 @@ def _render_differential_tab() -> None:
     sample_default = int(st.session_state.get("differential_sample_points", 2000))
     normalization = st.session_state.get("normalization_mode", "unit")
     viewport_store = _get_viewport_store()
-    similarity_sources = [trace for trace in spectral_overlays if trace.visible]
+    similarity_sources = [
+        trace
+        for trace in spectral_overlays
+        if trace.visible and _axis_kind_for_trace(trace) != "image"
+    ]
     if len(similarity_sources) < 2:
-        similarity_sources = spectral_overlays
+        similarity_sources = [
+            trace
+            for trace in spectral_overlays
+            if _axis_kind_for_trace(trace) != "image"
+        ]
     wavelength_sources = [
         trace for trace in similarity_sources if _axis_kind_for_trace(trace) == "wavelength"
     ]
