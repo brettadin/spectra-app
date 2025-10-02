@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from concurrent.futures import Future
+import importlib
 import logging
 import threading
 import time
@@ -234,3 +235,55 @@ def test_refresh_ingest_jobs_accepts_legacy_result(monkeypatch):
     job = runtime["jobs"]["legacy"]
     assert job["status"] == "success"
     assert "Added Legacy" in job["detail"]
+
+
+def test_refresh_ingest_jobs_handles_result_after_rerun(monkeypatch):
+    """Completed futures from a previous run continue to add overlays."""
+
+    from app.ui import main as main_module
+
+    payload = {"label": "Rerun", "flux": [0.1], "wavelength_nm": [400.0]}
+
+    # Capture the original dataclass before simulating a rerun.
+    result_factory = main_module.OverlayIngestResult
+
+    future: Future = Future()
+
+    # Reload the module to simulate a Streamlit rerun creating a new module object.
+    reloaded_main = importlib.reload(main_module)
+
+    future.set_result(
+        result_factory(status="success", detail="Prepared Rerun", payload=dict(payload))
+    )
+
+    added_payloads: List[Dict[str, Any]] = []
+
+    def _fake_add_overlay_payload(data: Dict[str, Any]) -> tuple[bool, str]:
+        added_payloads.append(data)
+        label = data.get("label") or "overlay"
+        return True, f"Added {label}"
+
+    monkeypatch.setattr(reloaded_main, "_add_overlay_payload", _fake_add_overlay_payload)
+
+    runtime = {
+        "lock": threading.Lock(),
+        "jobs": {
+            "rerun": {
+                "id": "rerun",
+                "status": "queued",
+                "detail": "Waiting to start",
+                "progress": 0.0,
+                "submitted_at": time.time(),
+                "started_at": None,
+                "finished_at": None,
+            }
+        },
+        "futures": {"rerun": future},
+    }
+
+    reloaded_main._refresh_ingest_jobs(runtime)
+
+    assert added_payloads == [payload]
+    job = runtime["jobs"]["rerun"]
+    assert job["status"] == "success"
+    assert "Unexpected ingest result" not in job["detail"]

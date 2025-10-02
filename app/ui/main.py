@@ -25,6 +25,7 @@ from streamlit.delta_generator import DeltaGenerator
 from app.ui.targets import RegistryUnavailableError, render_targets_panel
 
 from app._version import get_version_info
+from app.ingest import OverlayIngestResult
 from app.export_manifest import build_manifest
 from app.server.differential import ratio, resample_to_common_grid, subtract
 from app.server.fetch_archives import FetchError, fetch_spectrum
@@ -206,13 +207,6 @@ class OverlayTrace:
                     return 0
             return 0
         return len(self.wavelength_nm)
-
-
-@dataclass
-class OverlayIngestResult:
-    status: str
-    detail: str
-    payload: Optional[Dict[str, Any]] = None
 
 
 @dataclass(frozen=True)
