@@ -7,326 +7,52 @@
   },
   "star": {
     "otype": null,
-    "sptype": null,
+    "sptype": "G2 V",
     "parallax_mas": null,
     "rv_kms": null
   },
   "planets": [],
   "summaries": {
-    "auto": "18 Sco: unknown type | tags: solar-twin, G2V"
+    "auto": "18 Sco: CALSPEC solar analogue (HST/STIS) | tags: calibrator, G2 V, solar-twin"
   },
   "provenance": {
-    "generated_by": "build_registry.py",
-    "date": "2025-09-29T01:42:04.463745+00:00"
+    "generated_by": "manual_curated_library",
+    "date": "2025-10-02T02:39:25.460355Z"
   },
   "datasets": {
     "mast": [
       {
-        "obsid": "60942391",
-        "obs_collection": "HST",
-        "instrument_name": "STIS/NUV-MAMA",
-        "target_name": "18-SCO",
-        "filters": "E230H",
-        "t_min": 59361.4105965625,
-        "t_max": 59361.414068784725
-      },
-      {
-        "obsid": "349681468",
-        "obs_collection": "HST",
-        "instrument_name": "COS-STIS",
-        "target_name": "* 18 Sco",
-        "filters": "E230H;E230M;G130M;G140L;G230LB;G430L;G750L",
-        "t_min": 51941.68426,
-        "t_max": 59361.41406877
-      },
-      {
-        "obsid": "199092743",
-        "obs_collection": "HST",
-        "instrument_name": "STIS",
-        "target_name": "18-SCO",
-        "filters": "E230H",
-        "t_min": 59361.41059027778,
-        "t_max": 59361.4140625
-      },
-      {
-        "obsid": "60942395",
-        "obs_collection": "HST",
-        "instrument_name": "STIS/CCD",
-        "target_name": "18-SCO",
-        "filters": "MIRVIS",
-        "t_min": 59361.405654710645,
-        "t_max": 59361.4076821412
-      },
-      {
-        "obsid": "26141695",
-        "obs_collection": "HST",
-        "instrument_name": "STIS/CCD",
-        "target_name": "18SCO",
-        "filters": "G750L",
-        "t_min": 58506.02978483796,
-        "t_max": 58506.03247021991
-      },
-      {
-        "obsid": "199213748",
-        "obs_collection": "HST",
-        "instrument_name": "STIS",
-        "target_name": "18SCO",
-        "filters": "G230LB;G430L;G750L",
-        "t_min": 58506.00630787037,
-        "t_max": 58506.03246527778
-      },
-      {
-        "obsid": "24843444",
-        "obs_collection": "HST",
-        "instrument_name": "COS/FUV",
-        "target_name": "NSV-7577",
-        "filters": "G130M",
-        "t_min": 55596.90744591435,
-        "t_max": 55596.97732997685
-      },
-      {
-        "obsid": "198949643",
-        "obs_collection": "HST",
-        "instrument_name": "COS",
-        "target_name": "NSV-7577",
-        "filters": "G130M;G140L",
-        "t_min": 55596.84664351852,
-        "t_max": 55596.977326388886
-      },
-      {
-        "obsid": "24843443",
-        "obs_collection": "HST",
-        "instrument_name": "COS/FUV",
-        "target_name": "NSV-7577",
-        "filters": "G140L",
-        "t_min": 55596.84664552083,
-        "t_max": 55596.89815023148
-      },
-      {
-        "obsid": "24142192",
-        "obs_collection": "HST",
-        "instrument_name": "COS/NUV",
-        "target_name": "NSV-7577",
-        "filters": "G285M",
-        "t_min": 55596.83811774306,
-        "t_max": 55596.838118900465
-      },
-      {
-        "obsid": "24142191",
-        "obs_collection": "HST",
-        "instrument_name": "COS/NUV",
-        "target_name": "NSV-7577",
-        "filters": "G285M",
-        "t_min": 55596.835523263886,
-        "t_max": 55596.83659965278
-      },
-      {
-        "obsid": "24653836",
-        "obs_collection": "HST",
-        "instrument_name": "WFPC2",
-        "target_name": "BIAS",
-        "filters": "F1042M;F437N",
-        "t_min": 52316.61267519676,
-        "t_max": 52316.61267519676
+        "obsid": "18sco_stis_006.fits",
+        "project": "CALSPEC",
+        "instrument_name": "HST/STIS",
+        "target_name": "18 Sco",
+        "filters": "CALSPEC curated",
+        "t_min": null,
+        "t_max": null
       }
     ],
     "eso_phase3": [],
     "carmenes_dr1": [],
     "mast_summary": {
-      "total_count": 90,
-      "returned_count": 12,
-      "truncated": true
+      "total_count": 1,
+      "returned_count": 1,
+      "truncated": false
     },
     "mast_products": {
       "items": [
         {
-          "obsid": "60942391",
-          "productFilename": "oee525010_jif.fits",
-          "productType": "AUXILIARY",
-          "dataproduct_type": "spectrum",
-          "productURL": "mast:HST/product/oee525010_jif.fits",
-          "description": "DADS JIF file"
-        },
-        {
-          "obsid": "60942391",
-          "productFilename": "oee525010_jit.fits",
-          "productType": "AUXILIARY",
-          "dataproduct_type": "spectrum",
-          "productURL": "mast:HST/product/oee525010_jit.fits",
-          "description": "DADS JIT file"
-        },
-        {
-          "obsid": "349681468",
-          "productFilename": "hst_s18sco--0651_metadata.txt",
-          "productType": "AUXILIARY",
-          "dataproduct_type": "spectrum",
-          "productURL": "mast:HST/product/hsla/hst_s18sco--0651/hst_s18sco--0651_metadata.txt",
-          "description": "Summary file of HSLA target information: i.e. programs, modes, classification, redshift"
-        },
-        {
-          "obsid": "349681468",
-          "productFilename": "hst_s18sco--0651_aspec.fits",
+          "obsid": "18sco_stis_006.fits",
+          "productFilename": "18sco_stis_006.fits",
           "productType": "SCIENCE",
           "dataproduct_type": "spectrum",
-          "productURL": "mast:HST/product/hsla/hst_s18sco--0651/hst_s18sco--0651_aspec.fits",
-          "description": "HSLA coadded and abutted spectrum for multiple gratings"
-        },
-        {
-          "obsid": "60942391",
-          "productFilename": "oee525010_asn.fits",
-          "productType": "AUXILIARY",
-          "dataproduct_type": "spectrum",
-          "productURL": "mast:HST/product/oee525010_asn.fits",
-          "description": "DADS ASN file - Association ACS/WFC3/STIS"
-        },
-        {
-          "obsid": "60942391",
-          "productFilename": "oee525010_jif.fits",
-          "productType": "AUXILIARY",
-          "dataproduct_type": "spectrum",
-          "productURL": "mast:HST/product/oee525010_jif.fits",
-          "description": "DADS JIF file"
-        },
-        {
-          "obsid": "60942395",
-          "productFilename": "oee525o8q_raw.fits",
-          "productType": "SCIENCE",
-          "dataproduct_type": "image",
-          "productURL": "mast:HST/product/oee525o8q_raw.fits",
-          "description": "DADS RAW file - Raw exposure COS/NICMOS/STIS/WFC3/ACS"
-        },
-        {
-          "obsid": "26141695",
-          "productFilename": "odta07040_crj.fits",
-          "productType": "AUXILIARY",
-          "dataproduct_type": "spectrum",
-          "productURL": "mast:HST/product/odta07040_crj.fits",
-          "description": "DADS CRJ file - CR-rejected image ACS/WFC3/STIS-CCD"
-        },
-        {
-          "obsid": "26141695",
-          "productFilename": "odta07kaj_epc.fits",
-          "productType": "AUXILIARY",
-          "dataproduct_type": "spectrum",
-          "productURL": "mast:HST/product/odta07kaj_epc.fits",
-          "description": "Exposure processing"
-        },
-        {
-          "obsid": "26141676",
-          "productFilename": "odta07020_asn.fits",
-          "productType": "AUXILIARY",
-          "dataproduct_type": "spectrum",
-          "productURL": "mast:HST/product/odta07020_asn.fits",
-          "description": "DADS ASN file - Association ACS/WFC3/STIS"
-        },
-        {
-          "obsid": "26141676",
-          "productFilename": "odta07020_crj.fits",
-          "productType": "AUXILIARY",
-          "dataproduct_type": "spectrum",
-          "productURL": "mast:HST/product/odta07020_crj.fits",
-          "description": "DADS CRJ file - CR-rejected image ACS/WFC3/STIS-CCD"
-        },
-        {
-          "obsid": "24142195",
-          "productFilename": "lbiz01ibq_corrtag_a.fits",
-          "productType": "AUXILIARY",
-          "dataproduct_type": "spectrum",
-          "productURL": "mast:HST/product/lbiz01ibq_corrtag_a.fits",
-          "description": "DADS CTA file - Corrected events COS segment A"
-        },
-        {
-          "obsid": "24142195",
-          "productFilename": "lbiz01ibq_corrtag_b.fits",
-          "productType": "AUXILIARY",
-          "dataproduct_type": "spectrum",
-          "productURL": "mast:HST/product/lbiz01ibq_corrtag_b.fits",
-          "description": "DADS CTB file - Corrected events COS segment B"
-        },
-        {
-          "obsid": "24142193",
-          "productFilename": "lbiz01i6q_corrtag_a.fits",
-          "productType": "AUXILIARY",
-          "dataproduct_type": "spectrum",
-          "productURL": "mast:HST/product/lbiz01i6q_corrtag_a.fits",
-          "description": "DADS CTA file - Corrected events COS segment A"
-        },
-        {
-          "obsid": "24142193",
-          "productFilename": "lbiz01i6q_counts_a.fits",
-          "productType": "AUXILIARY",
-          "dataproduct_type": "spectrum",
-          "productURL": "mast:HST/product/lbiz01i6q_counts_a.fits",
-          "description": "DADS CNA file - Counts COS segment A"
-        },
-        {
-          "obsid": "24142193",
-          "productFilename": "lbiz01i6q_corrtag_a.fits",
-          "productType": "AUXILIARY",
-          "dataproduct_type": "spectrum",
-          "productURL": "mast:HST/product/lbiz01i6q_corrtag_a.fits",
-          "description": "DADS CTA file - Corrected events COS segment A"
-        },
-        {
-          "obsid": "24142193",
-          "productFilename": "lbiz01i6q_counts_a.fits",
-          "productType": "AUXILIARY",
-          "dataproduct_type": "spectrum",
-          "productURL": "mast:HST/product/lbiz01i6q_counts_a.fits",
-          "description": "DADS CNA file - Counts COS segment A"
-        },
-        {
-          "obsid": "24142192",
-          "productFilename": "lbiz01i0j_jif.fits",
-          "productType": "AUXILIARY",
-          "dataproduct_type": "spectrum",
-          "productURL": "mast:HST/product/lbiz01i0j_jif.fits",
-          "description": "DADS JIF file"
-        },
-        {
-          "obsid": "24142192",
-          "productFilename": "lbiz01i0j_jit.fits",
-          "productType": "AUXILIARY",
-          "dataproduct_type": "spectrum",
-          "productURL": "mast:HST/product/lbiz01i0j_jit.fits",
-          "description": "DADS JIT file"
-        },
-        {
-          "obsid": "24142191",
-          "productFilename": "lbiz01hzj_jif.fits",
-          "productType": "AUXILIARY",
-          "dataproduct_type": "spectrum",
-          "productURL": "mast:HST/product/lbiz01hzj_jif.fits",
-          "description": "DADS JIF file"
-        },
-        {
-          "obsid": "24142191",
-          "productFilename": "lbiz01hzj_jit.fits",
-          "productType": "AUXILIARY",
-          "dataproduct_type": "spectrum",
-          "productURL": "mast:HST/product/lbiz01hzj_jit.fits",
-          "description": "DADS JIT file"
-        },
-        {
-          "obsid": "24653836",
-          "productFilename": "u6hg3301m_c0m.fits",
-          "productType": "SCIENCE",
-          "dataproduct_type": "image",
-          "productURL": "mast:HST/product/u6hg3301m_c0m.fits",
-          "description": "DADS C0M file - Calibrated exposure WFPC2"
-        },
-        {
-          "obsid": "24653836",
-          "productFilename": "u6hg3301m_c1m.fits",
-          "productType": "SCIENCE",
-          "dataproduct_type": "image",
-          "productURL": "mast:HST/product/u6hg3301m_c1m.fits",
-          "description": "DADS C1M file"
+          "project": "CALSPEC",
+          "description": "Solar analogue to validate optical throughput and scaling.",
+          "productURL": "https://ssb.stsci.edu/cdbs/calspec/18sco_stis_006.fits"
         }
       ],
-      "total_count": 481,
-      "returned_count": 23,
-      "truncated": true
+      "total_count": 1,
+      "returned_count": 1,
+      "truncated": false
     }
   }
 }

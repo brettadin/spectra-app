@@ -7,276 +7,52 @@
   },
   "star": {
     "otype": null,
-    "sptype": null,
+    "sptype": "DA1.2",
     "parallax_mas": null,
     "rv_kms": null
   },
   "planets": [],
   "summaries": {
-    "auto": "GD 153: unknown type | tags: calibrator, DA white dwarf, HLSP, CALSPEC"
+    "auto": "GD 153: CALSPEC white dwarf (HST/STIS) | tags: DA1.2, calibrator, ultraviolet"
   },
   "provenance": {
-    "generated_by": "build_registry.py",
-    "date": "2025-09-29T01:37:53.562681+00:00"
+    "generated_by": "manual_curated_library",
+    "date": "2025-10-02T02:39:25.460355Z"
   },
   "datasets": {
     "mast": [
       {
-        "obsid": "266470966",
-        "obs_collection": "HST",
-        "instrument_name": "STIS/CCD",
-        "target_name": "DARK",
-        "filters": "MIRVIS",
-        "t_min": 60822.0353284375,
-        "t_max": 60822.03602288194
-      },
-      {
-        "obsid": "266470965",
-        "obs_collection": "HST",
-        "instrument_name": "STIS/CCD",
-        "target_name": "DARK",
-        "filters": "MIRVIS",
-        "t_min": 60822.03412473379,
-        "t_max": 60822.03481917824
-      },
-      {
-        "obsid": "236870266",
-        "obs_collection": "HST",
-        "instrument_name": "STIS/FUV-MAMA",
-        "target_name": "GD153",
-        "filters": "G140L",
-        "t_min": 60699.95603082176,
-        "t_max": 60699.9621303588
-      },
-      {
-        "obsid": "236870244",
-        "obs_collection": "HST",
-        "instrument_name": "STIS/NUV-MAMA",
-        "target_name": "GD153",
-        "filters": "G230L",
-        "t_min": 60699.946748229166,
-        "t_max": 60699.95283619213
-      },
-      {
-        "obsid": "238237021",
-        "obs_collection": "HST",
-        "instrument_name": "STIS",
-        "target_name": "GD153",
-        "filters": "G230L",
-        "t_min": 60699.946747685186,
-        "t_max": 60699.952835648146
-      },
-      {
-        "obsid": "233498473",
-        "obs_collection": "HST",
-        "instrument_name": "STIS/FUV-MAMA",
-        "target_name": "GD153",
-        "filters": "G140L",
-        "t_min": 60656.69932734954,
-        "t_max": 60656.69932734954
-      },
-      {
-        "obsid": "233498471",
-        "obs_collection": "HST",
-        "instrument_name": "STIS/NUV-MAMA",
-        "target_name": "GD153",
-        "filters": "G230L",
-        "t_min": 60656.69004475694,
-        "t_max": 60656.69004475694
-      },
-      {
-        "obsid": "349627079",
-        "obs_collection": "HST",
-        "instrument_name": "COS-STIS",
+        "obsid": "gd153_stiswfcnic_004.fits",
+        "project": "CALSPEC",
+        "instrument_name": "HST/STIS",
         "target_name": "GD 153",
-        "filters": "E140H;E230H;G140L;G140M;G230L;G230M;G430L;G750L",
-        "t_min": 50582.24857049,
-        "t_max": 60333.95845907
-      },
-      {
-        "obsid": "207228420",
-        "obs_collection": "HST",
-        "instrument_name": "STIS",
-        "target_name": "GD153",
-        "filters": "G430L;G750L",
-        "t_min": 60333.93289351852,
-        "t_max": 60333.958449074074
-      },
-      {
-        "obsid": "25077297",
-        "obs_collection": "HLSP",
-        "instrument_name": "STIS",
-        "target_name": "wd1254+223",
-        "filters": "1150-2650",
-        "t_min": 51982.633,
-        "t_max": 51990.509
+        "filters": "CALSPEC curated",
+        "t_min": null,
+        "t_max": null
       }
     ],
     "eso_phase3": [],
     "carmenes_dr1": [],
     "mast_summary": {
-      "total_count": 1058,
-      "returned_count": 10,
-      "truncated": true
+      "total_count": 1,
+      "returned_count": 1,
+      "truncated": false
     },
     "mast_products": {
       "items": [
         {
-          "obsid": "266470966",
-          "productFilename": "ofd9bdeyq_raw.fits",
-          "productType": "SCIENCE",
-          "dataproduct_type": "image",
-          "productURL": "mast:HST/product/ofd9bdeyq_raw.fits",
-          "description": "DADS RAW file - Raw exposure COS/NICMOS/STIS/WFC3/ACS"
-        },
-        {
-          "obsid": "266470966",
-          "productFilename": "ofd9bdeyq_flt.fits",
-          "productType": "SCIENCE",
-          "dataproduct_type": "image",
-          "productURL": "mast:HST/product/ofd9bdeyq_flt.fits",
-          "description": "DADS FLT file - Calibrated exposure ACS/WFC3/STIS/COS"
-        },
-        {
-          "obsid": "266470965",
-          "productFilename": "ofd9bdexq_raw.fits",
-          "productType": "SCIENCE",
-          "dataproduct_type": "image",
-          "productURL": "mast:HST/product/ofd9bdexq_raw.fits",
-          "description": "DADS RAW file - Raw exposure COS/NICMOS/STIS/WFC3/ACS"
-        },
-        {
-          "obsid": "266470965",
-          "productFilename": "ofd9bdexq_flt.fits",
-          "productType": "SCIENCE",
-          "dataproduct_type": "image",
-          "productURL": "mast:HST/product/ofd9bdexq_flt.fits",
-          "description": "DADS FLT file - Calibrated exposure ACS/WFC3/STIS/COS"
-        },
-        {
-          "obsid": "236870266",
-          "productFilename": "ofdy52a8j_jif.fits",
-          "productType": "AUXILIARY",
-          "dataproduct_type": "spectrum",
-          "productURL": "mast:HST/product/ofdy52a8j_jif.fits",
-          "description": "DADS JIF file"
-        },
-        {
-          "obsid": "236870266",
-          "productFilename": "ofdy52a8j_jit.fits",
-          "productType": "AUXILIARY",
-          "dataproduct_type": "spectrum",
-          "productURL": "mast:HST/product/ofdy52a8j_jit.fits",
-          "description": "DADS JIT file"
-        },
-        {
-          "obsid": "236870244",
-          "productFilename": "ofdy52010_jif.fits",
-          "productType": "AUXILIARY",
-          "dataproduct_type": "spectrum",
-          "productURL": "mast:HST/product/ofdy52010_jif.fits",
-          "description": "DADS JIF file"
-        },
-        {
-          "obsid": "236870244",
-          "productFilename": "ofdy52010_jit.fits",
-          "productType": "AUXILIARY",
-          "dataproduct_type": "spectrum",
-          "productURL": "mast:HST/product/ofdy52010_jit.fits",
-          "description": "DADS JIT file"
-        },
-        {
-          "obsid": "236870244",
-          "productFilename": "ofdy52010_asn.fits",
-          "productType": "AUXILIARY",
-          "dataproduct_type": "spectrum",
-          "productURL": "mast:HST/product/ofdy52010_asn.fits",
-          "description": "DADS ASN file - Association ACS/WFC3/STIS"
-        },
-        {
-          "obsid": "236870244",
-          "productFilename": "ofdy52010_jif.fits",
-          "productType": "AUXILIARY",
-          "dataproduct_type": "spectrum",
-          "productURL": "mast:HST/product/ofdy52010_jif.fits",
-          "description": "DADS JIF file"
-        },
-        {
-          "obsid": "233498473",
-          "productFilename": "ofdy02rmj_jif.fits",
-          "productType": "AUXILIARY",
-          "dataproduct_type": "spectrum",
-          "productURL": "mast:HST/product/ofdy02rmj_jif.fits",
-          "description": "DADS JIF file"
-        },
-        {
-          "obsid": "233498473",
-          "productFilename": "ofdy02rmj_jit.fits",
-          "productType": "AUXILIARY",
-          "dataproduct_type": "spectrum",
-          "productURL": "mast:HST/product/ofdy02rmj_jit.fits",
-          "description": "DADS JIT file"
-        },
-        {
-          "obsid": "233498471",
-          "productFilename": "ofdy02010_jif.fits",
-          "productType": "AUXILIARY",
-          "dataproduct_type": "spectrum",
-          "productURL": "mast:HST/product/ofdy02010_jif.fits",
-          "description": "DADS JIF file"
-        },
-        {
-          "obsid": "233498471",
-          "productFilename": "ofdy02010_jit.fits",
-          "productType": "AUXILIARY",
-          "dataproduct_type": "spectrum",
-          "productURL": "mast:HST/product/ofdy02010_jit.fits",
-          "description": "DADS JIT file"
-        },
-        {
-          "obsid": "349627079",
-          "productFilename": "hst_gd153--0335_metadata.txt",
-          "productType": "AUXILIARY",
-          "dataproduct_type": "spectrum",
-          "productURL": "mast:HST/product/hsla/hst_gd153--0335/hst_gd153--0335_metadata.txt",
-          "description": "Summary file of HSLA target information: i.e. programs, modes, classification, redshift"
-        },
-        {
-          "obsid": "349627079",
-          "productFilename": "hst_gd153--0335_aspec.fits",
+          "obsid": "gd153_stiswfcnic_004.fits",
+          "productFilename": "gd153_stiswfcnic_004.fits",
           "productType": "SCIENCE",
           "dataproduct_type": "spectrum",
-          "productURL": "mast:HST/product/hsla/hst_gd153--0335/hst_gd153--0335_aspec.fits",
-          "description": "HSLA coadded and abutted spectrum for multiple gratings"
-        },
-        {
-          "obsid": "207055855",
-          "productFilename": "ofb301010_asn.fits",
-          "productType": "AUXILIARY",
-          "dataproduct_type": "spectrum",
-          "productURL": "mast:HST/product/ofb301010_asn.fits",
-          "description": "DADS ASN file - Association ACS/WFC3/STIS"
-        },
-        {
-          "obsid": "207055855",
-          "productFilename": "ofb301010_crj.fits",
-          "productType": "AUXILIARY",
-          "dataproduct_type": "spectrum",
-          "productURL": "mast:HST/product/ofb301010_crj.fits",
-          "description": "DADS CRJ file - CR-rejected image ACS/WFC3/STIS-CCD"
-        },
-        {
-          "obsid": "25077297",
-          "productFilename": "hlsp_starcat_hst_stis_wd1254+223_1150-2650_51982.633-51990.509_0.2x0.2_third-stage_v1_spc.fits",
-          "productType": "SCIENCE",
-          "dataproduct_type": "image",
-          "productURL": "mast:HLSP/url/cgi-bin/getdata.cgi?dataset=hlsp_starcat_hst_stis_wd1254+223_1150-2650_51982.633-51990.509_0.2x0.2_third-stage_v1_spc",
-          "description": "FITS"
+          "project": "CALSPEC",
+          "description": "Primary CALSPEC DA white dwarf calibrator.",
+          "productURL": "https://ssb.stsci.edu/cdbs/calspec/gd153_stiswfcnic_004.fits"
         }
       ],
-      "total_count": 153,
-      "returned_count": 19,
-      "truncated": true
+      "total_count": 1,
+      "returned_count": 1,
+      "truncated": false
     }
   }
 }

@@ -20,6 +20,7 @@ import unicodedata
 import numpy as np
 from astropy import units as u
 from astropy.io import fits
+from astroquery.mast import Observations
 import requests
 
 from app._version import get_version_info
@@ -270,7 +271,7 @@ def fetch(
     local_path = cache_directory / selected_filename
     cache_hit = local_path.exists() and not force_refresh
     if not cache_hit:
-        _download_file(remote_url, local_path)
+        _download_file(remote_url, local_path, force_refresh=force_refresh)
 
     spectrum = _parse_calspec_spectrum(local_path)
     effective_range = flux_percentile_range(
@@ -308,6 +309,7 @@ def fetch(
         "spectral_type": entry.spectral_type,
         "distance_pc": entry.distance_pc,
         "description": entry.description,
+        "download_agent": "astroquery.utils.download_file",
         "wavelength_min_nm": float(np.nanmin(spectrum["wavelength_nm"])),
         "wavelength_max_nm": float(np.nanmax(spectrum["wavelength_nm"])),
         "wavelength_sample_count": int(spectrum["wavelength_nm"].size),
@@ -420,19 +422,40 @@ def _list_remote_files() -> List[str]:
 
 
 def _download_index_html() -> str:
-    response = requests.get(CALSPEC_INDEX_URL, timeout=REQUEST_TIMEOUT)
-    response.raise_for_status()
+    try:
+        response = requests.get(CALSPEC_INDEX_URL, timeout=REQUEST_TIMEOUT)
+        response.raise_for_status()
+    except requests.RequestException as exc:  # pragma: no cover - network failure guard
+        raise MastFetchError(f"Failed to download CALSPEC index: {exc}") from exc
     return response.text
 
 
-def _download_file(url: str, destination: Path) -> None:
+def _download_file(url: str, destination: Path, *, force_refresh: bool = False) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
-    with requests.get(url, stream=True, timeout=REQUEST_TIMEOUT) as response:
-        response.raise_for_status()
-        with destination.open("wb") as handle:
-            for chunk in response.iter_content(chunk_size=65536):
-                if chunk:
-                    handle.write(chunk)
+    filename = Path(url).name or destination.name
+    status = Observations.download_file(
+        filename,
+        base_url=CALSPEC_INDEX_URL,
+        local_path=str(destination.parent),
+        cache=not force_refresh,
+        verbose=False,
+    )
+
+    if isinstance(status, tuple):  # Observations.download_file returns status tuple
+        state = status[0]
+        if state != "COMPLETE":  # pragma: no cover - defensive guard
+            raise MastFetchError(
+                f"Astroquery failed to download {url}: state={state!r}"
+            )
+
+    downloaded_path = destination.parent / filename
+    if not downloaded_path.exists():  # pragma: no cover - defensive
+        raise MastFetchError(f"Astroquery reported success but {downloaded_path} is missing")
+
+    if downloaded_path != destination:
+        if destination.exists():
+            destination.unlink()
+        downloaded_path.rename(destination)
 
 
 def _parse_calspec_spectrum(path: Path) -> Dict[str, np.ndarray]:

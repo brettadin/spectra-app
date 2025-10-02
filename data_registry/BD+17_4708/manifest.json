@@ -1,19 +1,19 @@
 {
-  "name": "G191-B2B",
-  "canonical_name": "G191-B2B",
+  "name": "BD+17 4708",
+  "canonical_name": "BD+17 4708",
   "coordinates": {
-    "ra_deg": 76.37757540733,
-    "dec_deg": 52.83108869489
+    "ra_deg": 332.88073201368917,
+    "dec_deg": 18.09282721765222
   },
   "star": {
     "otype": null,
-    "sptype": "DA0.8",
+    "sptype": "sdF8",
     "parallax_mas": null,
     "rv_kms": null
   },
   "planets": [],
   "summaries": {
-    "auto": "G191-B2B: CALSPEC white dwarf (HST/STIS) | tags: DA0.8, calibrator, ultraviolet"
+    "auto": "BD+17 4708: CALSPEC flux anchor (HST/STIS) | tags: metal-poor subdwarf, sdF8, calibrator"
   },
   "provenance": {
     "generated_by": "manual_curated_library",
@@ -22,10 +22,10 @@
   "datasets": {
     "mast": [
       {
-        "obsid": "g191b2b_stiswfcnic_004.fits",
+        "obsid": "bd17d4708_stisnic_001.fits",
         "project": "CALSPEC",
         "instrument_name": "HST/STIS",
-        "target_name": "G191-B2B",
+        "target_name": "BD+17 4708",
         "filters": "CALSPEC curated",
         "t_min": null,
         "t_max": null
@@ -41,13 +41,13 @@
     "mast_products": {
       "items": [
         {
-          "obsid": "g191b2b_stiswfcnic_004.fits",
-          "productFilename": "g191b2b_stiswfcnic_004.fits",
+          "obsid": "bd17d4708_stisnic_001.fits",
+          "productFilename": "bd17d4708_stisnic_001.fits",
           "productType": "SCIENCE",
           "dataproduct_type": "spectrum",
           "project": "CALSPEC",
-          "description": "Hot DA white dwarf that underpins the CALSPEC UV scale.",
-          "productURL": "https://ssb.stsci.edu/cdbs/calspec/g191b2b_stiswfcnic_004.fits"
+          "description": "Metal-poor F subdwarf serving as a long-term CALSPEC anchor.",
+          "productURL": "https://ssb.stsci.edu/cdbs/calspec/bd17d4708_stisnic_001.fits"
         }
       ],
       "total_count": 1,

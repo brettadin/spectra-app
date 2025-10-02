@@ -7,134 +7,52 @@
   },
   "star": {
     "otype": null,
-    "sptype": null,
+    "sptype": "O9.5 IIInn",
     "parallax_mas": null,
     "rv_kms": null
   },
   "planets": [],
   "summaries": {
-    "auto": "HD 93521: unknown type | tags: O9V, hot"
+    "auto": "HD 93521: CALSPEC massive star (HST/STIS) | tags: O9.5 IIInn, calibrator, far-UV"
   },
   "provenance": {
-    "generated_by": "build_registry.py",
-    "date": "2025-09-29T01:48:11.579435+00:00"
+    "generated_by": "manual_curated_library",
+    "date": "2025-10-02T02:39:25.460355Z"
   },
   "datasets": {
     "mast": [
       {
-        "obsid": "26144228",
-        "obs_collection": "HST",
-        "instrument_name": "STIS/CCD",
-        "target_name": "NONE",
-        "filters": "G750L",
-        "t_min": 58526.60850003472,
-        "t_max": 58526.616902974536
-      },
-      {
-        "obsid": "26144227",
-        "obs_collection": "HST",
-        "instrument_name": "STIS/CCD",
-        "target_name": "HD93521",
-        "filters": "G750L",
-        "t_min": 58526.60316446759,
-        "t_max": 58526.60602346065
-      },
-      {
-        "obsid": "349724395",
-        "obs_collection": "HST",
-        "instrument_name": "STIS",
-        "target_name": "WISEA J104823.50+373413.0",
-        "filters": "G230LB;G430L;G750L",
-        "t_min": 50866.36066824,
-        "t_max": 58526.60602345
-      },
-      {
-        "obsid": "199211750",
-        "obs_collection": "HST",
-        "instrument_name": "STIS",
-        "target_name": "HD93521",
-        "filters": "G230LB;G430L;G750L",
-        "t_min": 58526.57849537037,
-        "t_max": 58526.60601851852
+        "obsid": "hd93521_stis_007.fits",
+        "project": "CALSPEC",
+        "instrument_name": "HST/STIS",
+        "target_name": "HD 93521",
+        "filters": "CALSPEC curated",
+        "t_min": null,
+        "t_max": null
       }
     ],
     "eso_phase3": [],
     "carmenes_dr1": [],
     "mast_summary": {
-      "total_count": 36,
-      "returned_count": 4,
-      "truncated": true
+      "total_count": 1,
+      "returned_count": 1,
+      "truncated": false
     },
     "mast_products": {
       "items": [
         {
-          "obsid": "26144228",
-          "productFilename": "odta15jcj_epc.fits",
-          "productType": "AUXILIARY",
-          "dataproduct_type": "spectrum",
-          "productURL": "mast:HST/product/odta15jcj_epc.fits",
-          "description": "Exposure processing"
-        },
-        {
-          "obsid": "26144228",
-          "productFilename": "odta15jdj_epc.fits",
-          "productType": "AUXILIARY",
-          "dataproduct_type": "spectrum",
-          "productURL": "mast:HST/product/odta15jdj_epc.fits",
-          "description": "Exposure processing"
-        },
-        {
-          "obsid": "26144227",
-          "productFilename": "odta15050_crj.fits",
-          "productType": "AUXILIARY",
-          "dataproduct_type": "spectrum",
-          "productURL": "mast:HST/product/odta15050_crj.fits",
-          "description": "DADS CRJ file - CR-rejected image ACS/WFC3/STIS-CCD"
-        },
-        {
-          "obsid": "26144227",
-          "productFilename": "odta15j8j_epc.fits",
-          "productType": "AUXILIARY",
-          "dataproduct_type": "spectrum",
-          "productURL": "mast:HST/product/odta15j8j_epc.fits",
-          "description": "Exposure processing"
-        },
-        {
-          "obsid": "349724395",
-          "productFilename": "hst_wiseaj104823d50p373413d0--3866_metadata.txt",
-          "productType": "AUXILIARY",
-          "dataproduct_type": "spectrum",
-          "productURL": "mast:HST/product/hsla/hst_wiseaj104823d50p373413d0--3866/hst_wiseaj104823d50p373413d0--3866_metadata.txt",
-          "description": "Summary file of HSLA target information: i.e. programs, modes, classification, redshift"
-        },
-        {
-          "obsid": "349724395",
-          "productFilename": "hst_wiseaj104823d50p373413d0--3866_aspec.fits",
+          "obsid": "hd93521_stis_007.fits",
+          "productFilename": "hd93521_stis_007.fits",
           "productType": "SCIENCE",
           "dataproduct_type": "spectrum",
-          "productURL": "mast:HST/product/hsla/hst_wiseaj104823d50p373413d0--3866/hst_wiseaj104823d50p373413d0--3866_aspec.fits",
-          "description": "HSLA coadded and abutted spectrum for multiple gratings"
-        },
-        {
-          "obsid": "26144222",
-          "productFilename": "odta15020_asn.fits",
-          "productType": "AUXILIARY",
-          "dataproduct_type": "spectrum",
-          "productURL": "mast:HST/product/odta15020_asn.fits",
-          "description": "DADS ASN file - Association ACS/WFC3/STIS"
-        },
-        {
-          "obsid": "26144222",
-          "productFilename": "odta15020_crj.fits",
-          "productType": "AUXILIARY",
-          "dataproduct_type": "spectrum",
-          "productURL": "mast:HST/product/odta15020_crj.fits",
-          "description": "DADS CRJ file - CR-rejected image ACS/WFC3/STIS-CCD"
+          "project": "CALSPEC",
+          "description": "High-latitude O star for far-UV sensitivity checks.",
+          "productURL": "https://ssb.stsci.edu/cdbs/calspec/hd93521_stis_007.fits"
         }
       ],
-      "total_count": 193,
-      "returned_count": 8,
-      "truncated": true
+      "total_count": 1,
+      "returned_count": 1,
+      "truncated": false
     }
   }
 }
