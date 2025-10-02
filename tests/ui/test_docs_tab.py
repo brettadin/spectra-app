@@ -51,10 +51,10 @@ def test_docs_tab_banner_uses_patch_metadata(monkeypatch, tmp_path):
     monkeypatch.setattr(main_module, "_get_overlays", lambda: [])
 
     version_info = {
-        "version": "v1.2.0x",
-        "patch_version": "v1.2.0x",
-        "patch_summary": "Finalize overlay ingestion on the main thread to avoid ScriptRunContext warnings.",
-        "patch_raw": "v1.2.0x: Finalize overlay ingestion on the main thread to avoid ScriptRunContext warnings.",
+        "version": "v1.2.1",
+        "patch_version": "v1.2.1",
+        "patch_summary": "(REF 1.2.1-A01): relocate overlay trace helpers onto OverlayTrace, add a direct `_build_overlay_figure` regression, and roll continuity collateral.",
+        "patch_raw": "v1.2.1 (REF 1.2.1-A01): relocate overlay trace helpers onto OverlayTrace, add a direct `_build_overlay_figure` regression, and roll continuity collateral.",
     }
 
     main_module._render_docs_tab(version_info)
@@ -62,7 +62,7 @@ def test_docs_tab_banner_uses_patch_metadata(monkeypatch, tmp_path):
     assert captured_info
     assert (
         captured_info[0]
-        == "v1.2.0x: Finalize overlay ingestion on the main thread to avoid ScriptRunContext warnings."
+        == "v1.2.1 (REF 1.2.1-A01): relocate overlay trace helpers onto OverlayTrace, add a direct `_build_overlay_figure` regression, and roll continuity collateral."
     )
 
 
@@ -75,17 +75,17 @@ def test_header_prefers_patch_version(monkeypatch):
 
     version_info = {
         "version": "v0.0.0-dev",
-        "patch_version": "v1.2.0x",
-        "patch_summary": "Finalize overlay ingestion on the main thread to avoid ScriptRunContext warnings.",
-        "patch_raw": "v1.2.0x: Finalize overlay ingestion on the main thread to avoid ScriptRunContext warnings.",
-        "date_utc": "2025-10-14T09:30:00Z",
+        "patch_version": "v1.2.1",
+        "patch_summary": "(REF 1.2.1-A01): relocate overlay trace helpers onto OverlayTrace, add a direct `_build_overlay_figure` regression, and roll continuity collateral.",
+        "patch_raw": "v1.2.1 (REF 1.2.1-A01): relocate overlay trace helpers onto OverlayTrace, add a direct `_build_overlay_figure` regression, and roll continuity collateral.",
+        "date_utc": "2025-10-17T09:30:00Z",
     }
 
     main_module._render_app_header(version_info)
 
     assert captured_caption
-    assert captured_caption[0].startswith("v1.2.0x • Updated 2025-10-14 09:30 UTC")
-    assert "Finalize overlay ingestion" in captured_caption[0]
+    assert captured_caption[0].startswith("v1.2.1 • Updated 2025-10-17 09:30 UTC")
+    assert "relocate overlay trace helpers" in captured_caption[0]
 
 
 def test_resolve_patch_metadata_returns_current_patch_line():
@@ -94,9 +94,12 @@ def test_resolve_patch_metadata_returns_current_patch_line():
     version_info = _version.get_version_info()
     patch_version, patch_summary, patch_line = main_module._resolve_patch_metadata(version_info)
 
-    assert patch_version == "v1.2.0x"
-    assert patch_summary == "Finalize overlay ingestion on the main thread to avoid ScriptRunContext warnings."
+    assert patch_version == "v1.2.1"
+    assert (
+        patch_summary
+        == "(REF 1.2.1-A01): relocate overlay trace helpers onto OverlayTrace, add a direct `_build_overlay_figure` regression, and roll continuity collateral."
+    )
     assert (
         patch_line
-        == "v1.2.0x: Finalize overlay ingestion on the main thread to avoid ScriptRunContext warnings."
+        == "v1.2.1 (REF 1.2.1-A01): relocate overlay trace helpers onto OverlayTrace, add a direct `_build_overlay_figure` regression, and roll continuity collateral."
     )

@@ -28,3 +28,4 @@ Spectra App — Patch Log (append-only)
 - v1.2.0y: Canonicalise FITS wavelength unit aliases before validation and extend byte-string regression coverage.
 - v1.2.0z: Remove FITS time-series epoch offsets from overlay payloads and surface reference epochs in the UI.
 - v1.2.1a: Accept legacy overlay ingest results after reruns and extend async queue regression coverage.
+- v1.2.1 (REF 1.2.1-A01): relocate overlay trace helpers onto OverlayTrace, add a direct `_build_overlay_figure` regression, and roll continuity collateral.

@@ -1,3 +1,8 @@
+# Patch log v1.2.1 summary alignment — 2025-10-19
+- Added the v1.2.1 patch log entry so `_resolve_patch_metadata()` surfaces the overlay trace helper relocation summary across the Docs banner and app header. 【F:PATCHLOG.txt†L31-L31】【F:app/ui/main.py†L3308-L3392】
+- Updated the Docs tab regression to assert the v1.2.1 summary and header caption so UI surfaces the new copy. 【F:tests/ui/test_docs_tab.py†L16-L105】
+- Published the v1.2.1 patch notes to capture the helper relocation and regression coverage. 【F:docs/patch_notes/v1.2.1.md†L1-L23】
+
 # Overlay ingest result continuity — 2025-10-18
 - Duck-type overlay ingest futures on their `status`, `detail`, and `payload` attributes so cached dataclass instances from previous reruns continue to resolve successfully on the UI thread. 【F:app/ui/main.py†L761-L777】
 - Added regression coverage that submits a completed future with a legacy-style ingest result and verifies `_add_overlay_payload` executes without "Unexpected ingest result" failures. 【F:tests/ui/test_overlay_ingest_queue_async.py†L186-L236】
