@@ -1690,27 +1690,77 @@ def _convert_wavelength(series: pd.Series, unit: str) -> Tuple[pd.Series, str]:
     return values, "Wavelength (nm)"
 
 
+def _time_axis_labels(
+    metadata: Mapping[str, object], provenance: Mapping[str, object]
+) -> Tuple[Optional[str], Optional[str]]:
+    def _clean(value: object) -> Optional[str]:
+        if isinstance(value, str):
+            text = value.strip()
+            if text:
+                return text
+        return None
+
+    meta = metadata if isinstance(metadata, Mapping) else {}
+    provenance_map = provenance if isinstance(provenance, Mapping) else {}
+    units_meta = provenance_map.get("units") if isinstance(provenance_map, Mapping) else {}
+    if not isinstance(units_meta, Mapping):
+        units_meta = {}
+
+    unit_label = (
+        _clean(meta.get("time_unit"))
+        or _clean(meta.get("reported_time_unit"))
+        or _clean(meta.get("time_original_unit"))
+        or _clean(meta.get("axis_unit"))
+        or _clean(units_meta.get("time_converted_to"))
+        or _clean(units_meta.get("time_reported"))
+        or _clean(units_meta.get("time_original_unit"))
+    )
+
+    reference_label = (
+        _clean(meta.get("time_original_unit"))
+        or _clean(units_meta.get("time_original_unit"))
+        or _clean(meta.get("reported_time_unit"))
+        or _clean(units_meta.get("time_reported"))
+    )
+
+    offset_value: Optional[object] = meta.get("time_offset") if isinstance(meta, Mapping) else None
+    if offset_value is None and isinstance(units_meta, Mapping):
+        offset_value = units_meta.get("time_offset")
+
+    frame_label = _clean(meta.get("time_frame")) if isinstance(meta, Mapping) else None
+    if not frame_label and isinstance(units_meta, Mapping):
+        frame_label = _clean(units_meta.get("time_frame"))
+
+    if reference_label is None and offset_value is not None:
+        try:
+            offset_float = float(offset_value)
+            offset_text = f"{offset_float:g}"
+        except (TypeError, ValueError):
+            offset_text = str(offset_value)
+        if frame_label:
+            reference_label = f"{frame_label} - {offset_text}"
+        else:
+            reference_label = f"offset {offset_text}"
+    elif reference_label and offset_value is not None and frame_label:
+        try:
+            offset_float = float(offset_value)
+            offset_text = f"{offset_float:g}"
+        except (TypeError, ValueError):
+            offset_text = str(offset_value)
+        if frame_label not in reference_label:
+            reference_label = f"{frame_label} - {offset_text}"
+
+    return unit_label, reference_label
+
+
 def _convert_time_axis(series: pd.Series, trace: OverlayTrace) -> Tuple[pd.Series, str]:
     values = pd.to_numeric(series, errors="coerce")
     metadata = trace.metadata or {}
     provenance = trace.provenance or {}
-    units_meta = provenance.get("units") if isinstance(provenance, Mapping) else {}
-    unit_label = None
-    if isinstance(metadata, Mapping):
-        unit_label = (
-            metadata.get("time_original_unit")
-            or metadata.get("reported_time_unit")
-            or metadata.get("time_unit")
-        )
-        if not unit_label:
-            unit_label = metadata.get("axis_unit")
-    if not unit_label and isinstance(units_meta, Mapping):
-        unit_label = (
-            units_meta.get("time_original_unit")
-            or units_meta.get("time_reported")
-            or units_meta.get("time_converted_to")
-        )
+    unit_label, reference_label = _time_axis_labels(metadata, provenance)
     axis_title = f"Time ({unit_label})" if unit_label else "Time"
+    if reference_label:
+        axis_title = f"{axis_title} — ref {reference_label}"
     return values, axis_title
 
 
@@ -2180,6 +2230,9 @@ def _format_axis_range(trace: OverlayTrace, meta: Mapping[str, object]) -> str:
     axis_kind = str(trace.axis_kind or meta.get("axis_kind") or "wavelength").lower()
     if axis_kind == "time":
         range_candidates = [meta.get("data_time_range"), meta.get("time_range")]
+        metadata_original = trace.metadata or {}
+        provenance = trace.provenance or {}
+        unit_label, reference_label = _time_axis_labels(metadata_original, provenance)
         for candidate in range_candidates:
             if isinstance(candidate, (list, tuple)) and len(candidate) == 2:
                 try:
@@ -2189,21 +2242,11 @@ def _format_axis_range(trace: OverlayTrace, meta: Mapping[str, object]) -> str:
                     continue
                 if not math.isfinite(low) or not math.isfinite(high):
                     continue
-                unit = (
-                    meta.get("time_original_unit")
-                    or meta.get("reported_time_unit")
-                    or meta.get("time_unit")
-                )
-                if not unit:
-                    units_meta = trace.provenance.get("units") if isinstance(trace.provenance, Mapping) else {}
-                    if isinstance(units_meta, Mapping):
-                        unit = (
-                            units_meta.get("time_original_unit")
-                            or units_meta.get("time_reported")
-                            or units_meta.get("time_converted_to")
-                        )
-                suffix = f" {unit}" if unit else ""
-                return f"{low:.4f} – {high:.4f}{suffix}"
+                suffix = f" {unit_label}" if unit_label else ""
+                range_text = f"{low:.4f} – {high:.4f}{suffix}"
+                if reference_label:
+                    range_text += f" (ref: {reference_label})"
+                return range_text
         return "—"
     if axis_kind == "image":
         shape = meta.get("image_shape")

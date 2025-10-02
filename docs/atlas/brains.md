@@ -1,3 +1,8 @@
+# Time-axis offset normalization — 2025-10-16
+- Subtract detected FITS time-axis offsets before storing payload values so time-series overlays render near zero while keeping the original epoch in metadata and provenance. 【F:app/server/ingest_fits.py†L1468-L1505】
+- Extend the UI helpers to reuse time-axis provenance for axis titles and metadata summaries, surfacing reference epochs alongside the de-offset ranges. 【F:app/ui/main.py†L1693-L1753】【F:app/ui/main.py†L2230-L2249】
+- Harden ingestion, local ingest, and UI regressions with BJD-offset fixtures to ensure ranges start near zero and provenance cites the removed offset. 【F:tests/server/test_ingest_fits.py†L435-L557】【F:tests/server/test_local_ingest.py†L633-L686】【F:tests/ui/test_metadata_summary.py†L133-L160】【F:tests/ui/test_overlay_mixed_axes.py†L7-L127】
+
 # FITS wavelength alias canonicalisation — 2025-10-15
 - Funnel `_normalise_wavelength_unit` candidates through a canonicaliser so byte-decoded aliases (e.g., `Angstroms`) resolve to the singular FITS label before `_unit_is_wavelength` validates them. 【F:app/server/ingest_fits.py†L758-L805】
 - Let `_unit_is_wavelength` trust canonical strings while still decoding defensive byte inputs, ensuring previously-normalised units skip redundant coercion. 【F:app/server/ingest_fits.py†L343-L356】

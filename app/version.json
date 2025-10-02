@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.0y",
-  "date_utc": "2025-10-15T11:00:00Z",
-  "summary": "Canonicalize FITS wavelength unit aliases before validation and extend byte-string regression coverage."
+  "version": "v1.2.0z",
+  "date_utc": "2025-10-16T11:00:00Z",
+  "summary": "Normalize FITS time-series axes by removing epoch offsets and surface reference notes in the UI."
 }
