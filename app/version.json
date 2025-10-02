@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.1c",
-  "date_utc": "2025-10-20T00:00:00Z",
-  "summary": "Reject time-series overlays, normalise time offsets during FITS ingest, and document the policy."
+  "version": "v1.2.1d",
+  "date_utc": "2025-10-21T00:00:00Z",
+  "summary": "Stabilise overlay ingest results across reruns and document the regression coverage."
 }
