@@ -1,5 +1,5 @@
 {
   "version": "v1.2.1a",
-  "date_utc": "2025-10-18T11:00:00Z",
+  "date_utc": "2025-10-1T11:00:00Z",
   "summary": "Accept legacy overlay ingest results after reruns and extend async queue regression coverage."
 }
