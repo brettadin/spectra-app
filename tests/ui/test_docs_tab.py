@@ -94,12 +94,12 @@ def test_resolve_patch_metadata_returns_current_patch_line():
     version_info = _version.get_version_info()
     patch_version, patch_summary, patch_line = main_module._resolve_patch_metadata(version_info)
 
-    assert patch_version == "v1.2.1"
+    assert patch_version == "v1.2.1f"
     assert (
         patch_summary
-        == "(REF 1.2.1-A01): relocate overlay trace helpers onto OverlayTrace, add a direct `_build_overlay_figure` regression, and roll continuity collateral."
+        == "Bootstrap package imports for Streamlit file entry points so the UI loads without ModuleNotFound errors during cloud deployments."
     )
     assert (
         patch_line
-        == "v1.2.1 (REF 1.2.1-A01): relocate overlay trace helpers onto OverlayTrace, add a direct `_build_overlay_figure` regression, and roll continuity collateral."
+        == "v1.2.1f: Bootstrap package imports for Streamlit file entry points so the UI loads without ModuleNotFound errors during cloud deployments."
     )

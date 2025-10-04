@@ -22,26 +22,32 @@ import streamlit as st
 from plotly.subplots import make_subplots
 from streamlit.delta_generator import DeltaGenerator
 
-from app.ui.targets import RegistryUnavailableError, render_targets_panel
+if __package__ in (None, ""):
+    import sys
 
-from app._version import get_version_info
-from app.ingest import OverlayIngestResult
-from app.export_manifest import build_manifest
-from app.server.differential import ratio, resample_to_common_grid, subtract
-from app.server.fetch_archives import FetchError, fetch_spectrum
-from app.similarity import (
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+    __package__ = "app.ui"
+
+from .targets import RegistryUnavailableError, render_targets_panel
+
+from .._version import get_version_info
+from ..ingest import OverlayIngestResult
+from ..export_manifest import build_manifest
+from ..server.differential import ratio, resample_to_common_grid, subtract
+from ..server.fetch_archives import FetchError, fetch_spectrum
+from ..similarity import (
     SimilarityCache,
     SimilarityOptions,
     TraceVectors,
     apply_normalization,
     viewport_alignment,
 )
-from app.similarity_panel import render_similarity_panel
-from app.utils.downsample import build_downsample_tiers, build_lttb_downsample
-from app.utils.duplicate_ledger import DuplicateLedger
-from app.utils.flux import flux_percentile_range
-from app.providers import ProviderQuery, search as provider_search
-from app.utils.local_ingest import (
+from ..similarity_panel import render_similarity_panel
+from ..utils.downsample import build_downsample_tiers, build_lttb_downsample
+from ..utils.duplicate_ledger import DuplicateLedger
+from ..utils.flux import flux_percentile_range
+from ..providers import ProviderQuery, search as provider_search
+from ..utils.local_ingest import (
     SUPPORTED_ASCII_EXTENSIONS,
     SUPPORTED_FITS_EXTENSIONS,
     LocalIngestError,
