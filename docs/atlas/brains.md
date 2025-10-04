@@ -1,3 +1,7 @@
+# Streamlit import bootstrap — 2025-10-21
+- Detect bare execution of `app.ui.main` in Streamlit Cloud, prepend the repository root to `sys.path`, and normalise imports so the UI loads whether invoked as a package or direct file. 【F:app/ui/main.py†L25-L80】
+- Recorded the continuity update in release metadata and patch notes for downstream automation. 【F:app/version.json†L1-L5】【F:docs/patch_notes/v1.2.1f.md†L1-L20】
+
 # Overlay ingest rerun continuity — 2025-10-21
 - Centralised `OverlayIngestResult` in a shared ingest module so executor futures resolve with a stable class across reruns and `_refresh_ingest_jobs` keeps adding payloads. 【F:app/ingest/results.py†L1-L18】【F:app/ui/main.py†L671-L798】
 - Added regression coverage that reloads the UI module before the future resolves and confirms `_add_overlay_payload` runs without surfacing the "Unexpected ingest result" fallback. 【F:tests/ui/test_overlay_ingest_queue_async.py†L186-L289】
