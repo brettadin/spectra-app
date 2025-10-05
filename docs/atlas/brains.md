@@ -83,6 +83,11 @@
 ## Byte-string FITS unit coercion — 2025-10-10
 - Normalise FITS wavelength/time unit hints by decoding header bytes through `_coerce_header_value` before canonical checks so `TUNIT`/`CUNIT` byte strings match aliases. 【F:app/server/ingest_fits.py†L233-L305】【F:app/server/ingest_fits.py†L751-L799】
 - Preserve time-frame detection by case-folding decoded hints, keeping BJD offsets intact when headers arrive as byte strings. 【F:app/server/ingest_fits.py†L233-L305】
+
+# SpecViz adaptation blueprint — 2025-10-05
+- Captured a structured survey of Jdaviz delivery modes, ingestion patterns, viewer ergonomics, plugin coverage, export surfaces, and provenance expectations to guide parity planning. 【F:docs/research/specviz_adaptation.md†L5-L68】
+- Mapped the survey into a capability gap matrix plus phased roadmap that sequences infrastructure alignment, feature parity, and advanced JWST-aware integrations for Spectra App. 【F:docs/research/specviz_adaptation.md†L70-L133】
+- Logged follow-up research questions around Glue integration depth, specutils adoption, plugin sandboxing, and session persistence strategies. 【F:docs/research/specviz_adaptation.md†L135-L144】
 - Locked regression coverage on byte-string table headers to ensure wavelength and time ingestion keep reporting the right `axis_kind`. 【F:tests/server/test_ingest_fits.py†L375-L395】【F:tests/server/test_ingest_fits.py†L442-L466】
 
 ## Example browser provider persistence — 2025-10-11

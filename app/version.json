@@ -1,5 +1,5 @@
 {
   "version": "v1.2.1g",
   "date_utc": "2025-10-05T00:00:00Z",
-  "summary": "Document Specviz adoption blueprint to guide Spectra App parity work."
+  "summary": "Document the SpecViz adaptation blueprint to guide ingestion, viewer, and plugin parity work."
 }
