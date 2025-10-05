@@ -1,3 +1,8 @@
+## Specviz adoption blueprint — 2025-10-05
+- Documented Specviz feature inventory spanning ingestion, visualization, analysis plugins, and export hooks to guide Spectra App parity goals. 【F:docs/atlas/Specviz_Adoption_Blueprint.md†L3-L44】
+- Outlined phased adoption strategy plus technical considerations covering ingestion parity, viewer upgrades, plugin suite, and export helpers. 【F:docs/atlas/Specviz_Adoption_Blueprint.md†L46-L76】
+- Logged follow-up research tasks targeting JDaviz helpers, plugin modules, and exporter pathways for deeper study. 【F:docs/atlas/Specviz_Adoption_Blueprint.md†L78-L82】
+
 # Streamlit import bootstrap — 2025-10-21
 - Detect bare execution of `app.ui.main` in Streamlit Cloud, prepend the repository root to `sys.path`, and normalise imports so the UI loads whether invoked as a package or direct file. 【F:app/ui/main.py†L25-L80】
 - Recorded the continuity update in release metadata and patch notes for downstream automation. 【F:app/version.json†L1-L5】【F:docs/patch_notes/v1.2.1f.md†L1-L20】
