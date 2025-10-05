@@ -30,3 +30,4 @@ Spectra App — Patch Log (append-only)
 - v1.2.1a: Accept legacy overlay ingest results after reruns and extend async queue regression coverage.
 - v1.2.1 (REF 1.2.1-A01): relocate overlay trace helpers onto OverlayTrace, add a direct `_build_overlay_figure` regression, and roll continuity collateral.
 - v1.2.1f: Bootstrap package imports for Streamlit file entry points so the UI loads without ModuleNotFound errors during cloud deployments.
+- v1.2.1g: Document the SpecViz adaptation blueprint and roadmap so the team can plan ingestion, viewer, and plugin parity work.
