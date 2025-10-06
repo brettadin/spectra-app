@@ -31,3 +31,6 @@ Spectra App — Patch Log (append-only)
 - v1.2.1 (REF 1.2.1-A01): relocate overlay trace helpers onto OverlayTrace, add a direct `_build_overlay_figure` regression, and roll continuity collateral.
 - v1.2.1f: Bootstrap package imports for Streamlit file entry points so the UI loads without ModuleNotFound errors during cloud deployments.
 - v1.2.1g: Document the SpecViz adaptation blueprint and roadmap so the team can plan ingestion, viewer, and plugin parity work.
+- v1.2.1h: Outline SpecViz-inspired ingestion, viewer, and plugin improvements so planning collateral guides upcoming parity work.
+- v1.2.1i: Normalise local uploads to Spectrum1D objects, validate flux/wavelength units with specutils, and extend ingestion regression coverage.
+- v1.2.1j: Capture image overlay statistics during local ingest and surface the richer metadata in the viewer summary.

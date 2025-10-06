@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.1g",
-  "date_utc": "2025-10-22T00:00:00Z",
-  "summary": "Document the SpecViz adaptation blueprint to guide ingestion, viewer, and plugin parity work."
+  "version": "v1.2.1j",
+  "date_utc": "2025-10-23T00:00:00Z",
+  "summary": "Add SpecViz-style image statistics for local overlays."
 }

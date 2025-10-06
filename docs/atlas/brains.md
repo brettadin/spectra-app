@@ -1,3 +1,15 @@
+# Image overlay statistics enrichment — 2025-10-23
+- Summarised local FITS image overlays with min/max/median and percentile statistics to echo SpecViz's rich viewer diagnostics guidance before traces reach the UI. 【F:app/utils/local_ingest.py†L355-L382】【F:app/utils/local_ingest.py†L666-L713】【F:docs/research/specviz_improvement_backlog.md†L19-L43】
+- Propagated the computed statistics onto payload metadata and overlay summaries so the UI can surface pixel ranges and spatial axes alongside SpecViz-inspired image detail. 【F:app/utils/local_ingest.py†L714-L724】【F:app/ui/main.py†L2292-L2392】【F:docs/research/specviz_improvement_backlog.md†L44-L64】
+
+# Spectrum1D ingestion normalisation — 2025-10-23
+- Convert local ingest payloads into `Spectrum1D` objects with Astropy quantity checks so unit coercion errors surface before overlays are added, while skipping conversion for image products. 【F:app/utils/local_ingest.py†L300-L386】【F:app/utils/local_ingest.py†L597-L772】
+- Added specutils as a dependency and broadened ingestion tests to assert Spectrum1D availability and unit validation for base and additional traces. 【F:requirements.txt†L1-L11】【F:tests/server/test_local_ingest.py†L1-L186】【F:tests/server/test_local_ingest.py†L230-L321】
+
+# SpecViz improvement backlog planning — 2025-10-23
+- Logged SpecViz-inspired ingestion, viewer, plugin, and automation backlog items so the roadmap targets parity work with clear provenance ties. 【F:docs/research/specviz_improvement_backlog.md†L1-L74】
+- Updated release metadata, patch notes, and patch log to advertise the planning deliverable across the app surfaces. 【F:app/version.json†L1-L5】【F:docs/patch_notes/v1.2.1h.md†L1-L17】【F:PATCHLOG.txt†L33-L34】
+
 # Streamlit import bootstrap — 2025-10-21
 - Detect bare execution of `app.ui.main` in Streamlit Cloud, prepend the repository root to `sys.path`, and normalise imports so the UI loads whether invoked as a package or direct file. 【F:app/ui/main.py†L25-L80】
 - Recorded the continuity update in release metadata and patch notes for downstream automation. 【F:app/version.json†L1-L5】【F:docs/patch_notes/v1.2.1f.md†L1-L20】
