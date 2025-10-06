@@ -33,3 +33,5 @@ Spectra App — Patch Log (append-only)
 - v1.2.1g: Capture a SpecViz adoption blueprint and refresh release metadata for the research handoff.
 - v1.2.1h: Review Jdaviz GitHub design docs, audit current Spectra App architecture, and outline alignment tasks for the next phase.
 - v1.2.1i: Introduce a registry-driven layout engine so sidebar controls and workspace tabs register like plugins before render.
+- v1.2.1j: Clean up merge conflict markers and revert speculative plugin roadmap docs to restore the v1.2.1i application state.
+- v1.2.1k: Add regression guard to catch merge conflict markers in the UI entrypoint before release.
