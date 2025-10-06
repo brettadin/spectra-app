@@ -54,8 +54,7 @@ from ..utils.duplicate_ledger import DuplicateLedger
 from ..utils.flux import flux_percentile_range
 from ..providers import ProviderQuery, search as provider_search
 from ..utils.local_ingest import (
-    SUPPORTED_ASCII_EXTENSIONS,
-    SUPPORTED_FITS_EXTENSIONS,
+    SUPPORTED_LOCAL_UPLOAD_EXTENSIONS,
     LocalIngestError,
     ingest_local_file,
 )
@@ -2365,7 +2364,7 @@ def _read_uploaded_file(
 
 def _render_local_upload() -> None:
     st.markdown("### Upload recorded spectra")
-    supported = sorted(SUPPORTED_ASCII_EXTENSIONS | SUPPORTED_FITS_EXTENSIONS)
+    supported = sorted(SUPPORTED_LOCAL_UPLOAD_EXTENSIONS)
     accepted_types = sorted(
         {ext.lstrip(".") for ext in supported if ext.startswith(".")}
     )
@@ -2374,7 +2373,7 @@ def _render_local_upload() -> None:
         type=accepted_types,
         accept_multiple_files=True,
         key="local_upload_widget",
-        help="Supports ASCII tables (CSV/TXT/TSV/ASCII), FITS spectral products, and gzip-compressed variants.",
+        help="Supports ASCII tables (CSV/TXT/TSV/ASCII), JCAMP-DX spectra, FITS spectral products, and gzip-compressed variants.",
     )
     st.caption("Supported extensions: " + ", ".join(sorted(supported)))
     if st.button("Reset uploaded file tracker", key="reset_upload_registry"):

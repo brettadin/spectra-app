@@ -18,7 +18,7 @@ it is always obvious where each series originated.
 
 ## 2. Add your own spectra
 
-Drop CSV/TXT/FITS files onto **Upload recorded spectra**. The uploader supports
+Drop CSV/TXT/JCAMP/FITS files onto **Upload recorded spectra**. The uploader supports
 multiple files at once and records a checksum so accidental duplicates are
 flagged. After ingestion you can:
 

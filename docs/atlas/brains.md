@@ -1,3 +1,9 @@
+# JCAMP-DX overlay ingestion — 2025-10-27
+- Implemented a JCAMP parser that tokenises XYDATA blocks, converts X units to nanometres with spectral equivalencies, drops uncertainty-labelled segments, and records provenance for caching tiers. 【F:app/server/ingest_jcamp.py†L20-L383】
+- Updated `_detect_format` and ingest routing so `.jdx` extensions or JCAMP headers trigger the new parser before falling back to ASCII handling. 【F:app/utils/local_ingest.py†L11-L75】【F:app/utils/local_ingest.py†L305-L404】
+- Added a regression using a dual-section JCAMP fixture to confirm the spectrum imports cleanly while uncertainty data stays filtered out. 【F:tests/server/test_local_ingest.py†L360-L403】
+- Expanded the Streamlit upload widget so JCAMP extensions join the accepted list and `.jdx` files pass the client-side filter alongside updated captions. 【F:app/ui/main.py†L2368-L2383】【F:app/utils/local_ingest.py†L34-L45】
+
 ## Specviz adoption blueprint — 2025-10-05
 - Documented Specviz feature inventory spanning ingestion, visualization, analysis plugins, and export hooks to guide Spectra App parity goals. 【F:docs/atlas/Specviz_Adoption_Blueprint.md†L3-L44】
 - Outlined phased adoption strategy plus technical considerations covering ingestion parity, viewer upgrades, plugin suite, and export helpers. 【F:docs/atlas/Specviz_Adoption_Blueprint.md†L46-L76】

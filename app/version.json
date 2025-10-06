@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.1j",
+  "version": "v1.2.1l",
   "date_utc": "2025-10-27T00:00:00Z",
-  "summary": "Resolve merge conflict artifacts in the Streamlit UI and documentation to restore the v1.2.1i layout baseline."
+  "summary": "Allow JCAMP-DX uploads in the UI and document the local ingest support."
 }
