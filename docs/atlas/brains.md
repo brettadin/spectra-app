@@ -1,3 +1,8 @@
+# SpecViz batch ingestion helpers — 2025-10-24
+- Added directory-aware batch ingest wrappers and a SpecViz-compatible helper module so scripted imports mirror jdaviz helper flows while capturing per-file provenance. 【F:app/utils/local_ingest.py†L55-L167】【F:app/utils/local_ingest.py†L866-L1077】【F:app/helpers/specviz_compat.py†L1-L156】
+- Extended provider adapters with program concatenation, catalog filters, and diagnostics to align archive searches with SpecViz helper expectations. 【F:app/providers/mast.py†L61-L405】【F:app/providers/eso.py†L72-L233】【F:app/providers/sdss.py†L71-L252】【F:app/providers/doi.py†L64-L218】
+- Documented the SpecViz backlog reference to keep parity planning attached to the jdaviz helper blueprint. 【F:docs/research/specviz_improvement_backlog.md†L1-L74】
+
 # Spectrum1D ingestion normalisation — 2025-10-5
 - Convert local ingest payloads into `Spectrum1D` objects with Astropy quantity checks so unit coercion errors surface before overlays are added, while skipping conversion for image products. 【F:app/utils/local_ingest.py†L300-L386】【F:app/utils/local_ingest.py†L597-L772】
 - Added specutils as a dependency and broadened ingestion tests to assert Spectrum1D availability and unit validation for base and additional traces. 【F:requirements.txt†L1-L11】【F:tests/server/test_local_ingest.py†L1-L186】【F:tests/server/test_local_ingest.py†L230-L321】
