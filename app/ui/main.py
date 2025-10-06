@@ -59,6 +59,7 @@ from .controller import (
     is_full_resolution_enabled,
     normalize_axis_kind as _normalize_axis_kind,
     normalization_display as _normalization_display,
+    axis_title_for_kind as _axis_title_for_kind,
     prepare_similarity_inputs,
     trace_label,
 )
