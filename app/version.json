@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.1i",
-  "date_utc": "2025-10-23T00:00:00Z",
-  "summary": "Normalise local ingestion payloads to Spectrum1D objects and surface unit coercion errors."
+  "version": "v1.2.1k",
+  "date_utc": "2025-10-24T00:00:00Z",
+  "summary": "Publish the SpecViz parity matrix and credit upstream jdaviz documentation across user guides."
 }
