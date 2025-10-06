@@ -28,6 +28,12 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
     __package__ = "app.ui"
 
+from .panel_registry import (
+    PanelContext,
+    get_panel_registry,
+    register_sidebar_panel,
+    register_workspace_panel,
+)
 from .targets import RegistryUnavailableError, render_targets_panel
 
 from .._version import get_version_info
@@ -3401,6 +3407,98 @@ def _render_docs_tab(version_info: Mapping[str, object]) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Panel registry integration
+# ---------------------------------------------------------------------------
+
+
+def _sidebar_settings_panel(
+    container: DeltaGenerator, context: PanelContext
+) -> None:  # pragma: no cover - Streamlit UI
+    _render_settings_group(container)
+
+
+def _sidebar_ingest_panel(
+    container: DeltaGenerator, context: PanelContext
+) -> None:  # pragma: no cover - Streamlit UI
+    _render_ingest_queue_panel(container)
+
+
+def _workspace_overlay_panel(context: PanelContext) -> None:  # pragma: no cover - Streamlit UI
+    version_info = context.get("version_info", {})
+    if isinstance(version_info, Mapping):
+        resolved = dict(version_info)
+    else:
+        resolved = {}
+    _render_overlay_tab(resolved)
+
+
+def _workspace_differential_panel(
+    context: PanelContext,
+) -> None:  # pragma: no cover - Streamlit UI
+    _render_differential_tab()
+
+
+def _workspace_library_panel(
+    context: PanelContext,
+) -> None:  # pragma: no cover - Streamlit UI
+    _render_library_tab()
+
+
+def _workspace_docs_panel(context: PanelContext) -> None:  # pragma: no cover - Streamlit UI
+    version_info = context.get("version_info", {})
+    if isinstance(version_info, Mapping):
+        resolved = dict(version_info)
+    else:
+        resolved = {}
+    _render_docs_tab(resolved)
+
+
+_registry = get_panel_registry()
+if not any(panel.panel_id == "session_controls" for panel in _registry.iter_sidebar()):
+    register_sidebar_panel(
+        "session_controls",
+        "Session controls",
+        _sidebar_settings_panel,
+        order=10,
+    )
+if not any(panel.panel_id == "ingest_queue" for panel in _registry.iter_sidebar()):
+    register_sidebar_panel(
+        "ingest_queue",
+        "Overlay downloads",
+        _sidebar_ingest_panel,
+        order=20,
+    )
+if not any(panel.panel_id == "overlay" for panel in _registry.iter_workspace()):
+    register_workspace_panel(
+        "overlay",
+        "Overlay",
+        _workspace_overlay_panel,
+        order=10,
+    )
+if not any(panel.panel_id == "differential" for panel in _registry.iter_workspace()):
+    register_workspace_panel(
+        "differential",
+        "Differential",
+        _workspace_differential_panel,
+        order=20,
+    )
+if not any(panel.panel_id == "library" for panel in _registry.iter_workspace()):
+    register_workspace_panel(
+        "library",
+        "Library",
+        _workspace_library_panel,
+        order=30,
+    )
+if not any(panel.panel_id == "docs" for panel in _registry.iter_workspace()):
+    register_workspace_panel(
+        "docs",
+        "Docs & Provenance",
+        _workspace_docs_panel,
+        order=40,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Entry points
 
 
@@ -3424,22 +3522,23 @@ def render() -> None:
 
     _render_app_header(version_info)
 
-    sidebar = st.sidebar
-    controls_panel = sidebar.container()
-    _render_settings_group(controls_panel)
-    _render_ingest_queue_panel(controls_panel)
+    context: Dict[str, object] = {"version_info": version_info}
+    panel_context: PanelContext = context
+    registry = get_panel_registry()
 
-    overlay_tab, diff_tab, library_tab, docs_tab = st.tabs(
-        ["Overlay", "Differential", "Library", "Docs & Provenance"]
-    )
-    with overlay_tab:
-        _render_overlay_tab(version_info)
-    with diff_tab:
-        _render_differential_tab()
-    with library_tab:
-        _render_library_tab()
-    with docs_tab:
-        _render_docs_tab(version_info)
+    sidebar = st.sidebar
+    for panel in registry.iter_sidebar():
+        container = sidebar.container()
+        panel.render(container, panel_context)
+
+    workspace_panels = list(registry.iter_workspace())
+    if workspace_panels:
+        tabs = st.tabs([panel.label for panel in workspace_panels])
+        for spec, tab in zip(workspace_panels, tabs):
+            with tab:
+                spec.render(panel_context)
+    else:
+        st.info("No workspace panels registered.")
 
     _render_status_bar(version_info)
 
