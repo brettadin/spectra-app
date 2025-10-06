@@ -12,6 +12,11 @@ The **Reference spectra** drawer on the left keeps quick actions together:
 - **NIST ASD lines** – fetch curated line lists directly from the app by typing
   an element (e.g. `Fe II`) and wavelength bounds. The lines arrive pre-tagged
   with metadata and can be toggled on or off alongside your uploaded spectra.
+- **NIST Quantitative IR spectra** – choose a molecule such as benzene,
+  dichloromethane, or sulfur hexafluoride from the preset list to pull the
+  0.125&nbsp;cm⁻¹ resolution scan from the Quant IR database. Each overlay records
+  the advertised apodization window, relative uncertainty, and JCAMP source so
+  it is easy to compare the lab reference against your own measurements.
 
 All traces land in the overlay table with provenance and duplicate controls so
 it is always obvious where each series originated.

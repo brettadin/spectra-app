@@ -1,3 +1,8 @@
+# NIST Quantitative IR fetcher — 2025-10-27
+- Built a dedicated `nist_quant_ir` fetcher that scrapes the Quant IR catalog, selects the preferred 0.125 cm⁻¹ apodization window, resolves JCAMP links, and normalises metadata/provenance for overlays. 【F:app/server/fetchers/nist_quant_ir.py†L1-L220】
+- Exposed the new archive through the line catalog panel with a cached molecule selector that flags unavailable entries while funnelling successful picks through the overlay ingestion flow. 【F:app/ui/main.py†L53-L122】【F:app/ui/main.py†L1372-L1455】
+- Added parser and selection unit tests to lock the catalog row-span handling, JCAMP link extraction, and apodization priority behaviour. 【F:tests/server/test_nist_quant_ir.py†L1-L64】
+
 # JCAMP-DX overlay ingestion — 2025-10-27
 - Implemented a JCAMP parser that tokenises XYDATA blocks, converts X units to nanometres with spectral equivalencies, drops uncertainty-labelled segments, and records provenance for caching tiers. 【F:app/server/ingest_jcamp.py†L20-L383】
 - Updated `_detect_format` and ingest routing so `.jdx` extensions or JCAMP headers trigger the new parser before falling back to ASCII handling. 【F:app/utils/local_ingest.py†L11-L75】【F:app/utils/local_ingest.py†L305-L404】

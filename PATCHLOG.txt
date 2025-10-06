@@ -37,3 +37,4 @@ Spectra App — Patch Log (append-only)
 - v1.2.1k: Add JCAMP-DX ingestion so NIST IR uploads convert to nanometres, ignore uncertainty traces, and ship with regression coverage.
 - v1.2.1l: Allow JCAMP-DX uploads through the UI filter, update quick-start docs, and ship regression coverage for the union constants.
 - v1.2.1m: Auto-select original wavelength units when the first overlay loads so wavenumber uploads land on matching axes and extend regression coverage for the display-unit hints.
+- v1.2.1n: Add a NIST Quantitative IR fetcher with preset molecules at 0.125 cm⁻¹ and document the workflow.
