@@ -2,4 +2,5 @@
   "version": "v1.2.1k",
   "date_utc": "2025-10-24T00:00:00Z",
   "summary": "Add SpecViz-compatible batch ingestion helpers and provider diagnostics."
+  "summary": "Publish the SpecViz parity matrix and credit upstream jdaviz documentation across user guides."
 }

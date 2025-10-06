@@ -4,6 +4,22 @@
 - Translate SpecViz's mature 1D spectroscopy workflows into actionable upgrades for Spectra App so our roadmap targets proven interaction models and helper APIs. [1][2]
 - Highlight near-term improvements that de-risk ingestion, visualization, and analysis parity while respecting Spectra App's Streamlit-first architecture. [1][3]
 
+## Spectra ↔ SpecViz parity matrix
+
+| Spectra feature area | SpecViz reference docs | Summary of current delta |
+| --- | --- | --- |
+| Ingestion workflows | [Importing data][import], [JWST mode matrix][jwst] | Spectra App lacks SpecViz's multi-entry loaders, auto-mode routing, and ingest helper diagnostics; roadmap items aim to align affordances and provenance handling. |
+| Viewer interactions | [Displaying spectra][display] | The viewer currently provides Plotly-driven basics without SpecViz's layer list, toolbar breadth, or ROI/readout tooling, motivating the queued viewer upgrades. |
+| Plugin & analysis suite | [Plugin catalog][plugins], [Helper APIs][helper] | Plugin coverage is limited to core Spectra features; SpecViz's modeling, smoothing, and export surfaces drive the plugin parity tranche and helper API expansion. |
+
+> **Attribution.** SpecViz documentation excerpts and comparisons credit the [jdaviz authors](https://github.com/spacetelescope/jdaviz) who maintain the upstream guides and helper APIs that informed this matrix.
+
+[import]: https://github.com/spacetelescope/jdaviz/blob/main/docs/specviz/import_data.rst
+[jwst]: https://github.com/spacetelescope/jdaviz/blob/main/docs/index_jwst_modes.rst
+[display]: https://github.com/spacetelescope/jdaviz/blob/main/docs/specviz/displaying.rst
+[plugins]: https://github.com/spacetelescope/jdaviz/blob/main/docs/specviz/plugins.rst
+[helper]: https://github.com/spacetelescope/jdaviz/blob/main/jdaviz/configs/specviz/helper.py
+
 ## Ingestion Enhancements
 1. **Adopt SpecViz loader affordances**
    - Offer separate UI affordances for single-file, directory, and helper-driven loads mirroring SpecViz's CLI/UI/API entry points so observers can stage whole programs quickly. [1]

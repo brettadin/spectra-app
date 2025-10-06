@@ -2,6 +2,10 @@
 - Added directory-aware batch ingest wrappers and a SpecViz-compatible helper module so scripted imports mirror jdaviz helper flows while capturing per-file provenance. 【F:app/utils/local_ingest.py†L55-L167】【F:app/utils/local_ingest.py†L866-L1077】【F:app/helpers/specviz_compat.py†L1-L156】
 - Extended provider adapters with program concatenation, catalog filters, and diagnostics to align archive searches with SpecViz helper expectations. 【F:app/providers/mast.py†L61-L405】【F:app/providers/eso.py†L72-L233】【F:app/providers/sdss.py†L71-L252】【F:app/providers/doi.py†L64-L218】
 - Documented the SpecViz backlog reference to keep parity planning attached to the jdaviz helper blueprint. 【F:docs/research/specviz_improvement_backlog.md†L1-L74】
+# SpecViz parity matrix publication — 2025-10-24
+- Documented the SpecViz parity matrix so roadmap owners can trace ingestion, viewer, and plugin deltas alongside credited upstream docs. 【F:docs/research/specviz_improvement_backlog.md†L5-L20】
+- Linked the user guide and workspace docs to the matrix with jdaviz attribution notes for ingestion, viewer, and differential workflows. 【F:docs/app/user_guide.md†L1-L15】【F:docs/app/archive_and_provenance.md†L1-L13】【F:docs/app/overlay_workspace.md†L1-L13】【F:docs/app/differential_workspace.md†L1-L13】
+- Bumped version metadata, patch notes, and patch log so release collateral records the documentation credit update. 【F:app/version.json†L1-L5】【F:docs/patch_notes/v1.2.1k.md†L1-L18】【F:PATCHLOG.txt†L33-L35】
 
 # Spectrum1D ingestion normalisation — 2025-10-5
 - Convert local ingest payloads into `Spectrum1D` objects with Astropy quantity checks so unit coercion errors surface before overlays are added, while skipping conversion for image products. 【F:app/utils/local_ingest.py†L300-L386】【F:app/utils/local_ingest.py†L597-L772】
