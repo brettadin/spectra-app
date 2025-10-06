@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.1f",
-  "date_utc": "2025-10-04T00:00:00Z",
-  "summary": "Allow Streamlit file entry points to load the packaged UI by bootstrapping module imports."
+  "version": "v1.2.1i",
+  "date_utc": "2025-10-05T00:00:00Z",
+  "summary": "Introduce a panel registry to dynamically build sidebar and workspace layouts."
 }
