@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import gzip
 import io
+import warnings
 import zipfile
 from pathlib import Path
 from typing import Dict, List, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
+from astropy import units as u
+from astropy.units import UnitConversionError, UnitsError, UnitsWarning
+from specutils import Spectrum1D
 
 from app.server.ingest_ascii import parse_ascii, parse_ascii_segments
 from app.server.ingest_fits import parse_fits
@@ -198,6 +202,154 @@ def _read_zip_segments(name: str, content: bytes) -> List[Tuple[str, bytes]]:
             f"Archive {name} did not contain supported ASCII spectra."
         )
     return segments
+
+
+def _resolve_wavelength_quantity(
+    values: Sequence[float],
+    *,
+    quantity: Optional[object],
+    payload: Optional[Mapping[str, object]],
+    metadata: Mapping[str, object],
+) -> u.Quantity:
+    if quantity is not None:
+        try:
+            spectral_axis = u.Quantity(quantity)
+        except Exception as exc:  # pragma: no cover - defensive
+            raise LocalIngestError(
+                "Unable to interpret wavelength quantity from ingest payload."
+            ) from exc
+        if spectral_axis.shape and spectral_axis.size != len(values):
+            raise LocalIngestError(
+                "Wavelength quantity length does not match flux samples."
+            )
+        return spectral_axis
+
+    unit_label = "nm"
+    if isinstance(payload, Mapping):
+        candidate = payload.get("unit")
+        if isinstance(candidate, str) and candidate.strip():
+            unit_label = candidate.strip()
+    elif isinstance(metadata, Mapping):
+        candidate = metadata.get("reported_wavelength_unit")
+        if isinstance(candidate, str) and candidate.strip():
+            unit_label = str(candidate).strip()
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UnitsWarning)
+        try:
+            unit = u.Unit(unit_label)
+        except (ValueError, UnitsError) as exc:
+            raise LocalIngestError(
+                f"Unrecognised wavelength unit '{unit_label}' — update the file header to include a valid unit label."
+            ) from exc
+
+    return u.Quantity(values, unit=unit)
+
+
+def _resolve_flux_quantity(values: Sequence[float], unit_label: str) -> u.Quantity:
+    label = str(unit_label or "").strip()
+    if not label:
+        label = "arb"
+
+    normalized = label.lower()
+    custom_units = {
+        "arb": u.dimensionless_unscaled,
+        "arbitrary": u.dimensionless_unscaled,
+        "relative": u.dimensionless_unscaled,
+        "counts": u.ct,
+        "count": u.ct,
+        "adu": getattr(u, "adu", u.ct),
+    }
+
+    unit: u.Unit
+    if normalized in custom_units:
+        unit = custom_units[normalized]
+    else:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UnitsWarning)
+            try:
+                unit = u.Unit(label)
+            except (ValueError, UnitsError) as exc:
+                raise LocalIngestError(
+                    f"Unrecognised flux unit '{label}' — rename the column to include a valid Astropy unit."
+                ) from exc
+
+    try:
+        return u.Quantity(values, unit=unit)
+    except (ValueError, TypeError, UnitConversionError) as exc:
+        raise LocalIngestError(
+            "Flux samples could not be converted into a physical quantity."
+        ) from exc
+
+
+def _build_spectrum1d(
+    *,
+    label: str,
+    wavelengths: Sequence[float],
+    flux: Sequence[float],
+    flux_unit: str,
+    wavelength_quantity: Optional[object],
+    wavelength_payload: Optional[Mapping[str, object]],
+    metadata: Mapping[str, object],
+    axis_kind: Optional[str],
+) -> Optional[Spectrum1D]:
+    if str(axis_kind or "").lower() == "image":
+        return None
+
+    if len(wavelengths) != len(flux):
+        raise LocalIngestError(
+            f"{label or 'Spectrum'} contains mismatched wavelength and flux sample counts."
+        )
+
+    if not wavelengths or not flux:
+        raise LocalIngestError(
+            f"{label or 'Spectrum'} does not contain enough samples to build a Spectrum1D."
+        )
+
+    spectral_axis = _resolve_wavelength_quantity(
+        wavelengths,
+        quantity=wavelength_quantity,
+        payload=wavelength_payload,
+        metadata=metadata,
+    )
+    flux_quantity = _resolve_flux_quantity(flux, flux_unit)
+
+    try:
+        return Spectrum1D(flux=flux_quantity, spectral_axis=spectral_axis)
+    except Exception as exc:  # pragma: no cover - Spectrum1D construction failure
+        raise LocalIngestError(
+            f"Failed to normalise {label or 'spectrum'} into a Spectrum1D object."
+        ) from exc
+
+
+def _attach_spectrum1d(
+    payload: Mapping[str, object],
+    *,
+    default_label: str,
+    flux_unit: str,
+    metadata: Mapping[str, object],
+) -> Optional[Spectrum1D]:
+    wavelengths = payload.get("wavelength_nm") or []
+    flux = payload.get("flux") or []
+    label = str(payload.get("label") or default_label)
+    axis_kind = payload.get("axis_kind") or (
+        (payload.get("metadata") or {}).get("axis_kind")
+        if isinstance(payload.get("metadata"), Mapping)
+        else None
+    )
+
+    spectrum = _build_spectrum1d(
+        label=label,
+        wavelengths=wavelengths,
+        flux=flux,
+        flux_unit=str(payload.get("flux_unit") or flux_unit),
+        wavelength_quantity=payload.get("wavelength_quantity"),
+        wavelength_payload=payload.get("wavelength"),
+        metadata=payload.get("metadata") or metadata,
+        axis_kind=axis_kind,
+    )
+
+    return spectrum
 
 
 def _parse_ascii_with_table(name: str, payload: bytes) -> Dict[str, object]:
@@ -563,6 +715,43 @@ def ingest_local_file(name: str, content: bytes) -> Dict[str, object]:
 
     additional = parsed.get("additional_traces")
     if isinstance(additional, list) and additional:
-        payload["additional_traces"] = additional
+        enhanced_traces = []
+        for entry in additional:
+            if not isinstance(entry, Mapping):
+                continue
+            entry_payload = dict(entry)
+            entry_metadata = entry_payload.get("metadata")
+            if not isinstance(entry_metadata, Mapping):
+                entry_metadata = metadata
+                entry_payload["metadata"] = metadata
+            flux_unit_entry = str(entry_payload.get("flux_unit") or flux_unit)
+            try:
+                spectrum_extra = _attach_spectrum1d(
+                    entry_payload,
+                    default_label=label,
+                    flux_unit=flux_unit_entry,
+                    metadata=entry_metadata,
+                )
+            except LocalIngestError as exc:
+                trace_label = entry_payload.get("label") or label
+                raise LocalIngestError(
+                    f"Additional trace '{trace_label}' could not be normalised: {exc}"
+                ) from exc
+            if spectrum_extra is not None:
+                entry_payload["spectrum1d"] = spectrum_extra
+            enhanced_traces.append(entry_payload)
+        payload["additional_traces"] = enhanced_traces
+
+    try:
+        base_spectrum = _attach_spectrum1d(
+            payload,
+            default_label=label,
+            flux_unit=flux_unit,
+            metadata=metadata,
+        )
+    except LocalIngestError as exc:
+        raise LocalIngestError(f"{label} could not be normalised: {exc}") from exc
+    if base_spectrum is not None:
+        payload["spectrum1d"] = base_spectrum
 
     return payload

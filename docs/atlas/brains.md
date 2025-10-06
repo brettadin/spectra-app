@@ -1,3 +1,7 @@
+# Spectrum1D ingestion normalisation — 2025-10-23
+- Convert local ingest payloads into `Spectrum1D` objects with Astropy quantity checks so unit coercion errors surface before overlays are added, while skipping conversion for image products. 【F:app/utils/local_ingest.py†L300-L386】【F:app/utils/local_ingest.py†L597-L772】
+- Added specutils as a dependency and broadened ingestion tests to assert Spectrum1D availability and unit validation for base and additional traces. 【F:requirements.txt†L1-L11】【F:tests/server/test_local_ingest.py†L1-L186】【F:tests/server/test_local_ingest.py†L230-L321】
+
 # SpecViz improvement backlog planning — 2025-10-23
 - Logged SpecViz-inspired ingestion, viewer, plugin, and automation backlog items so the roadmap targets parity work with clear provenance ties. 【F:docs/research/specviz_improvement_backlog.md†L1-L74】
 - Updated release metadata, patch notes, and patch log to advertise the planning deliverable across the app surfaces. 【F:app/version.json†L1-L5】【F:docs/patch_notes/v1.2.1h.md†L1-L17】【F:PATCHLOG.txt†L33-L34】
