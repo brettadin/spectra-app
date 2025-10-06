@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.1o",
-  "date_utc": "2025-10-06T00:00:00Z",
-  "summary": "Import hashlib for local overlay uploads so checksum calculation works without NameError crashes when processing files."
+  "version": "v1.2.1n",
+  "date_utc": "2025-10-27T00:00:00Z",
+  "summary": "Fix the workspace status bar axis title resolution by wiring the controller helper import so overlays render without NameError crashes."
 }
