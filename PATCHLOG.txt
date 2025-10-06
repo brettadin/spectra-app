@@ -37,3 +37,6 @@ Spectra App — Patch Log (append-only)
 - v1.2.1k: Extract overlay/session helpers into a reusable controller, refactor the Streamlit overlay tab to use it, and document a CLI smoke demo with new controller tests.
 - v1.2.1k: Introduce SpecViz-compatible batch ingestion helpers plus richer provider diagnostics for concatenated program pulls.
 - v1.2.1k: Publish the SpecViz parity matrix, wire user docs to the new overview, and credit the jdaviz authors across ingest and viewer guides.
+- v1.2.1g: Capture a SpecViz adoption blueprint and refresh release metadata for the research handoff.
+- v1.2.1h: Review Jdaviz GitHub design docs, audit current Spectra App architecture, and outline alignment tasks for the next phase.
+- v1.2.1i: Introduce a registry-driven layout engine so sidebar controls and workspace tabs register like plugins before render.

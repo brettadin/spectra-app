@@ -20,6 +20,12 @@
 - Updated release metadata, patch notes, and patch log to advertise the planning deliverable across the app surfaces. 【F:app/version.json†L1-L5】【F:docs/patch_notes/v1.2.1h.md†L1-L17】【F:PATCHLOG.txt†L33-L34】
 
 # Streamlit import bootstrap — 2025-10-5
+## Specviz adoption blueprint — 2025-10-05
+- Documented Specviz feature inventory spanning ingestion, visualization, analysis plugins, and export hooks to guide Spectra App parity goals. 【F:docs/atlas/Specviz_Adoption_Blueprint.md†L3-L44】
+- Outlined phased adoption strategy plus technical considerations covering ingestion parity, viewer upgrades, plugin suite, and export helpers. 【F:docs/atlas/Specviz_Adoption_Blueprint.md†L46-L76】
+- Logged follow-up research tasks targeting JDaviz helpers, plugin modules, and exporter pathways for deeper study. 【F:docs/atlas/Specviz_Adoption_Blueprint.md†L78-L82】
+
+# Streamlit import bootstrap — 2025-10-21
 - Detect bare execution of `app.ui.main` in Streamlit Cloud, prepend the repository root to `sys.path`, and normalise imports so the UI loads whether invoked as a package or direct file. 【F:app/ui/main.py†L25-L80】
 - Recorded the continuity update in release metadata and patch notes for downstream automation. 【F:app/version.json†L1-L5】【F:docs/patch_notes/v1.2.1f.md†L1-L20】
 
@@ -28,6 +34,11 @@
 - Added regression coverage that reloads the UI module before the future resolves and confirms `_add_overlay_payload` runs without surfacing the "Unexpected ingest result" fallback. 【F:tests/ui/test_overlay_ingest_queue_async.py†L186-L289】
 
 # Overlay time-series policy — 2025-10-1
+# Panel registry layout engine — 2025-10-05
+- Staged a plugin-style registry for sidebar and workspace panels so layout components register with identifiers and ordering metadata before render. 【F:app/ui/panel_registry.py†L1-L104】
+- Registered the existing overlay, differential, library, docs, and controls panels through the registry and updated the main render loop to build Streamlit tabs/containers from the registered specs. 【F:app/ui/main.py†L3306-L3394】【F:app/ui/main.py†L3456-L3474】
+
+# Overlay time-series policy — 2025-10-20
 - Subtract FITS time-axis offsets inside `_extract_table_data`, flag provenance with `offset_subtracted`, and skip duplicate subtraction during payload assembly so canonical values remain relative to the advertised frame. 【F:app/server/ingest_fits.py†L519-L550】【F:app/server/ingest_fits.py†L1475-L1527】
 - Reject time-series overlays in `_add_overlay` and `ingest_local_file`, surface the policy in error messages, and treat time traces like images when grouping, reference selection, and plotting overlays. 【F:app/ui/main.py†L970-L1050】【F:app/ui/main.py†L373-L382】【F:app/ui/main.py†L1885-L1934】【F:app/utils/local_ingest.py†L461-L482】
 - Added TESS-inspired regression coverage confirming FITS ingest normalises offsets, local ingest surfaces the new error, and overlay rendering drops time traces from figures. 【F:tests/server/test_ingest_fits.py†L491-L513】【F:tests/server/test_local_ingest.py†L517-L691】【F:tests/ui/test_overlay_time_policy.py†L15-L65】
@@ -99,9 +110,20 @@
 ## Byte-string FITS unit coercion — 2025-10-1
 - Normalise FITS wavelength/time unit hints by decoding header bytes through `_coerce_header_value` before canonical checks so `TUNIT`/`CUNIT` byte strings match aliases. 【F:app/server/ingest_fits.py†L233-L305】【F:app/server/ingest_fits.py†L751-L799】
 - Preserve time-frame detection by case-folding decoded hints, keeping BJD offsets intact when headers arrive as byte strings. 【F:app/server/ingest_fits.py†L233-L305】
+
+# SpecViz adaptation blueprint — 2025-10-05
+- Captured a structured survey of Jdaviz delivery modes, ingestion patterns, viewer ergonomics, plugin coverage, export surfaces, and provenance expectations to guide parity planning. 【F:docs/research/specviz_adaptation.md†L5-L68】
+- Mapped the survey into a capability gap matrix plus phased roadmap that sequences infrastructure alignment, feature parity, and advanced JWST-aware integrations for Spectra App. 【F:docs/research/specviz_adaptation.md†L70-L133】
+- Logged follow-up research questions around Glue integration depth, specutils adoption, plugin sandboxing, and session persistence strategies. 【F:docs/research/specviz_adaptation.md†L135-L144】
 - Locked regression coverage on byte-string table headers to ensure wavelength and time ingestion keep reporting the right `axis_kind`. 【F:tests/server/test_ingest_fits.py†L375-L395】【F:tests/server/test_ingest_fits.py†L442-L466】
 
 ## Example browser provider persistence — 2025-10-1
+## SpecViz code alignment audit — 2025-10-05
+- Reviewed the latest Jdaviz GitHub developer docs covering infrastructure, plugin components, UI design, and selection mechanics to ground follow-up planning. 【F:docs/research/specviz_code_alignment.md†L1-L42】
+- Documented the current Spectra App overlay model, ingest queue, analysis stacks, manifest export, and target gating to anchor parity work in concrete modules. 【F:docs/research/specviz_code_alignment.md†L44-L89】
+- Highlighted registry, component, helper API, selection persistence, and specutils integration tasks that align Spectra App with Specviz patterns. 【F:docs/research/specviz_code_alignment.md†L91-L128】
+
+## Example browser provider persistence — 2025-10-11
 - Only seed the provider multiselect with defaults when the session key is unset so Streamlit relies on the stored selection thereafter, eliminating rerun warnings. 【F:app/ui/example_browser.py†L192-L210】
 - Normalise any cached provider list before rendering and sync it back to session state so stale providers disappear without losing user intent. 【F:app/ui/example_browser.py†L185-L197】
 
