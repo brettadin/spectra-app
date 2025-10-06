@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.1l",
-  "date_utc": "2025-10-25T00:00:00Z",
-  "summary": "Introduce a workspace service layer shared by Streamlit and scripted helpers, extend the SpecViz helper API to cover viewport, export, and plugin flows, and document the parity guide with explicit jdaviz credit."
+  "version": "v1.2.1m",
+  "date_utc": "2025-10-26T00:00:00Z",
+  "summary": "Add a plugin registry with SpecViz-aligned analysis tools, surface a dedicated plugin tray in the UI, and document the new workflows alongside regression coverage."
 }

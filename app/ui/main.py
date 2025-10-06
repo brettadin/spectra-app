@@ -4,7 +4,7 @@ import math
 import time
 import uuid
 from concurrent.futures import Future, ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 import threading
@@ -33,6 +33,8 @@ from ..server.fetch_archives import FetchError, fetch_spectrum
 from ..similarity_panel import render_similarity_panel
 from ..providers import ProviderQuery, search as provider_search
 from ..services.workspace import WorkspaceContext, WorkspaceService
+from ..plugins import PluginError, PluginResult, PluginContext as PluginRuntimeContext, plugin_registry
+from ..plugins import specviz_defaults  # noqa: F401 - ensure plugin registration
 from ..utils.duplicate_ledger import DuplicateLedger
 from ..utils.local_ingest import (
     SUPPORTED_ASCII_EXTENSIONS,
@@ -245,6 +247,22 @@ _OVERLAY_STATUS_PROGRESS = {
     "running": 0.1,
     "downloading": 0.4,
     "ingesting": 0.7,
+    "success": 1.0,
+    "info": 1.0,
+    "error": 1.0,
+}
+
+_PLUGIN_STATUS_LABELS = {
+    "queued": "Queued",
+    "running": "Running",
+    "success": "Completed",
+    "info": "Completed",
+    "error": "Failed",
+}
+
+_PLUGIN_STATUS_PROGRESS = {
+    "queued": 0.0,
+    "running": 0.5,
     "success": 1.0,
     "info": 1.0,
     "error": 1.0,
@@ -583,6 +601,270 @@ def _render_ingest_queue_panel(container: DeltaGenerator) -> None:
             entry.caption(summary)
 
 
+def _ensure_plugin_runtime() -> Dict[str, Any]:
+    runtime = st.session_state.get("plugin_runtime")
+    if not isinstance(runtime, dict):
+        runtime = {}
+
+    executor = runtime.get("executor")
+    if not isinstance(executor, ThreadPoolExecutor) or getattr(executor, "_shutdown", False):
+        executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="plugin-jobs")
+        runtime["executor"] = executor
+
+    lock = runtime.get("lock")
+    if lock is None or not hasattr(lock, "acquire"):
+        lock = threading.Lock()
+        runtime["lock"] = lock
+
+    runtime.setdefault("jobs", {})
+    runtime.setdefault("futures", {})
+    st.session_state["plugin_runtime"] = runtime
+    return runtime
+
+
+def _update_plugin_job(
+    runtime: Mapping[str, Any],
+    job_id: str,
+    *,
+    status: Optional[str] = None,
+    detail: Optional[str] = None,
+    progress: Optional[float] = None,
+    finished: Optional[bool] = None,
+    extra: Optional[Mapping[str, Any]] = None,
+) -> None:
+    lock = runtime.get("lock") if isinstance(runtime, Mapping) else None
+    jobs = runtime.get("jobs") if isinstance(runtime, Mapping) else None
+    if lock is None or jobs is None or not hasattr(lock, "acquire"):
+        return
+    with lock:
+        job = jobs.get(job_id) if isinstance(jobs, dict) else None
+        if job is None:
+            return
+        if status is not None:
+            job["status"] = status
+        if detail is not None:
+            job["detail"] = detail
+        if progress is not None:
+            job["progress"] = progress
+        if finished is not None:
+            job["finished"] = bool(finished)
+        if extra:
+            for key, value in extra.items():
+                job[key] = value
+
+
+def _snapshot_plugin_jobs(runtime: Optional[Mapping[str, Any]]) -> List[Dict[str, Any]]:
+    if not isinstance(runtime, Mapping):
+        return []
+
+    lock = runtime.get("lock")
+    jobs = runtime.get("jobs")
+    if lock is None or jobs is None or not hasattr(lock, "acquire"):
+        return []
+
+    with lock:
+        values = list(jobs.values()) if isinstance(jobs, dict) else []
+        return [dict(job) for job in values]
+
+
+def _run_plugin_job(
+    plugin_id: str,
+    selection: Sequence[str],
+    config: Mapping[str, Any],
+    workspace: WorkspaceService,
+    overlays: Sequence[OverlayTrace],
+) -> PluginResult:
+    plugin_cls = plugin_registry.get(plugin_id)
+    context = PluginRuntimeContext(workspace=workspace, overlays=overlays)
+    plugin = plugin_cls(context)
+    result = plugin.execute(selection, config)
+    if not isinstance(result, PluginResult):
+        raise PluginError(
+            f"Plugin '{plugin_cls.label}' returned an unexpected result type: {type(result)!r}."
+        )
+    return result
+
+
+def _submit_plugin_job(
+    runtime: Dict[str, Any],
+    workspace: WorkspaceService,
+    overlays: Sequence[OverlayTrace],
+    job: Mapping[str, Any],
+) -> str:
+    executor: ThreadPoolExecutor = runtime["executor"]
+    plugin_id = str(job.get("plugin_id") or "").strip()
+    if not plugin_id:
+        raise PluginError("Plugin identifier missing from job queue entry.")
+    selection = tuple(str(value) for value in job.get("selection", ()))
+    config = dict(job.get("config") or {})
+    plugin_label = str(job.get("plugin_label") or plugin_id)
+    selection_labels = list(job.get("selection_labels") or [])
+    overlays_snapshot = tuple(replace(trace) for trace in overlays)
+
+    future = executor.submit(
+        _run_plugin_job,
+        plugin_id,
+        selection,
+        config,
+        workspace,
+        overlays_snapshot,
+    )
+
+    job_id = uuid.uuid4().hex
+    lock = runtime.get("lock")
+    jobs = runtime.get("jobs")
+    if lock is None or jobs is None or not hasattr(lock, "acquire"):
+        lock = threading.Lock()
+        runtime["lock"] = lock
+        jobs = {}
+        runtime["jobs"] = jobs
+
+    with lock:
+        jobs[job_id] = {
+            "id": job_id,
+            "plugin_id": plugin_id,
+            "label": plugin_label,
+            "selection": selection,
+            "selection_labels": selection_labels,
+            "status": "queued",
+            "detail": "Queued for execution",
+            "progress": 0.1,
+            "submitted_at": time.time(),
+        }
+        futures = runtime.setdefault("futures", {})
+        futures[job_id] = future
+
+    _update_plugin_job(
+        runtime,
+        job_id,
+        status="running",
+        detail="Running analysis",
+        progress=0.4,
+    )
+
+    return job_id
+
+
+def _refresh_plugin_jobs(runtime: Dict[str, Any]) -> None:
+    futures = runtime.get("futures")
+    if not isinstance(futures, dict):
+        return
+
+    completed: List[str] = []
+    for job_id, future in list(futures.items()):
+        if not isinstance(future, Future):
+            completed.append(job_id)
+            continue
+        if not future.done():
+            continue
+
+        try:
+            result = future.result()
+        except PluginError as exc:
+            status, detail, payload = "error", str(exc), None
+        except Exception as exc:  # pragma: no cover - defensive guard
+            status, detail, payload = "error", f"Plugin execution failed: {exc}", None
+        else:
+            status, detail, payload = "success", "Completed", result
+
+        overlay_messages: List[str] = []
+        warnings: List[str] = []
+        plugin_messages: List[str] = []
+        provenance: Mapping[str, Any] = {}
+        tables_payload: List[Dict[str, Any]] = []
+
+        if isinstance(payload, PluginResult):
+            provenance = dict(payload.provenance or {})
+            plugin_messages = [str(message) for message in payload.messages or ()]
+            tables_payload = [
+                {
+                    "name": table.name,
+                    "rows": [dict(row) for row in table.rows],
+                    "description": table.description,
+                }
+                for table in payload.tables
+            ]
+            overlays = list(payload.overlays or [])
+            for overlay in overlays:
+                data = dict(overlay)
+                overlay_prov = dict(provenance)
+                raw_prov = data.get("provenance")
+                if isinstance(raw_prov, Mapping):
+                    overlay_prov.update(raw_prov)
+                data["provenance"] = overlay_prov
+                try:
+                    added, message = _controller().add_overlay_payload(data)
+                except Exception as exc:  # pragma: no cover - overlay failure guard
+                    warnings.append(f"Overlay add failed: {exc}")
+                else:
+                    if added:
+                        overlay_messages.append(message)
+                    else:
+                        warnings.append(message)
+            detail = "; ".join(filter(None, overlay_messages + warnings)) or detail
+            if warnings and not overlay_messages:
+                status = "info"
+        elif status == "success":
+            status = "error"
+            detail = "Plugin returned no result payload."
+
+        _update_plugin_job(
+            runtime,
+            job_id,
+            status=status,
+            detail=detail,
+            progress=1.0,
+            finished=True,
+            extra={
+                "completed_at": time.time(),
+                "overlay_messages": overlay_messages,
+                "plugin_messages": plugin_messages,
+                "warnings": warnings,
+                "tables": tables_payload,
+                "provenance": provenance,
+            },
+        )
+
+        if isinstance(payload, PluginResult):
+            outputs = st.session_state.get("plugin_outputs")
+            if not isinstance(outputs, list):
+                outputs = []
+            job_meta = runtime.get("jobs", {}).get(job_id, {})
+            outputs.append(
+                {
+                    "plugin_id": job_meta.get("plugin_id"),
+                    "plugin_label": job_meta.get("label"),
+                    "completed_at": time.time(),
+                    "messages": plugin_messages,
+                    "overlay_messages": overlay_messages,
+                    "warnings": warnings,
+                    "tables": tables_payload,
+                    "provenance": provenance,
+                }
+            )
+            st.session_state["plugin_outputs"] = outputs
+
+        completed.append(job_id)
+
+    for job_id in completed:
+        futures.pop(job_id, None)
+
+
+def _process_plugin_queue() -> None:
+    runtime = _ensure_plugin_runtime()
+    queue = list(st.session_state.get("plugin_queue", []))
+    if queue:
+        overlays = _controller().get_overlays()
+        workspace = _workspace()
+        for entry in queue:
+            try:
+                _submit_plugin_job(runtime, workspace, overlays, entry)
+            except PluginError as exc:
+                st.error(str(exc))
+        st.session_state["plugin_queue"] = []
+
+    _refresh_plugin_jobs(runtime)
+
 def _add_example_trace(spec: ExampleSpec) -> Tuple[bool, str]:
     try:
         hits = provider_search(spec.provider, spec.query)
@@ -698,6 +980,241 @@ def _render_nist_form(container: DeltaGenerator) -> None:
     (container.success if added else container.info)(message)
 
 
+def _render_plugin_queue_panel(container: DeltaGenerator) -> None:
+    container.markdown("### Plugin queue")
+    runtime = st.session_state.get("plugin_runtime")
+    jobs = _snapshot_plugin_jobs(runtime)
+    if not jobs:
+        container.caption(
+            "Queued plugin runs will appear here while analysis jobs execute in the background."
+        )
+        return
+
+    jobs_sorted = sorted(jobs, key=lambda job: job.get("submitted_at") or 0.0, reverse=True)
+    for job in jobs_sorted:
+        label = str(job.get("label") or job.get("plugin_id") or "Plugin run")
+        status = str(job.get("status") or "queued")
+        detail = str(job.get("detail") or "").strip()
+        status_label = _PLUGIN_STATUS_LABELS.get(status, status.replace("_", " ").title())
+        progress = job.get("progress")
+        try:
+            progress_value = max(0.0, min(1.0, float(progress)))
+        except Exception:
+            progress_value = _PLUGIN_STATUS_PROGRESS.get(status, 0.0)
+
+        entry = container.container()
+        entry.markdown(f"**{label}**")
+        selection_labels = job.get("selection_labels")
+        if isinstance(selection_labels, (list, tuple)) and selection_labels:
+            entry.caption(
+                "Targets: "
+                + ", ".join(str(candidate) for candidate in selection_labels if candidate)
+            )
+        if status == "success":
+            entry.success(detail or status_label)
+        elif status == "info":
+            entry.info(detail or status_label)
+        elif status == "error":
+            entry.error(detail or status_label)
+        else:
+            entry.progress(progress_value)
+            entry.caption(detail or status_label)
+
+
+def _render_plugin_results_panel(container: DeltaGenerator) -> None:
+    container.markdown("### Recent plugin outputs")
+    outputs = st.session_state.get("plugin_outputs")
+    if not isinstance(outputs, list) or not outputs:
+        container.caption("Completed plugin runs will appear here with parameter tables and provenance.")
+        return
+
+    entries = sorted(outputs, key=lambda entry: entry.get("completed_at") or 0.0, reverse=True)
+    for entry in entries[:10]:
+        label = str(entry.get("plugin_label") or entry.get("plugin_id") or "Plugin run")
+        timestamp = entry.get("completed_at")
+        if isinstance(timestamp, (int, float)):
+            header = (
+                f"{label} • "
+                f"{datetime.fromtimestamp(float(timestamp), tz=timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}"
+            )
+        else:
+            header = label
+        expander = container.expander(header)
+        with expander:
+            for message in entry.get("messages") or []:
+                expander.write(message)
+            for overlay_message in entry.get("overlay_messages") or []:
+                expander.success(overlay_message)
+            for warning in entry.get("warnings") or []:
+                expander.warning(warning)
+            for table in entry.get("tables") or []:
+                name = str(table.get("name") or "Results table")
+                expander.markdown(f"**{name}**")
+                description = table.get("description")
+                if description:
+                    expander.caption(str(description))
+                rows = table.get("rows") or []
+                if rows:
+                    try:
+                        df = pd.DataFrame(rows)
+                    except Exception:
+                        df = None
+                    if df is not None and not df.empty:
+                        expander.dataframe(df)
+                    else:
+                        expander.json(rows)
+                else:
+                    expander.caption("No rows returned.")
+            provenance = entry.get("provenance")
+            if isinstance(provenance, Mapping) and provenance:
+                expander.markdown("**Provenance**")
+                expander.json(provenance)
+
+
+def _render_plugin_tab() -> None:
+    st.markdown("### Analysis plugins")
+    plugin_classes = plugin_registry.list_plugins()
+    if not plugin_classes:
+        st.info("No plugins have been registered yet.")
+        return
+
+    plugin_options = [plugin.plugin_id for plugin in plugin_classes]
+    labels = {plugin.plugin_id: plugin.label for plugin in plugin_classes}
+    selected_id = st.selectbox(
+        "Plugin",
+        plugin_options,
+        index=plugin_options.index(
+            st.session_state.get("plugin_selected_id") or plugin_options[0]
+        )
+        if st.session_state.get("plugin_selected_id") in plugin_options
+        else 0,
+        format_func=lambda value: labels.get(value, value),
+        key="plugin_selected_id",
+    )
+    plugin_cls = plugin_registry.get(selected_id)
+
+    overlays = _controller().get_overlays()
+    context = PluginRuntimeContext(_workspace(), [replace(trace) for trace in overlays])
+    plugin_instance = plugin_cls(context)
+    if plugin_instance.description:
+        st.caption(plugin_instance.description)
+
+    form_key = f"plugin_form_{plugin_cls.plugin_id}"
+    selection: List[str] = []
+    overlay_labels = {trace.trace_id: trace.label for trace in overlays}
+
+    with st.form(form_key):
+        if plugin_instance.supports_selection():
+            if plugin_instance.selection_mode == "multiple":
+                default_selection = list(plugin_instance.default_selection())
+                selection = st.multiselect(
+                    "Datasets",
+                    list(overlay_labels.keys()),
+                    default=default_selection,
+                    format_func=lambda trace_id: overlay_labels.get(trace_id, trace_id),
+                    key=f"{form_key}_selection",
+                )
+            else:
+                options = list(overlay_labels.keys())
+                if options:
+                    default_selection = list(plugin_instance.default_selection())
+                    default_value = default_selection[0] if default_selection else options[0]
+                    try:
+                        default_index_single = options.index(default_value)
+                    except ValueError:
+                        default_index_single = 0
+                    chosen = st.selectbox(
+                        "Dataset",
+                        options,
+                        index=default_index_single,
+                        format_func=lambda trace_id: overlay_labels.get(trace_id, trace_id),
+                        key=f"{form_key}_selection_single",
+                    )
+                    if chosen:
+                        selection = [chosen]
+                else:
+                    st.warning("Load at least one spectrum to run this plugin.")
+
+        config_values: Dict[str, Any] = {}
+        for field in plugin_instance.config_fields():
+            control_key = f"{form_key}_{field.name}"
+            if field.kind == "checkbox":
+                config_values[field.name] = st.checkbox(
+                    field.label,
+                    value=bool(field.default),
+                    help=field.help,
+                    key=control_key,
+                )
+            elif field.kind == "select":
+                options = list(field.options)
+                if not options and field.default is not None:
+                    options = [field.default]
+                try:
+                    default_index = options.index(field.default)
+                except ValueError:
+                    default_index = 0
+                config_values[field.name] = st.selectbox(
+                    field.label,
+                    options or [""],
+                    index=default_index if options else 0,
+                    help=field.help,
+                    key=control_key,
+                )
+            elif field.kind == "slider":
+                min_value = float(field.min_value if field.min_value is not None else 0.0)
+                max_value = float(field.max_value if field.max_value is not None else min_value + 1.0)
+                default_value = float(field.default if field.default is not None else min_value)
+                step = float(
+                    field.step
+                    if field.step is not None
+                    else max((max_value - min_value) / 100.0, 1e-6)
+                )
+                config_values[field.name] = st.slider(
+                    field.label,
+                    min_value=min_value,
+                    max_value=max_value,
+                    value=max(min(default_value, max_value), min_value),
+                    step=step,
+                    help=field.help,
+                    key=control_key,
+                )
+            else:
+                value = float(field.default) if field.default is not None else 0.0
+                config_values[field.name] = st.number_input(
+                    field.label,
+                    value=value,
+                    min_value=field.min_value,
+                    max_value=field.max_value,
+                    step=field.step or 0.1,
+                    help=field.help,
+                    key=control_key,
+                )
+
+        submitted = st.form_submit_button("Queue plugin run")
+
+    if submitted:
+        if plugin_instance.supports_selection() and not selection:
+            st.warning("Select at least one dataset before running the plugin.")
+        else:
+            queue = list(st.session_state.get("plugin_queue", []))
+            queue.append(
+                {
+                    "plugin_id": plugin_cls.plugin_id,
+                    "plugin_label": plugin_cls.label,
+                    "selection": list(selection),
+                    "selection_labels": [overlay_labels.get(item, item) for item in selection],
+                    "config": dict(config_values),
+                }
+            )
+            st.session_state["plugin_queue"] = queue
+            st.success("Plugin run queued. Monitor progress below.")
+
+    st.divider()
+    queue_container = st.container()
+    _render_plugin_queue_panel(queue_container)
+    st.divider()
+    results_container = st.container()
+    _render_plugin_results_panel(results_container)
 def _render_display_section(container: DeltaGenerator) -> None:
     container.markdown("#### Display & viewport")
     overlays = _controller().get_overlays()
@@ -2118,6 +2635,7 @@ def render(workspace_service: WorkspaceService | None = None) -> None:
     _workspace(workspace_service)
     _ensure_session_state()
     _process_ingest_queue()
+    _process_plugin_queue()
     version_info = get_version_info()
 
     _render_app_header(version_info)
@@ -2127,11 +2645,13 @@ def render(workspace_service: WorkspaceService | None = None) -> None:
     _render_settings_group(controls_panel)
     _render_ingest_queue_panel(controls_panel)
 
-    overlay_tab, diff_tab, library_tab, docs_tab = st.tabs(
-        ["Overlay", "Differential", "Library", "Docs & Provenance"]
+    overlay_tab, plugin_tab, diff_tab, library_tab, docs_tab = st.tabs(
+        ["Overlay", "Plugins", "Differential", "Library", "Docs & Provenance"]
     )
     with overlay_tab:
         _render_overlay_tab(version_info)
+    with plugin_tab:
+        _render_plugin_tab()
     with diff_tab:
         _render_differential_tab()
     with library_tab:

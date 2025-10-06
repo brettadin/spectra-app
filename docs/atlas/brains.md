@@ -142,3 +142,9 @@
 - Wrapped overlay, viewport, and export logic in a `WorkspaceService` so controllers operate on explicit contexts instead of `st.session_state`. 【F:app/services/workspace.py†L1-L197】
 - Injected the workspace service into the Streamlit UI, making export and removal flows delegate to the shared layer. 【F:app/ui/main.py†L189-L208】【F:app/ui/main.py†L1390-L1409】
 - Rebuilt the SpecViz helper to drive the service layer directly, exposing SpecViz-compatible methods for scripts. 【F:spectra/helpers/specviz_compat.py†L1-L209】
+
+## SpecViz-aligned plugin tray — 2025-10-26
+- Established a plugin registry and execution context that expose configuration widgets, dataset selection, provenance hooks, and overlay publication through the workspace service. 【F:app/plugins/__init__.py†L1-L173】【F:app/services/workspace.py†L1-L197】
+- Shipped SpecViz-default plugins covering Gaussian smoothing, unit conversion, line list management, redshift adjustments, and model fitting with parameter exports. 【F:app/plugins/specviz_defaults.py†L1-L624】【F:exports/manifest/schema.json†L1-L200】
+- Surfaced a plugin tray tab that renders plugin controls, queues plugin jobs asynchronously, and displays derived overlays without blocking the main UI. 【F:app/ui/main.py†L320-L1217】
+- Documented each plugin in the docs site and backed their execution paths with regression tests for the service layer. 【F:docs/app/plugins/gaussian_smoothing.md†L1-L15】【F:docs/app/plugins/unit_conversion.md†L1-L15】【F:docs/app/plugins/line_list_manager.md†L1-L15】【F:docs/app/plugins/redshift_slider.md†L1-L15】【F:docs/app/plugins/model_fitting.md†L1-L15】【F:tests/plugins/test_specviz_plugins.py†L1-L120】
