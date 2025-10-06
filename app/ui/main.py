@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import math
 import time
 import uuid
@@ -30,10 +29,10 @@ from .targets import RegistryUnavailableError, render_targets_panel
 
 from .._version import get_version_info
 from ..ingest import OverlayIngestResult
-from ..export_manifest import build_manifest
 from ..server.fetch_archives import FetchError, fetch_spectrum
 from ..similarity_panel import render_similarity_panel
 from ..providers import ProviderQuery, search as provider_search
+from ..services.workspace import WorkspaceContext, WorkspaceService
 from ..utils.duplicate_ledger import DuplicateLedger
 from ..utils.local_ingest import (
     SUPPORTED_ASCII_EXTENSIONS,
@@ -184,16 +183,27 @@ def _format_version_timestamp(raw: object) -> str:
 
 
 VIEWPORT_STATE_KEY = "viewport_axes"
+_WORKSPACE_SERVICE: WorkspaceService | None = None
+
+
+def _workspace(service: WorkspaceService | None = None) -> WorkspaceService:
+    global _WORKSPACE_SERVICE
+    if service is not None:
+        _WORKSPACE_SERVICE = service
+    if _WORKSPACE_SERVICE is None:
+        context = WorkspaceContext(st.session_state, VIEWPORT_STATE_KEY, EXPORT_DIR)
+        _WORKSPACE_SERVICE = WorkspaceService(context)
+    return _WORKSPACE_SERVICE
 
 
 def _controller() -> WorkspaceController:
-    return WorkspaceController(st.session_state, VIEWPORT_STATE_KEY)
+    return _workspace().controller
 
 
 def _ensure_session_state() -> WorkspaceController:
-    controller = _controller()
-    controller.ensure_defaults()
-    return controller
+    service = _workspace()
+    service.ensure_defaults()
+    return service.controller
 
 
 def _trace_label(trace_id: Optional[str]) -> str:
@@ -1072,14 +1082,7 @@ def _render_image_overlay_panels(overlays: Sequence[OverlayTrace]) -> None:
 
 
 def _remove_overlays(trace_ids: Sequence[str]) -> None:
-    remaining = [
-        trace for trace in _controller().get_overlays() if trace.trace_id not in set(trace_ids)
-    ]
-    _controller().set_overlays(remaining)
-    cache = st.session_state.get("similarity_cache")
-    reset = getattr(cache, "reset", None)
-    if callable(reset):
-        reset()
+    _workspace().remove_overlays(trace_ids)
 
 
 def _normalise_wavelength_range(meta: Dict[str, object]) -> str:
@@ -1387,14 +1390,7 @@ def _render_local_upload() -> None:
 
 
 def _clear_overlays() -> None:
-    st.session_state["overlay_traces"] = []
-    st.session_state["reference_trace_id"] = None
-    cache = st.session_state.get("similarity_cache")
-    reset = getattr(cache, "reset", None)
-    if callable(reset):
-        reset()
-    st.session_state["local_upload_registry"] = {}
-    st.session_state["differential_result"] = None
+    _workspace().clear_overlays()
 
 
 def _export_current_view(
@@ -1404,68 +1400,19 @@ def _export_current_view(
     display_mode: str,
     viewport: Mapping[str, Tuple[float | None, float | None]],
 ) -> None:
-    rows: List[Dict[str, object]] = []
-    for trace in overlays:
-        if not trace.visible:
-            continue
-        axis_kind = _axis_kind_for_trace(trace)
-        axis_view = viewport.get(axis_kind, (None, None))
-        df = _filter_viewport(trace.to_dataframe(), axis_view)
-        if df.empty:
-            continue
-        converted, axis_title = _convert_axis_series(
-            df["wavelength_nm"], trace, display_units
-        )
-        scaled = df["flux"].to_numpy(dtype=float)
-        if display_mode != "Flux (raw)":
-            scaled = apply_normalization(scaled, "max")
-        for wavelength_value, flux_value in zip(converted, scaled):
-            if not math.isfinite(float(wavelength_value)) or not math.isfinite(
-                float(flux_value)
-            ):
-                continue
-            if axis_kind == "wavelength":
-                unit_label = display_units
-            elif axis_title and "(" in axis_title and axis_title.rstrip().endswith(")"):
-                unit_label = axis_title.rsplit("(", 1)[1].rstrip(") ")
-            else:
-                unit_label = axis_title or axis_kind
-            rows.append(
-                {
-                    "series": trace.label,
-                    "wavelength": float(wavelength_value),
-                    "axis_kind": axis_kind,
-                    "unit": unit_label,
-                    "flux": float(flux_value),
-                    "display_mode": display_mode,
-                }
-            )
-    if not rows:
-        st.warning("Nothing to export in the current viewport.")
-        return
-    df_export = pd.DataFrame(rows)
-    timestamp = time.strftime("%Y%m%d-%H%M%S")
-    csv_path = EXPORT_DIR / f"spectra_export_{timestamp}.csv"
-    png_path = EXPORT_DIR / f"spectra_export_{timestamp}.png"
-    manifest_path = EXPORT_DIR / f"spectra_export_{timestamp}.manifest.json"
-    df_export.to_csv(csv_path, index=False)
-    try:
-        fig.write_image(str(png_path))
-    except Exception as exc:
-        st.warning(f"PNG export requires kaleido ({exc}).")
-    viewport_payload = {
-        kind: {"low": vp[0], "high": vp[1]}
-        for kind, vp in viewport.items()
-    }
-    manifest = build_manifest(
-        rows,
-        display_units=display_units,
-        display_mode=display_mode,
-        exported_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        viewport=viewport_payload,
+    result = _workspace().export_view(
+        overlays,
+        display_units,
+        display_mode,
+        viewport,
+        fig=fig,
     )
-    manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-    st.success(f"Exported: {csv_path.name}, {png_path.name}, {manifest_path.name}")
+    if not result.success:
+        st.warning(result.message)
+        return
+    for note in result.warnings:
+        st.warning(note)
+    st.success(result.message)
 
 
 # ---------------------------------------------------------------------------
@@ -2167,7 +2114,8 @@ def _render_app_header(version_info: Mapping[str, object]) -> None:
     st.caption(" • ".join(part for part in caption_parts if part))
 
 
-def render() -> None:
+def render(workspace_service: WorkspaceService | None = None) -> None:
+    _workspace(workspace_service)
     _ensure_session_state()
     _process_ingest_queue()
     version_info = get_version_info()

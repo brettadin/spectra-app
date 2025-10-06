@@ -1,6 +1,6 @@
-"""Backward-compatible exports for SpecViz helper compatibility."""
+"""Helper APIs for Spectra automation."""
 
-from spectra.helpers.specviz_compat import (
+from .specviz_compat import (
     ExportPayload,
     HelperResult,
     SpecvizCompatError,
@@ -16,10 +16,10 @@ __all__ = [
     "SpecvizCompatHelper",
     "SpecvizCompatError",
     "HelperResult",
-    "ExportPayload",
     "load_data",
     "get_spectra",
     "set_limits",
     "run_plugin",
     "export_view",
+    "ExportPayload",
 ]
