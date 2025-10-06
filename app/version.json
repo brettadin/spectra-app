@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.1k",
+  "version": "v1.2.1l",
   "date_utc": "2025-10-27T00:00:00Z",
-  "summary": "Add JCAMP-DX overlay ingestion so NIST IR spectra import with wavelength and flux metadata."
+  "summary": "Allow JCAMP-DX uploads in the UI and document the local ingest support."
 }
