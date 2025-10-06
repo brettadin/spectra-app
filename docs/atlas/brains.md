@@ -1,3 +1,7 @@
+# SpecViz improvement backlog planning — 2025-10-23
+- Logged SpecViz-inspired ingestion, viewer, plugin, and automation backlog items so the roadmap targets parity work with clear provenance ties. 【F:docs/research/specviz_improvement_backlog.md†L1-L74】
+- Updated release metadata, patch notes, and patch log to advertise the planning deliverable across the app surfaces. 【F:app/version.json†L1-L5】【F:docs/patch_notes/v1.2.1h.md†L1-L17】【F:PATCHLOG.txt†L33-L34】
+
 # Streamlit import bootstrap — 2025-10-21
 - Detect bare execution of `app.ui.main` in Streamlit Cloud, prepend the repository root to `sys.path`, and normalise imports so the UI loads whether invoked as a package or direct file. 【F:app/ui/main.py†L25-L80】
 - Recorded the continuity update in release metadata and patch notes for downstream automation. 【F:app/version.json†L1-L5】【F:docs/patch_notes/v1.2.1f.md†L1-L20】
