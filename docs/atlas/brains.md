@@ -3,6 +3,10 @@
 - Outlined phased adoption strategy plus technical considerations covering ingestion parity, viewer upgrades, plugin suite, and export helpers. 【F:docs/atlas/Specviz_Adoption_Blueprint.md†L46-L76】
 - Logged follow-up research tasks targeting JDaviz helpers, plugin modules, and exporter pathways for deeper study. 【F:docs/atlas/Specviz_Adoption_Blueprint.md†L78-L82】
 
+# Merge conflict cleanup — 2025-10-27
+- Removed merge conflict markers from the Streamlit UI entrypoint so the module imports without syntax errors. 【F:app/ui/main.py†L1-L120】
+- Restored release metadata to the v1.2.1i description and trimmed speculative plugin roadmap notes that were never delivered. 【F:app/version.json†L1-L5】【F:docs/atlas/brains.md†L1-L120】
+
 # Streamlit import bootstrap — 2025-10-21
 - Detect bare execution of `app.ui.main` in Streamlit Cloud, prepend the repository root to `sys.path`, and normalise imports so the UI loads whether invoked as a package or direct file. 【F:app/ui/main.py†L25-L80】
 - Recorded the continuity update in release metadata and patch notes for downstream automation. 【F:app/version.json†L1-L5】【F:docs/patch_notes/v1.2.1f.md†L1-L20】
@@ -135,17 +139,3 @@
 - Swap the MAST CALSPEC downloader to `astroquery.mast.Observations.download_file`, capturing the download agent and cache metadata in the returned provenance. 【F:app/server/fetchers/mast.py†L1-L210】
 - Replace the sample shim with a curated-library materialiser that walks the vetted CALSPEC roster and persists per-target provenance summaries. 【F:app/server/fetch_archives.py†L1-L74】【F:scripts/fetch_samples.py†L1-L15】
 - Rebuilt `data_registry` and `catalog.csv` so UI metrics and manifests surface only the curated CALSPEC spectra. 【F:data_registry/catalog.csv†L1-L10】【F:data_registry/Vega/manifest.json†L1-L44】
-<<<<<<< HEAD
-
-## Workspace service refactor for helper parity — 2025-10-25
-- Wrapped overlay, viewport, and export logic in a `WorkspaceService` so controllers operate on explicit contexts instead of `st.session_state`. 【F:app/services/workspace.py†L1-L197】
-- Injected the workspace service into the Streamlit UI, making export and removal flows delegate to the shared layer. 【F:app/ui/main.py†L189-L208】【F:app/ui/main.py†L1390-L1409】
-- Rebuilt the SpecViz helper to drive the service layer directly, exposing SpecViz-compatible methods for scripts. 【F:spectra/helpers/specviz_compat.py†L1-L209】
-
-## SpecViz-aligned plugin tray — 2025-10-26
-- Established a plugin registry and execution context that expose configuration widgets, dataset selection, provenance hooks, and overlay publication through the workspace service. 【F:app/plugins/__init__.py†L1-L173】【F:app/services/workspace.py†L1-L197】
-- Shipped SpecViz-default plugins covering Gaussian smoothing, unit conversion, line list management, redshift adjustments, and model fitting with parameter exports. 【F:app/plugins/specviz_defaults.py†L1-L624】【F:exports/manifest/schema.json†L1-L200】
-- Surfaced a plugin tray tab that renders plugin controls, queues plugin jobs asynchronously, and displays derived overlays without blocking the main UI. 【F:app/ui/main.py†L320-L1217】
-- Documented each plugin in the docs site and backed their execution paths with regression tests for the service layer. 【F:docs/app/plugins/gaussian_smoothing.md†L1-L15】【F:docs/app/plugins/unit_conversion.md†L1-L15】【F:docs/app/plugins/line_list_manager.md†L1-L15】【F:docs/app/plugins/redshift_slider.md†L1-L15】【F:docs/app/plugins/model_fitting.md†L1-L15】【F:tests/plugins/test_specviz_plugins.py†L1-L120】
-=======
->>>>>>> parent of 57fc619c (Merge pull request #153 from brettadin/codex/review-specviz-for-project-adaptation)

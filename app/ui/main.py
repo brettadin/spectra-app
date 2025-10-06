@@ -59,29 +59,6 @@ from ..utils.local_ingest import (
     LocalIngestError,
     ingest_local_file,
 )
-<<<<<<< HEAD
-from .controller import (
-    DIFFERENTIAL_OPERATIONS,
-    DifferentialResult,
-    OverlayTrace,
-    WorkspaceController,
-    axis_kind_for_trace as _axis_kind_for_trace,
-    build_differential_figure as _build_differential_figure,
-    build_differential_summary as _build_differential_summary,
-    build_overlay_figure as _build_overlay_figure,
-    compute_differential_result as _compute_differential_result,
-    determine_primary_axis_kind as _determine_primary_axis_kind,
-    effective_viewport as _effective_viewport,
-    group_overlays_by_axis_kind as _group_overlays_by_axis_kind,
-    infer_viewport_bounds as _infer_viewport_bounds,
-    is_full_resolution_enabled,
-    normalize_axis_kind as _normalize_axis_kind,
-    normalization_display as _normalization_display,
-    prepare_similarity_inputs,
-    trace_label,
-)
-=======
->>>>>>> parent of 57fc619c (Merge pull request #153 from brettadin/codex/review-specviz-for-project-adaptation)
 
 st.set_page_config(page_title="Spectra App", layout="wide")
 
