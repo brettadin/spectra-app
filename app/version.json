@@ -2,4 +2,7 @@
   "version": "v1.2.1k",
   "date_utc": "2025-10-27T00:00:00Z",
   "summary": "Add regression coverage to keep merge conflict markers out of the UI entrypoint."
+  "version": "v1.2.1j",
+  "date_utc": "2025-10-27T00:00:00Z",
+  "summary": "Resolve merge conflict artifacts in the Streamlit UI and documentation to restore the v1.2.1i layout baseline."
 }
