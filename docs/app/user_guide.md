@@ -1,7 +1,13 @@
 # Spectra App quick start
 
 Use this guide to get familiar with the refreshed Spectra App workspace and the
-core flows for loading, inspecting, and comparing spectra.
+core flows for loading, inspecting, and comparing spectra. For a parity
+overview, consult the [Spectra ↔ SpecViz parity matrix](../research/specviz_improvement_backlog.md#spectra--specviz-parity-matrix),
+which outlines how ingestion, viewer, and plugin features relate to the
+upstream SpecViz tooling.
+
+> **Attribution.** The parity comparisons reference the SpecViz documentation
+> maintained by the [jdaviz authors](https://github.com/spacetelescope/jdaviz).
 
 ## 1. Load reference material
 

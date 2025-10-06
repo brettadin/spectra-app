@@ -1,3 +1,8 @@
+# SpecViz parity matrix publication — 2025-10-24
+- Documented the SpecViz parity matrix so roadmap owners can trace ingestion, viewer, and plugin deltas alongside credited upstream docs. 【F:docs/research/specviz_improvement_backlog.md†L5-L20】
+- Linked the user guide and workspace docs to the matrix with jdaviz attribution notes for ingestion, viewer, and differential workflows. 【F:docs/app/user_guide.md†L1-L15】【F:docs/app/archive_and_provenance.md†L1-L13】【F:docs/app/overlay_workspace.md†L1-L13】【F:docs/app/differential_workspace.md†L1-L13】
+- Bumped version metadata, patch notes, and patch log so release collateral records the documentation credit update. 【F:app/version.json†L1-L5】【F:docs/patch_notes/v1.2.1k.md†L1-L18】【F:PATCHLOG.txt†L33-L35】
+
 # Spectrum1D ingestion normalisation — 2025-10-5
 - Convert local ingest payloads into `Spectrum1D` objects with Astropy quantity checks so unit coercion errors surface before overlays are added, while skipping conversion for image products. 【F:app/utils/local_ingest.py†L300-L386】【F:app/utils/local_ingest.py†L597-L772】
 - Added specutils as a dependency and broadened ingestion tests to assert Spectrum1D availability and unit validation for base and additional traces. 【F:requirements.txt†L1-L11】【F:tests/server/test_local_ingest.py†L1-L186】【F:tests/server/test_local_ingest.py†L230-L321】
