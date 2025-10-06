@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.1h",
+  "version": "v1.2.1i",
   "date_utc": "2025-10-05T00:00:00Z",
-  "summary": "Capture SpecViz GitHub insights, audit Spectra App code, and map alignment tasks."
+  "summary": "Introduce a panel registry to dynamically build sidebar and workspace layouts."
 }

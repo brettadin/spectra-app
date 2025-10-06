@@ -11,6 +11,10 @@
 - Centralised `OverlayIngestResult` in a shared ingest module so executor futures resolve with a stable class across reruns and `_refresh_ingest_jobs` keeps adding payloads. 【F:app/ingest/results.py†L1-L18】【F:app/ui/main.py†L671-L798】
 - Added regression coverage that reloads the UI module before the future resolves and confirms `_add_overlay_payload` runs without surfacing the "Unexpected ingest result" fallback. 【F:tests/ui/test_overlay_ingest_queue_async.py†L186-L289】
 
+# Panel registry layout engine — 2025-10-05
+- Staged a plugin-style registry for sidebar and workspace panels so layout components register with identifiers and ordering metadata before render. 【F:app/ui/panel_registry.py†L1-L104】
+- Registered the existing overlay, differential, library, docs, and controls panels through the registry and updated the main render loop to build Streamlit tabs/containers from the registered specs. 【F:app/ui/main.py†L3306-L3394】【F:app/ui/main.py†L3456-L3474】
+
 # Overlay time-series policy — 2025-10-20
 - Subtract FITS time-axis offsets inside `_extract_table_data`, flag provenance with `offset_subtracted`, and skip duplicate subtraction during payload assembly so canonical values remain relative to the advertised frame. 【F:app/server/ingest_fits.py†L519-L550】【F:app/server/ingest_fits.py†L1475-L1527】
 - Reject time-series overlays in `_add_overlay` and `ingest_local_file`, surface the policy in error messages, and treat time traces like images when grouping, reference selection, and plotting overlays. 【F:app/ui/main.py†L970-L1050】【F:app/ui/main.py†L373-L382】【F:app/ui/main.py†L1885-L1934】【F:app/utils/local_ingest.py†L461-L482】
