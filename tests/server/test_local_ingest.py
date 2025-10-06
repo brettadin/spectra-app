@@ -12,7 +12,11 @@ from astropy.io import fits
 
 import app.utils.local_ingest as local_ingest
 from app.server.ingest_ascii import parse_ascii, parse_ascii_segments
-from app.utils.local_ingest import ingest_local_file
+from app.utils.local_ingest import (
+    ingest_local_directory,
+    ingest_local_file,
+    ingest_local_paths,
+)
 from specutils import Spectrum1D
 
 
@@ -778,3 +782,37 @@ def test_ingest_local_image_returns_image_payload(tmp_path):
     assert image_stats["p84"] == pytest.approx(6.72, rel=1e-3)
     image_payload = payload.get("image") or {}
     assert image_payload.get("statistics") == pytest.approx(image_stats, rel=1e-12)
+
+
+def test_ingest_local_paths_reports_success_and_failure(tmp_path):
+    ascii_content = "wavelength,flux\n500,1\n510,0.9\n520,1.05\n"
+    good_file = tmp_path / "good.csv"
+    good_file.write_text(ascii_content)
+
+    report = ingest_local_paths([good_file, tmp_path / "missing.csv"])
+
+    assert report.summary["succeeded"] == 1
+    assert report.summary["failed"] == 1
+    successes = [entry for entry in report.entries if entry.status == "success"]
+    failures = [entry for entry in report.entries if entry.status != "success"]
+    assert len(successes) == 1
+    assert successes[0].payload["label"] == "good"
+    assert failures[0].status in {"missing", "failed", "error"}
+    assert failures[0].error is not None
+
+
+def test_ingest_local_directory_glob_filters(tmp_path):
+    base = tmp_path / "batch"
+    base.mkdir()
+    csv_file = base / "spectrum.csv"
+    csv_file.write_text("wavelength,flux\n400,1\n401,1.1\n402,1.05\n")
+    (base / "notes.txt").write_text("Not a spectrum")
+
+    report = ingest_local_directory(base, glob_patterns="*.csv")
+    payloads = report.successful_payloads()
+
+    assert len(payloads) == 1
+    payload = payloads[0]
+    assert payload["label"] == "spectrum"
+    assert report.summary["discovered"] == 1
+    assert report.summary["failed"] == 0
