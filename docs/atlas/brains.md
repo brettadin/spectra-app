@@ -1,3 +1,7 @@
+# Overlay controller extraction — 2025-10-24
+- Moved overlay/session helpers into `WorkspaceController` so Streamlit widgets call a reusable API and future UIs can reuse the same logic. 【F:app/ui/controller.py†L1-L602】
+- Updated the overlay tab to delegate to the controller for viewport management, figure rendering, differential exports, and similarity prep. 【F:app/ui/main.py†L1621-L1900】
+- Added a CLI harness that drives the controller without Streamlit to validate the abstraction ahead of alternate front ends. 【F:app/controller_demo.py†L1-L74】
 # SpecViz batch ingestion helpers — 2025-10-24
 - Added directory-aware batch ingest wrappers and a SpecViz-compatible helper module so scripted imports mirror jdaviz helper flows while capturing per-file provenance. 【F:app/utils/local_ingest.py†L55-L167】【F:app/utils/local_ingest.py†L866-L1077】【F:app/helpers/specviz_compat.py†L1-L156】
 - Extended provider adapters with program concatenation, catalog filters, and diagnostics to align archive searches with SpecViz helper expectations. 【F:app/providers/mast.py†L61-L405】【F:app/providers/eso.py†L72-L233】【F:app/providers/sdss.py†L71-L252】【F:app/providers/doi.py†L64-L218】
