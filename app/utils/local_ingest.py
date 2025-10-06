@@ -352,36 +352,6 @@ def _attach_spectrum1d(
     return spectrum
 
 
-def _summarize_image_statistics(
-    image_payload: Mapping[str, object]
-) -> Optional[Dict[str, float]]:
-    data = image_payload.get("data")
-    if data is None:
-        return None
-    try:
-        array = np.asarray(data, dtype=float)
-    except Exception:  # pragma: no cover - defensive conversion
-        return None
-    if array.size == 0:
-        return None
-    finite = array[np.isfinite(array)]
-    if finite.size == 0:
-        return None
-    minimum = float(np.min(finite))
-    maximum = float(np.max(finite))
-    median = float(np.median(finite))
-    mean = float(np.mean(finite))
-    p16, p84 = np.percentile(finite, [16, 84])
-    return {
-        "min": minimum,
-        "max": maximum,
-        "median": float(median),
-        "mean": float(mean),
-        "p16": float(p16),
-        "p84": float(p84),
-    }
-
-
 def _parse_ascii_with_table(name: str, payload: bytes) -> Dict[str, object]:
     table = read_table(payload, include_header=True)
     return parse_ascii(
