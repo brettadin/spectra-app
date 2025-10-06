@@ -357,6 +357,51 @@ def test_ingest_local_ascii_micron_unit():
     assert payload["flux"] == [10.0, 12.0, 14.0]
 
 
+def test_ingest_local_jcamp_xydata_skips_uncertainty():
+    content = dedent(
+        """
+        ##TITLE=Example JCAMP
+        ##JCAMP-DX=4.24
+        ##DATA TYPE=INFRARED SPECTRUM
+        ##XUNITS=1/CM
+        ##YUNITS=Absorbance
+        ##XFACTOR=1
+        ##YFACTOR=1
+        ##FIRSTX=1000
+        ##LASTX=994
+        ##NPOINTS=4
+        ##DELTAX=-2
+        ##XYDATA=(X++(Y..Y))
+        1000 0.5 0.6
+        996 0.7 0.8
+        ##YUNITS=Uncertainty
+        ##XYDATA=(X++(Y..Y))
+        1000 0.05 0.06
+        996 0.07 0.08
+        ##END=
+        """
+    ).strip().encode("utf-8")
+
+    payload = ingest_local_file("example.jdx", content)
+
+    expected_wavenumbers = u.Quantity([1000.0, 998.0, 996.0, 994.0], 1 / u.cm)
+    expected_nm = expected_wavenumbers.to(u.nm, equivalencies=u.spectral()).value
+
+    assert payload["label"] == "Example JCAMP"
+    assert payload["wavelength_nm"] == pytest.approx(expected_nm.tolist())
+    assert payload["flux"] == [0.5, 0.6, 0.7, 0.8]
+    assert payload["flux_unit"] == "Absorbance"
+    assert payload["metadata"]["reported_flux_unit"] == "Absorbance"
+    assert payload["metadata"]["reported_wavelength_unit"] == "1/CM"
+    assert payload["metadata"]["original_wavelength_unit"] == "cm-1"
+    assert payload["provenance"]["format"] == "jcamp"
+    assert payload["provenance"]["section_kind"] == "XYDATA"
+    assert len(payload["flux"]) == 4
+
+    payload_txt = ingest_local_file("example.txt", content)
+    assert payload_txt["provenance"]["format"] == "jcamp"
+
+
 def test_ingest_local_ascii_gzip_round_trip():
     content = gzip.compress(
         dedent(
