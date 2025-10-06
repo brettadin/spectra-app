@@ -1,3 +1,7 @@
+# Local upload checksum import — 2025-10-06
+- Imported `hashlib` in the Streamlit UI so local overlay uploads can compute SHA-256 checksums without raising `NameError` during ingestion. 【F:app/ui/main.py†L1-L70】
+- Recorded the hotfix in version metadata and patch notes so release collateral documents the restored upload path. 【F:app/version.json†L1-L5】【F:docs/patch_notes/v1.2.1o.md†L1-L8】
+
 # Overlay controller extraction — 2025-10-24
 - Moved overlay/session helpers into `WorkspaceController` so Streamlit widgets call a reusable API and future UIs can reuse the same logic. 【F:app/ui/controller.py†L1-L602】
 - Updated the overlay tab to delegate to the controller for viewport management, figure rendering, differential exports, and similarity prep. 【F:app/ui/main.py†L1621-L1900】
