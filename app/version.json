@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.1m",
+  "version": "v1.2.1n",
   "date_utc": "2025-10-27T00:00:00Z",
-  "summary": "Auto-select original wavelength units for uploaded spectra and document the behaviour."
+  "summary": "Add a NIST Quantitative IR fetcher with preset molecules at 0.125 cm⁻¹ resolution."
 }
