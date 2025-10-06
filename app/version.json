@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.1i",
-  "date_utc": "2025-10-05T00:00:00Z",
-  "summary": "Introduce a panel registry to dynamically build sidebar and workspace layouts."
+  "version": "v1.2.1n",
+  "date_utc": "2025-10-27T00:00:00Z",
+  "summary": "Fix the workspace status bar axis title resolution by wiring the controller helper import so overlays render without NameError crashes."
 }

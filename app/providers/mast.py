@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import re
 import unicodedata
-from typing import Dict, Iterable, List, Tuple
+from typing import Dict, Iterable, List, Sequence, Tuple
 
 from app.server.fetchers import mast as mast_fetcher
 
@@ -60,6 +60,9 @@ def _normalise_token(value: str) -> str:
 
 def _match_targets(query: ProviderQuery) -> List[_TargetInfo]:
     if not _TARGETS:
+        return []
+
+    if query.catalog and query.catalog.lower() not in {"calspec", "mast", "mast_calspec"}:
         return []
 
     search_terms: List[str] = []
@@ -198,6 +201,121 @@ def _build_provenance(meta: Dict[str, object], query: ProviderQuery) -> Dict[str
     return {key: value for key, value in provenance.items() if value is not None}
 
 
+def _collect_segments(
+    target: _TargetInfo,
+    query: ProviderQuery,
+) -> Tuple[List[Tuple[str, Dict[str, object]]], List[Dict[str, object]]]:
+    instruments = list(query.programs)
+    if not instruments:
+        if query.instrument:
+            instruments.append(query.instrument)
+        else:
+            instruments.append(target.instrument_label)
+
+    seen: set[str] = set()
+    segments: List[Tuple[str, Dict[str, object]]] = []
+    errors: List[Dict[str, object]] = []
+
+    fetch_options: Dict[str, object] = {}
+    if "cache_dir" in query.options:
+        fetch_options["cache_dir"] = query.options["cache_dir"]
+    if "force_refresh" in query.options:
+        fetch_options["force_refresh"] = bool(query.options["force_refresh"])
+
+    for instrument in instruments:
+        label = instrument or target.instrument_label or "MAST"
+        if label in seen:
+            continue
+        seen.add(label)
+        try:
+            payload = mast_fetcher.fetch(
+                target=target.canonical_name,
+                instrument=instrument or "",
+                **fetch_options,
+            )
+        except mast_fetcher.MastFetchError as exc:
+            errors.append(
+                {
+                    "target": target.canonical_name,
+                    "program": label,
+                    "error": str(exc),
+                }
+            )
+            continue
+
+        meta = payload.get("meta") or {}
+        if query.use_cached_only and not meta.get("cache_hit"):
+            errors.append(
+                {
+                    "target": target.canonical_name,
+                    "program": label,
+                    "error": "Cache miss prevented ingest (use_cached_only=True)",
+                }
+            )
+            continue
+
+        segments.append((label, payload))
+
+    return segments, errors
+
+
+def _concatenate_segments(
+    target: _TargetInfo,
+    segments: Sequence[Tuple[str, Dict[str, object]]],
+) -> Tuple[Dict[str, object], List[Dict[str, object]]]:
+    combined: List[Tuple[float, float]] = []
+    details: List[Dict[str, object]] = []
+
+    for label, payload in segments:
+        wavelengths = [float(value) for value in payload.get("wavelength_nm") or []]
+        flux = [float(value) for value in payload.get("intensity") or []]
+        combined.extend(zip(wavelengths, flux))
+        meta = dict(payload.get("meta") or {})
+        detail: Dict[str, object] = {
+            "program": label,
+            "samples": len(wavelengths),
+            "provenance": {
+                "access_url": meta.get("access_url"),
+                "cache_path": meta.get("cache_path"),
+                "doi": meta.get("doi"),
+            },
+        }
+        if wavelengths:
+            detail["range_nm"] = [float(min(wavelengths)), float(max(wavelengths))]
+        details.append(detail)
+
+    if not combined:
+        raise mast_fetcher.MastFetchError(
+            "No spectral samples were returned for concatenation."
+        )
+
+    combined.sort(key=lambda pair: pair[0])
+    wavelengths_sorted = [pair[0] for pair in combined]
+    flux_sorted = [pair[1] for pair in combined]
+
+    meta_base = dict(segments[0][1].get("meta") or {})
+    if details:
+        programs = [detail.get("program") for detail in details if detail.get("program")]
+        if programs:
+            meta_base["instrument"] = " + ".join(dict.fromkeys(programs))
+        meta_base["segments"] = programs
+        meta_base["segment_details"] = details
+
+    wavelength_min = float(min(wavelengths_sorted))
+    wavelength_max = float(max(wavelengths_sorted))
+    meta_base["wavelength_min_nm"] = wavelength_min
+    meta_base["wavelength_max_nm"] = wavelength_max
+    meta_base.setdefault("wavelength_effective_range_nm", [wavelength_min, wavelength_max])
+    meta_base.setdefault("description", target.description)
+
+    payload = {
+        "wavelength_nm": wavelengths_sorted,
+        "intensity": flux_sorted,
+        "meta": meta_base,
+    }
+    return payload, details
+
+
 def _build_hit(payload: Dict[str, object], query: ProviderQuery, target: _TargetInfo) -> ProviderHit:
     wavelengths = payload.get("wavelength_nm") or []
     flux = payload.get("intensity") or []
@@ -237,25 +355,50 @@ def search(query: ProviderQuery) -> Iterable[ProviderHit]:
 
     limit = max(1, int(query.limit or 1))
     yielded = 0
-    errors: List[str] = []
+    aggregate_errors: List[Dict[str, object]] = []
 
     for target in targets:
-        try:
-            payload = mast_fetcher.fetch(
-                target=target.canonical_name,
-                instrument=query.instrument or "",
-            )
-        except mast_fetcher.MastFetchError as exc:
-            errors.append(str(exc))
+        segments, errors = _collect_segments(target, query)
+        aggregate_errors.extend(errors)
+        if not segments:
             continue
 
-        yield _build_hit(payload, query, target)
-        yielded += 1
+        if query.concatenate and len(segments) > 1:
+            combined_payload, details = _concatenate_segments(target, segments)
+            hit = _build_hit(combined_payload, query, target)
+            hit.metadata.setdefault("segments", details)
+            hit.metadata.setdefault(
+                "concatenated_programs",
+                [detail.get("program") for detail in details if detail.get("program")],
+            )
+            hit.provenance.setdefault("segments", details)
+            if query.diagnostics and aggregate_errors:
+                hit.provenance.setdefault("diagnostics", list(aggregate_errors))
+            yield hit
+            yielded += 1
+        else:
+            for label, payload in segments:
+                hit = _build_hit(payload, query, target)
+                hit.metadata.setdefault("segment_program", label)
+                hit.provenance.setdefault("segment_program", label)
+                if query.diagnostics and errors:
+                    hit.provenance.setdefault("diagnostics", list(errors))
+                yield hit
+                yielded += 1
+                if yielded >= limit:
+                    break
+
         if yielded >= limit:
             break
 
-    if yielded == 0 and errors:
-        raise mast_fetcher.MastFetchError(errors[0])
+    if yielded == 0 and aggregate_errors:
+        details = "\n".join(
+            f"- {error.get('target')} ({error.get('program')}): {error.get('error')}"
+            for error in aggregate_errors
+        )
+        raise mast_fetcher.MastFetchError(
+            "CALSPEC fetch attempts failed for all requested programs.\n" + details
+        )
 
 
 # Initialise target cache on import so interactive sessions have data immediately.

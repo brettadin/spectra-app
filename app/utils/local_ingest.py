@@ -2,11 +2,17 @@ from __future__ import annotations
 
 import gzip
 import io
+import traceback
+import warnings
 import zipfile
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Mapping, Optional, Sequence, Tuple
+from typing import Dict, Iterable, List, Mapping, MutableMapping, Optional, Sequence, Tuple, Union
 
 import numpy as np
+from astropy import units as u
+from astropy.units import UnitConversionError, UnitsError, UnitsWarning
+from specutils import Spectrum1D
 
 from app.server.ingest_ascii import parse_ascii, parse_ascii_segments
 from app.server.ingest_fits import parse_fits
@@ -44,6 +50,37 @@ _DENSE_CHUNK_SIZE = 500_000
 
 class LocalIngestError(RuntimeError):
     """Raised when local spectra ingestion fails."""
+
+
+@dataclass
+class BatchIngestEntry:
+    """Outcome for an individual file during batch ingestion."""
+
+    path: str
+    name: str
+    status: str
+    provenance: MutableMapping[str, object]
+    payload: Optional[Dict[str, object]] = None
+    error: Optional[str] = None
+    diagnostics: Optional[Dict[str, object]] = None
+
+
+@dataclass
+class BatchIngestReport:
+    """Structured result produced by :func:`ingest_local_paths`."""
+
+    entries: List[BatchIngestEntry]
+    summary: Dict[str, object]
+
+    def successful_payloads(self) -> List[Dict[str, object]]:
+        """Return the overlay payloads for successfully ingested files."""
+
+        return [entry.payload for entry in self.entries if entry.status == "success" and entry.payload]
+
+    def failures(self) -> List[BatchIngestEntry]:
+        """Return entries that failed to ingest."""
+
+        return [entry for entry in self.entries if entry.status != "success"]
 
 
 def _detect_format(name: str, content: bytes) -> str:
@@ -94,6 +131,40 @@ def _choose_label(name: str, parsed: Mapping[str, object]) -> str:
         if isinstance(candidate, str) and candidate.strip():
             return candidate.strip()
     return Path(name).stem or "Spectrum"
+
+
+def _summarize_image_statistics(
+    image_payload: Mapping[str, object]
+) -> Optional[Dict[str, float]]:
+    statistics = image_payload.get("statistics")
+    if isinstance(statistics, Mapping):
+        summary = {}
+        for key, value in statistics.items():
+            if isinstance(value, (int, float)):
+                summary[key] = float(value)
+        if summary:
+            return summary
+
+    data = image_payload.get("data")
+    if isinstance(data, Mapping):
+        data = data.get("values")
+    if isinstance(data, (list, tuple, np.ndarray)):
+        array = np.asarray(data, dtype=np.float64)
+        if array.size == 0:
+            return None
+        flattened = array.reshape(-1)
+        valid = flattened[~np.isnan(flattened)]
+        if valid.size == 0:
+            return None
+        return {
+            "min": float(np.min(valid)),
+            "max": float(np.max(valid)),
+            "median": float(np.median(valid)),
+            "mean": float(np.mean(valid)),
+            "p16": float(np.percentile(valid, 16)),
+            "p84": float(np.percentile(valid, 84)),
+        }
+    return None
 
 
 def _build_summary(
@@ -198,6 +269,154 @@ def _read_zip_segments(name: str, content: bytes) -> List[Tuple[str, bytes]]:
             f"Archive {name} did not contain supported ASCII spectra."
         )
     return segments
+
+
+def _resolve_wavelength_quantity(
+    values: Sequence[float],
+    *,
+    quantity: Optional[object],
+    payload: Optional[Mapping[str, object]],
+    metadata: Mapping[str, object],
+) -> u.Quantity:
+    if quantity is not None:
+        try:
+            spectral_axis = u.Quantity(quantity)
+        except Exception as exc:  # pragma: no cover - defensive
+            raise LocalIngestError(
+                "Unable to interpret wavelength quantity from ingest payload."
+            ) from exc
+        if spectral_axis.shape and spectral_axis.size != len(values):
+            raise LocalIngestError(
+                "Wavelength quantity length does not match flux samples."
+            )
+        return spectral_axis
+
+    unit_label = "nm"
+    if isinstance(payload, Mapping):
+        candidate = payload.get("unit")
+        if isinstance(candidate, str) and candidate.strip():
+            unit_label = candidate.strip()
+    elif isinstance(metadata, Mapping):
+        candidate = metadata.get("reported_wavelength_unit")
+        if isinstance(candidate, str) and candidate.strip():
+            unit_label = str(candidate).strip()
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UnitsWarning)
+        try:
+            unit = u.Unit(unit_label)
+        except (ValueError, UnitsError) as exc:
+            raise LocalIngestError(
+                f"Unrecognised wavelength unit '{unit_label}' — update the file header to include a valid unit label."
+            ) from exc
+
+    return u.Quantity(values, unit=unit)
+
+
+def _resolve_flux_quantity(values: Sequence[float], unit_label: str) -> u.Quantity:
+    label = str(unit_label or "").strip()
+    if not label:
+        label = "arb"
+
+    normalized = label.lower()
+    custom_units = {
+        "arb": u.dimensionless_unscaled,
+        "arbitrary": u.dimensionless_unscaled,
+        "relative": u.dimensionless_unscaled,
+        "counts": u.ct,
+        "count": u.ct,
+        "adu": getattr(u, "adu", u.ct),
+    }
+
+    unit: u.Unit
+    if normalized in custom_units:
+        unit = custom_units[normalized]
+    else:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UnitsWarning)
+            try:
+                unit = u.Unit(label)
+            except (ValueError, UnitsError) as exc:
+                raise LocalIngestError(
+                    f"Unrecognised flux unit '{label}' — rename the column to include a valid Astropy unit."
+                ) from exc
+
+    try:
+        return u.Quantity(values, unit=unit)
+    except (ValueError, TypeError, UnitConversionError) as exc:
+        raise LocalIngestError(
+            "Flux samples could not be converted into a physical quantity."
+        ) from exc
+
+
+def _build_spectrum1d(
+    *,
+    label: str,
+    wavelengths: Sequence[float],
+    flux: Sequence[float],
+    flux_unit: str,
+    wavelength_quantity: Optional[object],
+    wavelength_payload: Optional[Mapping[str, object]],
+    metadata: Mapping[str, object],
+    axis_kind: Optional[str],
+) -> Optional[Spectrum1D]:
+    if str(axis_kind or "").lower() == "image":
+        return None
+
+    if len(wavelengths) != len(flux):
+        raise LocalIngestError(
+            f"{label or 'Spectrum'} contains mismatched wavelength and flux sample counts."
+        )
+
+    if not wavelengths or not flux:
+        raise LocalIngestError(
+            f"{label or 'Spectrum'} does not contain enough samples to build a Spectrum1D."
+        )
+
+    spectral_axis = _resolve_wavelength_quantity(
+        wavelengths,
+        quantity=wavelength_quantity,
+        payload=wavelength_payload,
+        metadata=metadata,
+    )
+    flux_quantity = _resolve_flux_quantity(flux, flux_unit)
+
+    try:
+        return Spectrum1D(flux=flux_quantity, spectral_axis=spectral_axis)
+    except Exception as exc:  # pragma: no cover - Spectrum1D construction failure
+        raise LocalIngestError(
+            f"Failed to normalise {label or 'spectrum'} into a Spectrum1D object."
+        ) from exc
+
+
+def _attach_spectrum1d(
+    payload: Mapping[str, object],
+    *,
+    default_label: str,
+    flux_unit: str,
+    metadata: Mapping[str, object],
+) -> Optional[Spectrum1D]:
+    wavelengths = payload.get("wavelength_nm") or []
+    flux = payload.get("flux") or []
+    label = str(payload.get("label") or default_label)
+    axis_kind = payload.get("axis_kind") or (
+        (payload.get("metadata") or {}).get("axis_kind")
+        if isinstance(payload.get("metadata"), Mapping)
+        else None
+    )
+
+    spectrum = _build_spectrum1d(
+        label=label,
+        wavelengths=wavelengths,
+        flux=flux,
+        flux_unit=str(payload.get("flux_unit") or flux_unit),
+        wavelength_quantity=payload.get("wavelength_quantity"),
+        wavelength_payload=payload.get("wavelength"),
+        metadata=payload.get("metadata") or metadata,
+        axis_kind=axis_kind,
+    )
+
+    return spectrum
 
 
 def _parse_ascii_with_table(name: str, payload: bytes) -> Dict[str, object]:
@@ -481,6 +700,7 @@ def ingest_local_file(name: str, content: bytes) -> Dict[str, object]:
             f" Detected a time axis{detail_hint}."
         )
 
+    image_statistics: Optional[Dict[str, float]] = None
     if normalized_axis_kind == "image":
         image_payload = parsed.get("image") if isinstance(parsed.get("image"), Mapping) else {}
         shape = image_payload.get("shape") if isinstance(image_payload, Mapping) else None
@@ -491,6 +711,18 @@ def ingest_local_file(name: str, content: bytes) -> Dict[str, object]:
                 ingest_info.setdefault("samples", 0)
         else:
             ingest_info.setdefault("samples", 0)
+        if isinstance(image_payload, Mapping):
+            existing_stats = metadata.get("image_statistics")
+            if isinstance(existing_stats, Mapping):
+                image_statistics = {
+                    key: float(value)
+                    for key, value in existing_stats.items()
+                    if isinstance(value, (int, float))
+                }
+            else:
+                image_statistics = _summarize_image_statistics(image_payload)
+                if image_statistics:
+                    metadata["image_statistics"] = dict(image_statistics)
     else:
         ingest_info.setdefault("samples", len(parsed.get("wavelength_nm") or []))
 
@@ -500,9 +732,24 @@ def ingest_local_file(name: str, content: bytes) -> Dict[str, object]:
     elif normalized_axis_kind == "image":
         image_payload = parsed.get("image") if isinstance(parsed.get("image"), Mapping) else {}
         shape = image_payload.get("shape") if isinstance(image_payload, Mapping) else None
+        if image_statistics is None and isinstance(image_payload, Mapping):
+            image_statistics = _summarize_image_statistics(image_payload)
+            if image_statistics:
+                metadata.setdefault("image_statistics", dict(image_statistics))
         if isinstance(shape, (list, tuple)) and shape:
             dims = " × ".join(str(int(dim)) for dim in shape)
-            summary = f"{dims} image"
+            if image_statistics and all(
+                isinstance(image_statistics.get(key), (int, float))
+                for key in ("min", "max")
+            ):
+                minimum = float(image_statistics["min"])
+                maximum = float(image_statistics["max"])
+                unit_suffix = f" {flux_unit}" if flux_unit else ""
+                summary = (
+                    f"{dims} image • Pixel range {minimum:.3g} – {maximum:.3g}{unit_suffix}"
+                )
+            else:
+                summary = f"{dims} image"
         else:
             summary = "Image overlay"
     else:
@@ -553,7 +800,10 @@ def ingest_local_file(name: str, content: bytes) -> Dict[str, object]:
         payload["axis_kind"] = axis_kind
 
     if normalized_axis_kind == "image" and isinstance(parsed.get("image"), Mapping):
-        payload["image"] = dict(parsed.get("image"))
+        image_payload = dict(parsed.get("image"))
+        if image_statistics:
+            image_payload.setdefault("statistics", dict(image_statistics))
+        payload["image"] = image_payload
 
     time_payload = parsed.get("time")
     if isinstance(time_payload, Mapping):
@@ -563,6 +813,265 @@ def ingest_local_file(name: str, content: bytes) -> Dict[str, object]:
 
     additional = parsed.get("additional_traces")
     if isinstance(additional, list) and additional:
-        payload["additional_traces"] = additional
+        enhanced_traces = []
+        for entry in additional:
+            if not isinstance(entry, Mapping):
+                continue
+            entry_payload = dict(entry)
+            entry_metadata = entry_payload.get("metadata")
+            if not isinstance(entry_metadata, Mapping):
+                entry_metadata = metadata
+                entry_payload["metadata"] = metadata
+            flux_unit_entry = str(entry_payload.get("flux_unit") or flux_unit)
+            try:
+                spectrum_extra = _attach_spectrum1d(
+                    entry_payload,
+                    default_label=label,
+                    flux_unit=flux_unit_entry,
+                    metadata=entry_metadata,
+                )
+            except LocalIngestError as exc:
+                trace_label = entry_payload.get("label") or label
+                raise LocalIngestError(
+                    f"Additional trace '{trace_label}' could not be normalised: {exc}"
+                ) from exc
+            if spectrum_extra is not None:
+                entry_payload["spectrum1d"] = spectrum_extra
+            enhanced_traces.append(entry_payload)
+        payload["additional_traces"] = enhanced_traces
+
+    try:
+        base_spectrum = _attach_spectrum1d(
+            payload,
+            default_label=label,
+            flux_unit=flux_unit,
+            metadata=metadata,
+        )
+    except LocalIngestError as exc:
+        raise LocalIngestError(f"{label} could not be normalised: {exc}") from exc
+    if base_spectrum is not None:
+        payload["spectrum1d"] = base_spectrum
 
     return payload
+
+
+def _normalise_glob_patterns(patterns: Optional[Union[str, Sequence[str]]]) -> Tuple[str, ...]:
+    if patterns is None:
+        return ("*",)
+    if isinstance(patterns, str):
+        return (patterns,)
+    return tuple(pattern for pattern in patterns) or ("*",)
+
+
+def _iter_candidate_files(
+    paths: Iterable[Union[str, Path]],
+    *,
+    recursive: bool,
+    glob_patterns: Tuple[str, ...],
+    follow_symlinks: bool,
+) -> Tuple[List[Path], List[BatchIngestEntry]]:
+    discovered: List[Path] = []
+    issues: List[BatchIngestEntry] = []
+    seen: set[Path] = set()
+
+    def record_issue(path: Path, status: str, message: str) -> None:
+        provenance: MutableMapping[str, object] = {
+            "ingest": {"method": "local_batch", "path": str(path), "status": status},
+        }
+        issues.append(
+            BatchIngestEntry(
+                path=str(path),
+                name=path.name or str(path),
+                status=status,
+                provenance=provenance,
+                error=message,
+                diagnostics={"detail": message},
+            )
+        )
+
+    for raw in paths:
+        candidate = Path(raw).expanduser()
+        if candidate.is_dir():
+            for pattern in glob_patterns:
+                for entry in candidate.rglob(pattern) if recursive else candidate.glob(pattern):
+                    if entry.is_dir():
+                        continue
+                    if entry.is_symlink() and not follow_symlinks:
+                        continue
+                    resolved = entry.resolve()
+                    if resolved in seen:
+                        continue
+                    seen.add(resolved)
+                    discovered.append(resolved)
+        elif candidate.exists():
+            resolved = candidate.resolve()
+            if resolved.is_dir():
+                # Directory matched via glob with trailing slash; recurse using the same rules.
+                inner_paths, inner_issues = _iter_candidate_files(
+                    [resolved],
+                    recursive=recursive,
+                    glob_patterns=glob_patterns,
+                    follow_symlinks=follow_symlinks,
+                )
+                for item in inner_paths:
+                    if item in seen:
+                        continue
+                    seen.add(item)
+                    discovered.append(item)
+                issues.extend(inner_issues)
+            else:
+                if resolved.is_symlink() and not follow_symlinks:
+                    record_issue(
+                        resolved,
+                        "skipped",
+                        "Symlink skipped — enable follow_symlinks to ingest the target.",
+                    )
+                    continue
+                if resolved in seen:
+                    continue
+                seen.add(resolved)
+                discovered.append(resolved)
+        else:
+            record_issue(candidate, "missing", f"No such file or directory: {candidate}")
+
+    discovered.sort()
+    return discovered, issues
+
+
+def ingest_local_paths(
+    paths: Sequence[Union[str, Path]],
+    *,
+    recursive: bool = False,
+    glob_patterns: Optional[Union[str, Sequence[str]]] = None,
+    follow_symlinks: bool = False,
+    context: str = "local_batch",
+) -> BatchIngestReport:
+    """Ingest a collection of filesystem paths, returning structured provenance."""
+
+    patterns = _normalise_glob_patterns(glob_patterns)
+    candidates, issues = _iter_candidate_files(
+        paths,
+        recursive=recursive,
+        glob_patterns=patterns,
+        follow_symlinks=follow_symlinks,
+    )
+
+    entries: List[BatchIngestEntry] = list(issues)
+
+    for path in candidates:
+        provenance: MutableMapping[str, object] = {
+            "ingest": {
+                "method": context,
+                "path": str(path),
+                "status": "pending",
+            }
+        }
+        try:
+            content = path.read_bytes()
+        except OSError as exc:
+            message = f"Failed to read {path.name}: {exc}"
+            entries.append(
+                BatchIngestEntry(
+                    path=str(path),
+                    name=path.name,
+                    status="error",
+                    provenance=provenance,
+                    error=message,
+                    diagnostics={"detail": message},
+                )
+            )
+            continue
+
+        try:
+            payload = ingest_local_file(path.name, content)
+        except LocalIngestError as exc:
+            message = str(exc)
+            provenance["ingest"]["status"] = "failed"
+            entries.append(
+                BatchIngestEntry(
+                    path=str(path),
+                    name=path.name,
+                    status="failed",
+                    provenance=provenance,
+                    error=message,
+                    diagnostics={"detail": message},
+                )
+            )
+        except Exception as exc:  # pragma: no cover - defensive fallback
+            message = f"Unexpected failure ingesting {path.name}: {exc}"
+            provenance["ingest"]["status"] = "error"
+            entries.append(
+                BatchIngestEntry(
+                    path=str(path),
+                    name=path.name,
+                    status="error",
+                    provenance=provenance,
+                    error=message,
+                    diagnostics={
+                        "detail": message,
+                        "traceback": traceback.format_exc(),
+                    },
+                )
+            )
+        else:
+            provenance["ingest"].update(
+                {
+                    "status": "success",
+                    "format": payload.get("provenance", {}).get("ingest", {}).get("format"),
+                }
+            )
+            payload_provenance = dict(payload.get("provenance") or {})
+            payload_provenance.setdefault("batch_source", context)
+            payload["provenance"] = payload_provenance
+            entries.append(
+                BatchIngestEntry(
+                    path=str(path),
+                    name=path.name,
+                    status="success",
+                    provenance=provenance,
+                    payload=payload,
+                )
+            )
+
+    succeeded = sum(1 for entry in entries if entry.status == "success")
+    failed = sum(1 for entry in entries if entry.status != "success")
+
+    summary: Dict[str, object] = {
+        "source": "filesystem",
+        "context": context,
+        "requested": len(paths),
+        "discovered": len(candidates),
+        "succeeded": succeeded,
+        "failed": failed,
+    }
+    if failed:
+        summary["errors"] = [
+            {
+                "path": entry.path,
+                "name": entry.name,
+                "status": entry.status,
+                "error": entry.error,
+            }
+            for entry in entries
+            if entry.status != "success"
+        ]
+
+    return BatchIngestReport(entries=entries, summary=summary)
+
+
+def ingest_local_directory(
+    directory: Union[str, Path],
+    *,
+    recursive: bool = True,
+    glob_patterns: Optional[Union[str, Sequence[str]]] = None,
+    follow_symlinks: bool = False,
+) -> BatchIngestReport:
+    """Convenience wrapper that ingests all supported files within ``directory``."""
+
+    return ingest_local_paths(
+        [directory],
+        recursive=recursive,
+        glob_patterns=glob_patterns,
+        follow_symlinks=follow_symlinks,
+        context="local_directory",
+    )
