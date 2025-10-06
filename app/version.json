@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.1g",
-  "date_utc": "2025-10-22T00:00:00Z",
-  "summary": "Document the SpecViz adaptation blueprint to guide ingestion, viewer, and plugin parity work."
+  "version": "v1.2.1h",
+  "date_utc": "2025-10-23T00:00:00Z",
+  "summary": "Outline SpecViz-inspired ingestion, viewer, and plugin improvements for the Spectra App roadmap."
 }
