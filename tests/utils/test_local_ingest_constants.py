@@ -1,0 +1,18 @@
+from app.utils.local_ingest import (
+    SUPPORTED_ASCII_EXTENSIONS,
+    SUPPORTED_FITS_EXTENSIONS,
+    SUPPORTED_JCAMP_EXTENSIONS,
+    SUPPORTED_LOCAL_UPLOAD_EXTENSIONS,
+)
+
+
+def test_supported_local_upload_extensions_union() -> None:
+    expected = (
+        SUPPORTED_ASCII_EXTENSIONS
+        | SUPPORTED_FITS_EXTENSIONS
+        | SUPPORTED_JCAMP_EXTENSIONS
+    )
+
+    assert expected == SUPPORTED_LOCAL_UPLOAD_EXTENSIONS
+    assert ".jdx" in SUPPORTED_LOCAL_UPLOAD_EXTENSIONS
+    assert SUPPORTED_JCAMP_EXTENSIONS <= SUPPORTED_LOCAL_UPLOAD_EXTENSIONS

@@ -34,3 +34,6 @@ Spectra App — Patch Log (append-only)
 - v1.2.1h: Review Jdaviz GitHub design docs, audit current Spectra App architecture, and outline alignment tasks for the next phase.
 - v1.2.1i: Introduce a registry-driven layout engine so sidebar controls and workspace tabs register like plugins before render.
 - v1.2.1j: Clean up merge conflict markers and revert speculative plugin roadmap docs to restore the v1.2.1i application state.
+- v1.2.1k: Add JCAMP-DX ingestion so NIST IR uploads convert to nanometres, ignore uncertainty traces, and ship with regression coverage.
+- v1.2.1l: Allow JCAMP-DX uploads through the UI filter, update quick-start docs, and ship regression coverage for the union constants.
+- v1.2.1m: Auto-select original wavelength units when the first overlay loads so wavenumber uploads land on matching axes and extend regression coverage for the display-unit hints.
