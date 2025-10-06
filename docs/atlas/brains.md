@@ -148,3 +148,7 @@
 - Shipped SpecViz-default plugins covering Gaussian smoothing, unit conversion, line list management, redshift adjustments, and model fitting with parameter exports. 【F:app/plugins/specviz_defaults.py†L1-L624】【F:exports/manifest/schema.json†L1-L200】
 - Surfaced a plugin tray tab that renders plugin controls, queues plugin jobs asynchronously, and displays derived overlays without blocking the main UI. 【F:app/ui/main.py†L320-L1217】
 - Documented each plugin in the docs site and backed their execution paths with regression tests for the service layer. 【F:docs/app/plugins/gaussian_smoothing.md†L1-L15】【F:docs/app/plugins/unit_conversion.md†L1-L15】【F:docs/app/plugins/line_list_manager.md†L1-L15】【F:docs/app/plugins/redshift_slider.md†L1-L15】【F:docs/app/plugins/model_fitting.md†L1-L15】【F:tests/plugins/test_specviz_plugins.py†L1-L120】
+
+## Status bar axis title import guard — 2025-10-27
+- Restored the axis title helper import in the Streamlit shell so the status bar can compute labels using the controller utility.
+- Reconfirmed the dependency path after the workspace refactor to avoid future regressions during module pruning.
