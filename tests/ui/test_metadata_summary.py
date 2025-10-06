@@ -172,18 +172,33 @@ def test_metadata_summary_image_axis():
             "axis_kind": "image",
             "image_shape": [4, 4],
             "flux_unit": "adu",
+            "image_statistics": {
+                "min": 0.0,
+                "max": 3.0,
+                "median": 1.5,
+                "p16": 0.5,
+                "p84": 2.5,
+            },
         },
         "image": {
             "data": [[0.0, 1.0], [2.0, 3.0]],
             "shape": [2, 2],
         },
-        "provenance": {"units": {"image_axes": ["celestial"]}},
+        "provenance": {
+            "units": {"image_axes": ["celestial"]},
+        },
         "flux_unit": "adu",
     }
 
     overlay = _overlay_from_payload(payload)
     rows = _build_metadata_summary_rows([overlay])
     assert rows[0]["Axis range"] == "4 × 4 px"
+    assert rows[0]["Pixel range"] == "0 – 3 adu"
+    assert (
+        rows[0]["Pixel stats"]
+        == "median 1.5, 16–84% 0.5–2.5 adu"
+    )
+    assert rows[0]["Spatial axes"] == "celestial"
 
 
 def test_overlay_tab_retains_metadata_and_line_tables():

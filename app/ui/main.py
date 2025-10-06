@@ -2289,6 +2289,79 @@ def _format_axis_range(trace: OverlayTrace, meta: Mapping[str, object]) -> str:
     return "—"
 
 
+def _resolve_image_statistics(
+    trace: OverlayTrace, meta: Mapping[str, object]
+) -> Optional[Mapping[str, object]]:
+    stats = meta.get("image_statistics")
+    if isinstance(stats, Mapping):
+        return stats
+    if isinstance(trace.metadata, Mapping):
+        raw = trace.metadata.get("image_statistics")
+        if isinstance(raw, Mapping):
+            return raw
+    if isinstance(trace.image, Mapping):
+        image_stats = trace.image.get("statistics")
+        if isinstance(image_stats, Mapping):
+            return image_stats
+    return None
+
+
+def _format_pixel_range(trace: OverlayTrace, meta: Mapping[str, object]) -> str:
+    if str(trace.axis_kind or meta.get("axis_kind") or "wavelength").lower() != "image":
+        return "—"
+    stats = _resolve_image_statistics(trace, meta)
+    if not isinstance(stats, Mapping):
+        return "—"
+    minimum = stats.get("min")
+    maximum = stats.get("max")
+    if not isinstance(minimum, (int, float)) or not isinstance(maximum, (int, float)):
+        return "—"
+    if not math.isfinite(float(minimum)) or not math.isfinite(float(maximum)):
+        return "—"
+    unit_suffix = f" {trace.flux_unit}" if trace.flux_unit else ""
+    return f"{float(minimum):.3g} – {float(maximum):.3g}{unit_suffix}"
+
+
+def _format_pixel_spread(trace: OverlayTrace, meta: Mapping[str, object]) -> str:
+    if str(trace.axis_kind or meta.get("axis_kind") or "wavelength").lower() != "image":
+        return "—"
+    stats = _resolve_image_statistics(trace, meta)
+    if not isinstance(stats, Mapping):
+        return "—"
+    p16 = stats.get("p16")
+    p84 = stats.get("p84")
+    median = stats.get("median")
+    components: List[str] = []
+    if isinstance(median, (int, float)) and math.isfinite(float(median)):
+        components.append(f"median {float(median):.3g}")
+    if isinstance(p16, (int, float)) and isinstance(p84, (int, float)):
+        if math.isfinite(float(p16)) and math.isfinite(float(p84)):
+            components.append(f"16–84% {float(p16):.3g}–{float(p84):.3g}")
+    if not components:
+        return "—"
+    unit_suffix = f" {trace.flux_unit}" if trace.flux_unit else ""
+    return ", ".join(components) + unit_suffix
+
+
+def _format_spatial_axes(trace: OverlayTrace) -> str:
+    if str(trace.axis_kind or "wavelength").lower() != "image":
+        return "—"
+    provenance_units = None
+    if isinstance(trace.provenance, Mapping):
+        units = trace.provenance.get("units")
+        if isinstance(units, Mapping):
+            provenance_units = units.get("image_axes")
+    axes: Sequence[str] = ()
+    if isinstance(provenance_units, Sequence) and not isinstance(provenance_units, str):
+        axes = [str(axis) for axis in provenance_units if axis]
+    if not axes:
+        if isinstance(trace.metadata, Mapping):
+            ctype = trace.metadata.get("image_axis_ctype")
+            if isinstance(ctype, str) and ctype.strip():
+                axes = [ctype.strip()]
+    return ", ".join(axes) if axes else "—"
+
+
 def _build_metadata_summary_rows(
     overlays: Sequence[OverlayTrace],
 ) -> List[Dict[str, object]]:
@@ -2311,6 +2384,9 @@ def _build_metadata_summary_rows(
                 "Resolution": meta.get("resolution_native")
                 or meta.get("resolution")
                 or "—",
+                "Pixel range": _format_pixel_range(trace, meta),
+                "Pixel stats": _format_pixel_spread(trace, meta),
+                "Spatial axes": _format_spatial_axes(trace),
             }
         )
     return rows

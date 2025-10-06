@@ -749,6 +749,7 @@ def test_ingest_local_image_returns_image_payload(tmp_path):
     header["CTYPE2"] = "DEC--TAN"
     header["CUNIT1"] = "deg"
     header["CUNIT2"] = "deg"
+    header["BUNIT"] = "MJy/sr"
 
     image_hdu = fits.ImageHDU(data=image_data, header=header, name="IMAGE")
     hdul = fits.HDUList([fits.PrimaryHDU(), image_hdu])
@@ -762,5 +763,18 @@ def test_ingest_local_image_returns_image_payload(tmp_path):
     assert payload["kind"] == "image"
     assert payload.get("image", {}).get("shape") == [3, 3]
     assert payload["metadata"].get("image_shape") == [3, 3]
-    assert payload["summary"].startswith("3 × 3 image")
+    assert (
+        payload["summary"]
+        == "3 × 3 image • Pixel range 0 – 8 MJy/sr"
+    )
     assert payload["provenance"].get("axis_kind") == "image"
+    image_stats = payload["metadata"].get("image_statistics")
+    assert image_stats is not None
+    assert image_stats["min"] == pytest.approx(0.0)
+    assert image_stats["max"] == pytest.approx(8.0)
+    assert image_stats["median"] == pytest.approx(4.0)
+    assert image_stats["mean"] == pytest.approx(4.0)
+    assert image_stats["p16"] == pytest.approx(1.28, rel=1e-3)
+    assert image_stats["p84"] == pytest.approx(6.72, rel=1e-3)
+    image_payload = payload.get("image") or {}
+    assert image_payload.get("statistics") == pytest.approx(image_stats, rel=1e-12)

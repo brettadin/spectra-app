@@ -633,6 +633,7 @@ def ingest_local_file(name: str, content: bytes) -> Dict[str, object]:
             f" Detected a time axis{detail_hint}."
         )
 
+    image_statistics: Optional[Dict[str, float]] = None
     if normalized_axis_kind == "image":
         image_payload = parsed.get("image") if isinstance(parsed.get("image"), Mapping) else {}
         shape = image_payload.get("shape") if isinstance(image_payload, Mapping) else None
@@ -643,6 +644,18 @@ def ingest_local_file(name: str, content: bytes) -> Dict[str, object]:
                 ingest_info.setdefault("samples", 0)
         else:
             ingest_info.setdefault("samples", 0)
+        if isinstance(image_payload, Mapping):
+            existing_stats = metadata.get("image_statistics")
+            if isinstance(existing_stats, Mapping):
+                image_statistics = {
+                    key: float(value)
+                    for key, value in existing_stats.items()
+                    if isinstance(value, (int, float))
+                }
+            else:
+                image_statistics = _summarize_image_statistics(image_payload)
+                if image_statistics:
+                    metadata["image_statistics"] = dict(image_statistics)
     else:
         ingest_info.setdefault("samples", len(parsed.get("wavelength_nm") or []))
 
@@ -652,9 +665,24 @@ def ingest_local_file(name: str, content: bytes) -> Dict[str, object]:
     elif normalized_axis_kind == "image":
         image_payload = parsed.get("image") if isinstance(parsed.get("image"), Mapping) else {}
         shape = image_payload.get("shape") if isinstance(image_payload, Mapping) else None
+        if image_statistics is None and isinstance(image_payload, Mapping):
+            image_statistics = _summarize_image_statistics(image_payload)
+            if image_statistics:
+                metadata.setdefault("image_statistics", dict(image_statistics))
         if isinstance(shape, (list, tuple)) and shape:
             dims = " × ".join(str(int(dim)) for dim in shape)
-            summary = f"{dims} image"
+            if image_statistics and all(
+                isinstance(image_statistics.get(key), (int, float))
+                for key in ("min", "max")
+            ):
+                minimum = float(image_statistics["min"])
+                maximum = float(image_statistics["max"])
+                unit_suffix = f" {flux_unit}" if flux_unit else ""
+                summary = (
+                    f"{dims} image • Pixel range {minimum:.3g} – {maximum:.3g}{unit_suffix}"
+                )
+            else:
+                summary = f"{dims} image"
         else:
             summary = "Image overlay"
     else:
@@ -705,7 +733,10 @@ def ingest_local_file(name: str, content: bytes) -> Dict[str, object]:
         payload["axis_kind"] = axis_kind
 
     if normalized_axis_kind == "image" and isinstance(parsed.get("image"), Mapping):
-        payload["image"] = dict(parsed.get("image"))
+        image_payload = dict(parsed.get("image"))
+        if image_statistics:
+            image_payload.setdefault("statistics", dict(image_statistics))
+        payload["image"] = image_payload
 
     time_payload = parsed.get("time")
     if isinstance(time_payload, Mapping):
