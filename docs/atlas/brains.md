@@ -90,6 +90,11 @@
 - Logged follow-up research questions around Glue integration depth, specutils adoption, plugin sandboxing, and session persistence strategies. 【F:docs/research/specviz_adaptation.md†L135-L144】
 - Locked regression coverage on byte-string table headers to ensure wavelength and time ingestion keep reporting the right `axis_kind`. 【F:tests/server/test_ingest_fits.py†L375-L395】【F:tests/server/test_ingest_fits.py†L442-L466】
 
+## SpecViz code alignment audit — 2025-10-05
+- Reviewed the latest Jdaviz GitHub developer docs covering infrastructure, plugin components, UI design, and selection mechanics to ground follow-up planning. 【F:docs/research/specviz_code_alignment.md†L1-L42】
+- Documented the current Spectra App overlay model, ingest queue, analysis stacks, manifest export, and target gating to anchor parity work in concrete modules. 【F:docs/research/specviz_code_alignment.md†L44-L89】
+- Highlighted registry, component, helper API, selection persistence, and specutils integration tasks that align Spectra App with Specviz patterns. 【F:docs/research/specviz_code_alignment.md†L91-L128】
+
 ## Example browser provider persistence — 2025-10-11
 - Only seed the provider multiselect with defaults when the session key is unset so Streamlit relies on the stored selection thereafter, eliminating rerun warnings. 【F:app/ui/example_browser.py†L192-L210】
 - Normalise any cached provider list before rendering and sync it back to session state so stale providers disappear without losing user intent. 【F:app/ui/example_browser.py†L185-L197】
