@@ -12,12 +12,7 @@ from astropy.io import fits
 
 import app.utils.local_ingest as local_ingest
 from app.server.ingest_ascii import parse_ascii, parse_ascii_segments
-from app.utils.local_ingest import (
-    ingest_local_directory,
-    ingest_local_file,
-    ingest_local_paths,
-)
-from specutils import Spectrum1D
+from app.utils.local_ingest import ingest_local_file
 
 
 @pytest.fixture(autouse=True)
@@ -76,14 +71,6 @@ def test_ingest_local_ascii_populates_metadata():
     assert "3 samples" in summary
     assert "500.00–501.00 nm" in summary
     assert "Flux: 10^-16 erg/s/cm^2/Å" in summary
-
-    spectrum = payload["spectrum1d"]
-    assert isinstance(spectrum, Spectrum1D)
-    assert spectrum.spectral_axis.to_value(u.nm) == pytest.approx(
-        payload["wavelength_nm"]
-    )
-    assert spectrum.flux.value == pytest.approx(payload["flux"])
-    assert spectrum.flux.unit.is_equivalent(u.erg / (u.s * u.cm**2 * u.AA))
 
 
 def test_ingest_local_ascii_multiple_flux_columns():
@@ -223,48 +210,6 @@ def test_ingest_local_ascii_prefers_flux_keyword_variants(columns, expected):
 
     assert parsed["flux"] == dataframe[expected].tolist()
     assert parsed["metadata"]["flux_column"] == expected
-
-
-def test_ingest_local_additional_traces_include_spectrum1d():
-    content = dedent(
-        """
-        Wavelength (nm),Paschen Flux (arb),Balmer Flux (arb),Sum Flux (arb)
-        400,0.10,0.05,0.15
-        405,0.12,0.06,0.18
-        410,0.08,0.07,0.15
-        415,0.09,0.08,0.17
-        """
-    ).encode("utf-8")
-
-    payload = ingest_local_file("series.csv", content)
-
-    extras = payload.get("additional_traces")
-    assert isinstance(extras, list)
-    assert len(extras) == 2
-
-    for entry in extras:
-        assert isinstance(entry.get("spectrum1d"), Spectrum1D)
-        assert entry["spectrum1d"].spectral_axis.to_value(u.nm) == pytest.approx(
-            entry["wavelength_nm"]
-        )
-
-
-def test_ingest_local_rejects_unknown_flux_units():
-    content = dedent(
-        """
-        Wavelength (nm),Flux (mystery)
-        500,1.0
-        505,1.2
-        510,1.4
-        """
-    ).encode("utf-8")
-
-    with pytest.raises(local_ingest.LocalIngestError) as excinfo:
-        ingest_local_file("mystery.csv", content)
-
-    message = str(excinfo.value)
-    assert "mystery" in message
-    assert "Astropy unit" in message
 
 
 def test_parse_ascii_segments_handles_variable_whitespace():
@@ -753,7 +698,6 @@ def test_ingest_local_image_returns_image_payload(tmp_path):
     header["CTYPE2"] = "DEC--TAN"
     header["CUNIT1"] = "deg"
     header["CUNIT2"] = "deg"
-    header["BUNIT"] = "MJy/sr"
 
     image_hdu = fits.ImageHDU(data=image_data, header=header, name="IMAGE")
     hdul = fits.HDUList([fits.PrimaryHDU(), image_hdu])
@@ -767,52 +711,5 @@ def test_ingest_local_image_returns_image_payload(tmp_path):
     assert payload["kind"] == "image"
     assert payload.get("image", {}).get("shape") == [3, 3]
     assert payload["metadata"].get("image_shape") == [3, 3]
-    assert (
-        payload["summary"]
-        == "3 × 3 image • Pixel range 0 – 8 MJy/sr"
-    )
+    assert payload["summary"].startswith("3 × 3 image")
     assert payload["provenance"].get("axis_kind") == "image"
-    image_stats = payload["metadata"].get("image_statistics")
-    assert image_stats is not None
-    assert image_stats["min"] == pytest.approx(0.0)
-    assert image_stats["max"] == pytest.approx(8.0)
-    assert image_stats["median"] == pytest.approx(4.0)
-    assert image_stats["mean"] == pytest.approx(4.0)
-    assert image_stats["p16"] == pytest.approx(1.28, rel=1e-3)
-    assert image_stats["p84"] == pytest.approx(6.72, rel=1e-3)
-    image_payload = payload.get("image") or {}
-    assert image_payload.get("statistics") == pytest.approx(image_stats, rel=1e-12)
-
-
-def test_ingest_local_paths_reports_success_and_failure(tmp_path):
-    ascii_content = "wavelength,flux\n500,1\n510,0.9\n520,1.05\n"
-    good_file = tmp_path / "good.csv"
-    good_file.write_text(ascii_content)
-
-    report = ingest_local_paths([good_file, tmp_path / "missing.csv"])
-
-    assert report.summary["succeeded"] == 1
-    assert report.summary["failed"] == 1
-    successes = [entry for entry in report.entries if entry.status == "success"]
-    failures = [entry for entry in report.entries if entry.status != "success"]
-    assert len(successes) == 1
-    assert successes[0].payload["label"] == "good"
-    assert failures[0].status in {"missing", "failed", "error"}
-    assert failures[0].error is not None
-
-
-def test_ingest_local_directory_glob_filters(tmp_path):
-    base = tmp_path / "batch"
-    base.mkdir()
-    csv_file = base / "spectrum.csv"
-    csv_file.write_text("wavelength,flux\n400,1\n401,1.1\n402,1.05\n")
-    (base / "notes.txt").write_text("Not a spectrum")
-
-    report = ingest_local_directory(base, glob_patterns="*.csv")
-    payloads = report.successful_payloads()
-
-    assert len(payloads) == 1
-    payload = payloads[0]
-    assert payload["label"] == "spectrum"
-    assert report.summary["discovered"] == 1
-    assert report.summary["failed"] == 0

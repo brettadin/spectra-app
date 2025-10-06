@@ -1,12 +1,7 @@
 # Differential workspace reference
 
 Use the differential tab to quantify how two spectra differ once they are
-aligned to the same wavelength sampling. Planned SpecViz-inspired upgrades for
-these comparisons are captured in the
-[Spectra ↔ SpecViz parity matrix](../research/specviz_improvement_backlog.md#spectra--specviz-parity-matrix).
-
-> **Attribution.** Differential workflow comparisons cite the SpecViz
-> documentation maintained by the [jdaviz authors](https://github.com/spacetelescope/jdaviz).
+aligned to the same wavelength sampling.
 
 ## Workflow
 

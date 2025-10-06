@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import unicodedata
 import re
-from typing import Dict, Iterable, List, Tuple
+from typing import Iterable, List, Tuple
 
 from app.server.fetchers import eso as eso_fetcher
 
@@ -73,36 +73,29 @@ def _match_spectra(query: ProviderQuery) -> List[_SpectrumInfo]:
     if not _SPECTRA:
         return []
 
-    if query.catalog and query.catalog.lower() not in {"eso", "xshooter", "eso_xshooter"}:
-        return []
-
     search_terms: List[str] = []
     for value in (query.target, query.text):
         if value:
             search_terms.append(value)
 
     if not search_terms:
-        matches = list(_SPECTRA)
-    else:
-        matches = []
-        seen: set[str] = set()
-        for term in search_terms:
-            token = _normalise_token(term)
-            if not token:
-                continue
-            for spec in _SPECTRA:
-                for alias in spec.search_tokens:
-                    if not alias:
-                        continue
-                    if alias.startswith(token) or token.startswith(alias):
-                        if spec.identifier not in seen:
-                            matches.append(spec)
-                            seen.add(spec.identifier)
-                        break
+        return list(_SPECTRA)
 
-    if query.programs:
-        programs = {program.lower() for program in query.programs}
-        matches = [spec for spec in matches if spec.program.lower() in programs]
+    matches: List[_SpectrumInfo] = []
+    seen: set[str] = set()
+    for term in search_terms:
+        token = _normalise_token(term)
+        if not token:
+            continue
+        for spec in _SPECTRA:
+            for alias in spec.search_tokens:
+                if not alias:
+                    continue
+                if alias.startswith(token) or token.startswith(alias):
+                    if spec.identifier not in seen:
+                        matches.append(spec)
+                        seen.add(spec.identifier)
+                    break
     return matches
 
 
@@ -196,38 +189,21 @@ def search(query: ProviderQuery) -> Iterable[ProviderHit]:
 
     limit = max(1, int(query.limit or 1))
     yielded = 0
-    aggregate_errors: List[Dict[str, object]] = []
+    errors: List[str] = []
 
     for spec in spectra:
         try:
             payload = eso_fetcher.fetch(target=spec.target_name, identifier=spec.identifier)
         except eso_fetcher.EsoFetchError as exc:
-            aggregate_errors.append(
-                {
-                    "identifier": spec.identifier,
-                    "program": spec.program,
-                    "error": str(exc),
-                }
-            )
+            errors.append(str(exc))
             continue
-        hit = _build_hit(payload, query, spec)
-        if query.programs:
-            hit.metadata.setdefault("requested_programs", list(query.programs))
-        if query.diagnostics and aggregate_errors:
-            hit.provenance.setdefault("diagnostics", list(aggregate_errors))
-        yield hit
+        yield _build_hit(payload, query, spec)
         yielded += 1
         if yielded >= limit:
             break
 
-    if yielded == 0 and aggregate_errors:
-        details = "\n".join(
-            f"- {error.get('identifier')} ({error.get('program')}): {error.get('error')}"
-            for error in aggregate_errors
-        )
-        raise eso_fetcher.EsoFetchError(
-            "ESO fetch attempts failed for all matching programs.\n" + details
-        )
+    if yielded == 0 and errors:
+        raise eso_fetcher.EsoFetchError(errors[0])
 
 
 refresh_spectra()

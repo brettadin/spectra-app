@@ -2,9 +2,9 @@ from __future__ import annotations
 
 """Base dataclasses and helpers for archive provider adapters."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, Optional, Sequence, Tuple
+from typing import Dict, Iterable, List, Mapping, MutableMapping, Optional, Sequence, Tuple
 
 import pandas as pd
 
@@ -19,21 +19,6 @@ class ProviderQuery:
     doi: str = ""
     limit: int = 5
     wavelength_range: Tuple[Optional[float], Optional[float]] = (None, None)
-    programs: Tuple[str, ...] = field(default_factory=tuple)
-    catalog: str = ""
-    concatenate: bool = False
-    use_cached_only: bool = False
-    diagnostics: bool = False
-    options: Mapping[str, Any] = field(default_factory=dict)
-
-    def __post_init__(self) -> None:
-        programs = tuple(
-            str(program).strip()
-            for program in self.programs
-            if isinstance(program, str) and str(program).strip()
-        )
-        object.__setattr__(self, "programs", programs)
-        object.__setattr__(self, "options", dict(self.options or {}))
 
     def as_dict(self) -> Dict[str, object]:
         return {
@@ -43,44 +28,7 @@ class ProviderQuery:
             "doi": self.doi,
             "limit": self.limit,
             "wavelength_range": self.wavelength_range,
-            "programs": list(self.programs),
-            "catalog": self.catalog,
-            "concatenate": self.concatenate,
-            "use_cached_only": self.use_cached_only,
-            "diagnostics": self.diagnostics,
-            "options": dict(self.options),
         }
-
-    @classmethod
-    def from_payload(cls, payload: Mapping[str, Any]) -> "ProviderQuery":
-        programs_raw = payload.get("programs", ())
-        if isinstance(programs_raw, (str, bytes)):
-            programs: Tuple[str, ...] = (str(programs_raw),)
-        elif isinstance(programs_raw, Iterable):
-            programs = tuple(str(value) for value in programs_raw)
-        else:
-            programs = ()
-
-        options_raw = payload.get("options") or {}
-        if isinstance(options_raw, Mapping):
-            options = dict(options_raw)
-        else:
-            options = {}
-
-        return cls(
-            target=str(payload.get("target") or ""),
-            text=str(payload.get("text") or ""),
-            instrument=str(payload.get("instrument") or ""),
-            doi=str(payload.get("doi") or ""),
-            limit=int(payload.get("limit") or 5),
-            wavelength_range=tuple(payload.get("wavelength_range") or (None, None)),
-            programs=programs,
-            catalog=str(payload.get("catalog") or ""),
-            concatenate=bool(payload.get("concatenate")),
-            use_cached_only=bool(payload.get("use_cached_only")),
-            diagnostics=bool(payload.get("diagnostics")),
-            options=options,
-        )
 
 
 @dataclass

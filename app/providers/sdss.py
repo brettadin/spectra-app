@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import unicodedata
 import re
-from typing import Dict, Iterable, List, Tuple
+from typing import Iterable, List, Tuple
 
 from app.server.fetchers import sdss as sdss_fetcher
 
@@ -72,38 +72,29 @@ def _match_targets(query: ProviderQuery) -> List[_TargetInfo]:
     if not _TARGETS:
         return []
 
-    catalog_filter = query.catalog.lower() if query.catalog else ""
-
     search_terms: List[str] = []
     for value in (query.target, query.text):
         if value:
             search_terms.append(value)
 
     if not search_terms:
-        matches = list(_TARGETS)
-    else:
-        matches = []
-        seen: set[str] = set()
-        for term in search_terms:
-            token = _normalise_token(term)
-            if not token:
-                continue
-            for target in _TARGETS:
-                for alias in target.search_tokens:
-                    if not alias:
-                        continue
-                    if alias.startswith(token) or token.startswith(alias):
-                        if target.canonical_name not in seen:
-                            matches.append(target)
-                            seen.add(target.canonical_name)
-                        break
+        return list(_TARGETS)
 
-    if catalog_filter:
-        matches = [
-            target
-            for target in matches
-            if catalog_filter in target.data_release.lower()
-        ]
+    matches: List[_TargetInfo] = []
+    seen: set[str] = set()
+    for term in search_terms:
+        token = _normalise_token(term)
+        if not token:
+            continue
+        for target in _TARGETS:
+            for alias in target.search_tokens:
+                if not alias:
+                    continue
+                if alias.startswith(token) or token.startswith(alias):
+                    if target.canonical_name not in seen:
+                        matches.append(target)
+                        seen.add(target.canonical_name)
+                    break
     return matches
 
 
@@ -208,7 +199,7 @@ def search(query: ProviderQuery) -> Iterable[ProviderHit]:
 
     limit = max(1, int(query.limit or 1))
     yielded = 0
-    aggregate_errors: List[Dict[str, object]] = []
+    errors: List[str] = []
 
     for target in targets:
         try:
@@ -219,34 +210,15 @@ def search(query: ProviderQuery) -> Iterable[ProviderHit]:
                 fiber=target.fiber,
             )
         except sdss_fetcher.SdssFetchError as exc:
-            aggregate_errors.append(
-                {
-                    "target": target.canonical_name,
-                    "plate": target.plate,
-                    "mjd": target.mjd,
-                    "fiber": target.fiber,
-                    "error": str(exc),
-                }
-            )
+            errors.append(str(exc))
             continue
-        hit = _build_hit(payload, query, target)
-        if query.catalog:
-            hit.metadata.setdefault("requested_catalog", query.catalog)
-        if query.diagnostics and aggregate_errors:
-            hit.provenance.setdefault("diagnostics", list(aggregate_errors))
-        yield hit
+        yield _build_hit(payload, query, target)
         yielded += 1
         if yielded >= limit:
             break
 
-    if yielded == 0 and aggregate_errors:
-        details = "\n".join(
-            f"- {error.get('target')} plate {error.get('plate')}/{error.get('mjd')}/{error.get('fiber')}: {error.get('error')}"
-            for error in aggregate_errors
-        )
-        raise sdss_fetcher.SdssFetchError(
-            "SDSS fetch attempts failed for all requested targets.\n" + details
-        )
+    if yielded == 0 and errors:
+        raise sdss_fetcher.SdssFetchError(errors[0])
 
 
 refresh_targets()

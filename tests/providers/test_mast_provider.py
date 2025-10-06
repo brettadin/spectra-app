@@ -119,44 +119,6 @@ def test_unknown_target_raises(monkeypatch):
         list(provider.search(query))
 
 
-def test_concatenate_programs_with_diagnostics(monkeypatch):
-    def fake_fetch(target: str, instrument: str = "", **kwargs):
-        instrument_key = (instrument or "STIS").upper()
-        if instrument_key == "FAIL":
-            raise provider.mast_fetcher.MastFetchError("Network down")
-        payload = _fake_payload()
-        meta = dict(payload["meta"])
-        meta["instrument"] = instrument_key
-        meta["cache_hit"] = True
-        if instrument_key == "MOD":
-            payload["wavelength_nm"] = [500.0, 510.0]
-            payload["intensity"] = [0.9, 1.1]
-        payload["meta"] = meta
-        return payload
-
-    monkeypatch.setattr(provider.mast_fetcher, "available_targets", _fake_available_targets)
-    monkeypatch.setattr(provider.mast_fetcher, "fetch", fake_fetch)
-    provider.refresh_targets()
-
-    query = ProviderQuery(
-        target="Sirius",
-        programs=("STIS", "MOD", "FAIL"),
-        concatenate=True,
-        diagnostics=True,
-    )
-    hits = list(provider.search(query))
-
-    assert len(hits) == 1
-    hit = hits[0]
-    assert hit.metadata["concatenated_programs"] == ["STIS", "MOD"]
-    assert len(hit.provenance["segments"]) == 2
-    assert any(entry.get("program") == "STIS" for entry in hit.provenance["segments"])
-    assert any(entry.get("program") == "MOD" for entry in hit.provenance["segments"])
-    diagnostics = hit.provenance.get("diagnostics")
-    assert diagnostics is not None
-    assert any(record.get("program") == "FAIL" for record in diagnostics)
-
-
 def teardown_module(module):  # pragma: no cover - test cleanup
     provider.refresh_targets()
 

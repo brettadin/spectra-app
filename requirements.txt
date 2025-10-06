@@ -8,4 +8,3 @@ requests>=2.32
 pyvo
 pyyaml
 rich
-specutils>=1.13

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import math
 import time
 import uuid
 from concurrent.futures import Future, ThreadPoolExecutor
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 import threading
@@ -17,6 +19,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import requests
 import streamlit as st
+from plotly.subplots import make_subplots
 from streamlit.delta_generator import DeltaGenerator
 
 if __package__ in (None, ""):
@@ -35,19 +38,28 @@ from .targets import RegistryUnavailableError, render_targets_panel
 
 from .._version import get_version_info
 from ..ingest import OverlayIngestResult
+from ..export_manifest import build_manifest
+from ..server.differential import ratio, resample_to_common_grid, subtract
 from ..server.fetch_archives import FetchError, fetch_spectrum
+from ..similarity import (
+    SimilarityCache,
+    SimilarityOptions,
+    TraceVectors,
+    apply_normalization,
+    viewport_alignment,
+)
 from ..similarity_panel import render_similarity_panel
-from ..providers import ProviderQuery, search as provider_search
-from ..services.workspace import WorkspaceContext, WorkspaceService
-from ..plugins import PluginError, PluginResult, PluginContext as PluginRuntimeContext, plugin_registry
-from ..plugins import specviz_defaults  # noqa: F401 - ensure plugin registration
+from ..utils.downsample import build_downsample_tiers, build_lttb_downsample
 from ..utils.duplicate_ledger import DuplicateLedger
+from ..utils.flux import flux_percentile_range
+from ..providers import ProviderQuery, search as provider_search
 from ..utils.local_ingest import (
     SUPPORTED_ASCII_EXTENSIONS,
     SUPPORTED_FITS_EXTENSIONS,
     LocalIngestError,
     ingest_local_file,
 )
+<<<<<<< HEAD
 from .controller import (
     DIFFERENTIAL_OPERATIONS,
     DifferentialResult,
@@ -68,11 +80,168 @@ from .controller import (
     prepare_similarity_inputs,
     trace_label,
 )
+=======
+>>>>>>> parent of 57fc619c (Merge pull request #153 from brettadin/codex/review-specviz-for-project-adaptation)
 
 st.set_page_config(page_title="Spectra App", layout="wide")
 
 EXPORT_DIR = Path("exports")
 EXPORT_DIR.mkdir(parents=True, exist_ok=True)
+
+
+@dataclass
+class OverlayTrace:
+    trace_id: str
+    label: str
+    wavelength_nm: Tuple[float, ...]
+    flux: Tuple[float, ...]
+    kind: str = "spectrum"
+    provider: Optional[str] = None
+    summary: Optional[str] = None
+    visible: bool = True
+    metadata: Dict[str, object] = field(default_factory=dict)
+    provenance: Dict[str, object] = field(default_factory=dict)
+    fingerprint: str = ""
+    hover: Optional[Tuple[str, ...]] = None
+    flux_unit: str = "arb"
+    flux_kind: str = "relative"
+    axis: str = "emission"
+    axis_kind: str = "wavelength"
+    image: Optional[Dict[str, object]] = None
+    downsample: Dict[int, Tuple[Tuple[float, ...], Tuple[float, ...]]] = field(
+        default_factory=dict
+    )
+    cache_dataset_id: Optional[str] = None
+
+    def to_dataframe(self) -> pd.DataFrame:
+        if str(self.axis_kind).strip().lower() == "image":
+            return pd.DataFrame(columns=["wavelength_nm", "flux"])
+
+        data: Dict[str, Iterable[object]] = {
+            "wavelength_nm": self.wavelength_nm,
+            "flux": self.flux,
+        }
+        if self.hover:
+            data["hover"] = list(self.hover)
+        df = pd.DataFrame(data)
+        df = df.replace([np.inf, -np.inf], np.nan)
+        df = df.dropna(subset=["wavelength_nm", "flux"])
+        return df.sort_values("wavelength_nm")
+
+    def sample(
+        self,
+        viewport: Tuple[float | None, float | None],
+        *,
+        max_points: Optional[int] = 8000,
+        include_hover: bool = True,
+    ) -> Tuple[np.ndarray, np.ndarray, Optional[List[str]], bool]:
+        if str(self.axis_kind).strip().lower() == "image":
+            return np.array([], dtype=float), np.array([], dtype=float), None, True
+
+        wavelengths = np.asarray(self.wavelength_nm, dtype=float)
+        flux_values = np.asarray(self.flux, dtype=float)
+        hover_values = list(self.hover) if include_hover and self.hover else None
+
+        low, high = viewport
+        if low is not None or high is not None:
+            mask = np.ones_like(wavelengths, dtype=bool)
+            if low is not None:
+                mask &= wavelengths >= float(low)
+            if high is not None:
+                mask &= wavelengths <= float(high)
+            wavelengths = wavelengths[mask]
+            flux_values = flux_values[mask]
+            if hover_values is not None:
+                hover_values = [
+                    hover for hover, keep in zip(hover_values, mask.tolist()) if keep
+                ]
+
+        if max_points is None:
+            return wavelengths, flux_values, hover_values, True
+
+        if wavelengths.size <= max_points:
+            return wavelengths, flux_values, hover_values, True
+
+        try:
+            max_points_int = int(max_points)
+        except (TypeError, ValueError):
+            max_points_int = 0
+
+        if max_points_int <= 0:
+            return wavelengths, flux_values, hover_values, True
+
+        if wavelengths.size <= max_points_int:
+            return wavelengths, flux_values, hover_values, True
+
+        min_points = max(64, max_points_int // 2)
+        for tier in sorted(self.downsample.keys()):
+            tier_data = self.downsample[tier]
+            tier_w = np.asarray(tier_data[0], dtype=float)
+            tier_f = np.asarray(tier_data[1], dtype=float)
+            if low is not None:
+                tier_w_mask = tier_w >= float(low)
+            else:
+                tier_w_mask = np.ones_like(tier_w, dtype=bool)
+            if high is not None:
+                tier_w_mask &= tier_w <= float(high)
+            tier_w = tier_w[tier_w_mask]
+            tier_f = tier_f[tier_w_mask]
+            if tier_w.size == 0:
+                continue
+            if tier_w.size >= max_points_int:
+                return tier_w[:max_points_int], tier_f[:max_points_int], None, False
+            if tier_w.size >= min_points:
+                return tier_w, tier_f, None, False
+
+        target_points = min(max_points_int, int(wavelengths.size))
+        downsampled = build_lttb_downsample(wavelengths, flux_values, target_points)
+        sampled_w = np.asarray(downsampled.wavelength_nm, dtype=float)
+        sampled_f = np.asarray(downsampled.flux, dtype=float)
+        return sampled_w, sampled_f, None, False
+
+    def to_vectors(
+        self,
+        *,
+        max_points: Optional[int] = None,
+        viewport: Tuple[float | None, float | None] | None = None,
+    ) -> TraceVectors:
+        if str(self.axis_kind).strip().lower() == "image":
+            raise ValueError("Image overlays cannot be vectorised.")
+        if max_points is None and viewport is None:
+            df = self.to_dataframe()
+            return TraceVectors(
+                trace_id=self.trace_id,
+                label=self.label,
+                wavelengths_nm=df["wavelength_nm"].to_numpy(dtype=float),
+                flux=df["flux"].to_numpy(dtype=float),
+                kind=self.kind,
+                fingerprint=self.fingerprint,
+            )
+        selected_w, selected_f, _, _ = self.sample(
+            viewport or (None, None),
+            max_points=max_points,
+            include_hover=False,
+        )
+        return TraceVectors(
+            trace_id=self.trace_id,
+            label=self.label,
+            wavelengths_nm=selected_w,
+            flux=selected_f,
+            kind=self.kind,
+            fingerprint=self.fingerprint,
+        )
+
+    @property
+    def points(self) -> int:
+        if str(self.axis_kind).strip().lower() == "image":
+            shape = self.image.get("shape") if isinstance(self.image, Mapping) else None
+            if isinstance(shape, (list, tuple)):
+                try:
+                    return int(np.prod([int(dim) for dim in shape]))
+                except Exception:
+                    return 0
+            return 0
+        return len(self.wavelength_nm)
 
 
 @dataclass(frozen=True)
@@ -82,6 +251,24 @@ class ExampleSpec:
     description: str
     provider: str
     query: ProviderQuery
+
+
+@dataclass
+class DifferentialResult:
+    grid_nm: Tuple[float, ...]
+    values_a: Tuple[float, ...]
+    values_b: Tuple[float, ...]
+    result: Tuple[float, ...]
+    trace_a_id: str
+    trace_b_id: str
+    trace_a_label: str
+    trace_b_label: str
+    operation_code: str
+    operation_label: str
+    normalization: str
+    sample_points: int
+    computed_at: float
+    label: str
 
 
 @dataclass(frozen=True)
@@ -174,6 +361,12 @@ DOC_LIBRARY: Tuple[DocCategory, ...] = (
 )
 
 
+DIFFERENTIAL_OPERATIONS: Dict[str, Dict[str, object]] = {
+    "Subtract (A − B)": {"code": "subtract", "symbol": "−", "func": subtract},
+    "Ratio (A ÷ B)": {"code": "ratio", "symbol": "÷", "func": ratio},
+}
+
+
 def _format_version_timestamp(raw: object) -> str:
     value = str(raw or "").strip()
     if not value:
@@ -191,31 +384,155 @@ def _format_version_timestamp(raw: object) -> str:
 
 
 VIEWPORT_STATE_KEY = "viewport_axes"
-_WORKSPACE_SERVICE: WorkspaceService | None = None
 
 
-def _workspace(service: WorkspaceService | None = None) -> WorkspaceService:
-    global _WORKSPACE_SERVICE
-    if service is not None:
-        _WORKSPACE_SERVICE = service
-    if _WORKSPACE_SERVICE is None:
-        context = WorkspaceContext(st.session_state, VIEWPORT_STATE_KEY, EXPORT_DIR)
-        _WORKSPACE_SERVICE = WorkspaceService(context)
-    return _WORKSPACE_SERVICE
+def _normalize_axis_kind(value: Optional[str]) -> str:
+    try:
+        text = str(value or "")
+    except Exception:
+        text = ""
+    text = text.strip().lower()
+    return text or "wavelength"
 
 
-def _controller() -> WorkspaceController:
-    return _workspace().controller
+def _axis_kind_for_trace(trace: OverlayTrace) -> str:
+    return _normalize_axis_kind(getattr(trace, "axis_kind", None))
 
 
-def _ensure_session_state() -> WorkspaceController:
-    service = _workspace()
-    service.ensure_defaults()
-    return service.controller
+def _group_overlays_by_axis_kind(
+    overlays: Sequence[OverlayTrace],
+) -> Dict[str, List[OverlayTrace]]:
+    groups: Dict[str, List[OverlayTrace]] = {}
+    for trace in overlays:
+        kind = _axis_kind_for_trace(trace)
+        if kind == "time":
+            continue
+        groups.setdefault(kind, []).append(trace)
+    return groups
 
 
-def _trace_label(trace_id: Optional[str]) -> str:
-    return trace_label(st.session_state, trace_id)
+def _normalize_viewport_tuple(
+    viewport: Tuple[float | None, float | None] | Sequence[float | None] | None,
+) -> Tuple[float | None, float | None]:
+    if not isinstance(viewport, Sequence) or len(viewport) != 2:
+        return (None, None)
+
+    def _coerce(value: object) -> float | None:
+        if value is None:
+            return None
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return None
+        return number if math.isfinite(number) else None
+
+    low = _coerce(viewport[0])
+    high = _coerce(viewport[1])
+    return (low, high)
+
+
+def _get_viewport_store() -> Dict[str, Tuple[float | None, float | None]]:
+    store = st.session_state.get(VIEWPORT_STATE_KEY)
+    if not isinstance(store, Mapping):
+        return {}
+    normalized: Dict[str, Tuple[float | None, float | None]] = {}
+    for kind, viewport in store.items():
+        normalized[_normalize_axis_kind(kind)] = _normalize_viewport_tuple(viewport)
+    return normalized
+
+
+def _set_viewport_store(store: Dict[str, Tuple[float | None, float | None]]) -> None:
+    st.session_state[VIEWPORT_STATE_KEY] = dict(store)
+
+
+def _set_viewport_for_kind(
+    axis_kind: str, viewport: Tuple[float | None, float | None]
+) -> None:
+    store = _get_viewport_store()
+    store[_normalize_axis_kind(axis_kind)] = _normalize_viewport_tuple(viewport)
+    _set_viewport_store(store)
+
+
+def _get_viewport_for_kind(axis_kind: str) -> Tuple[float | None, float | None]:
+    store = _get_viewport_store()
+    return store.get(_normalize_axis_kind(axis_kind), (None, None))
+
+
+def _determine_primary_axis_kind(
+    overlays: Sequence[OverlayTrace],
+) -> str:
+    groups = _group_overlays_by_axis_kind(overlays)
+    if groups.get("wavelength"):
+        return "wavelength"
+    for kind, traces in groups.items():
+        if kind == "image":
+            continue
+        if traces:
+            return kind
+    return "wavelength"
+
+
+def _ensure_session_state() -> None:
+    st.session_state.setdefault("session_id", str(uuid.uuid4()))
+    st.session_state.setdefault("overlay_traces", [])
+    st.session_state.setdefault("display_units", "nm")
+    st.session_state.setdefault("display_mode", "Flux (raw)")
+    st.session_state.setdefault("display_full_resolution", False)
+    if VIEWPORT_STATE_KEY not in st.session_state:
+        legacy = st.session_state.get("viewport_nm")
+        if isinstance(legacy, Sequence) and len(legacy) == 2:
+            _set_viewport_store({"wavelength": _normalize_viewport_tuple(legacy)})
+        else:
+            _set_viewport_store({"wavelength": (None, None)})
+    else:
+        store = _get_viewport_store()
+        if "wavelength" not in store:
+            store["wavelength"] = (None, None)
+        _set_viewport_store(store)
+    if "viewport_nm" in st.session_state:
+        try:
+            del st.session_state["viewport_nm"]
+        except Exception:
+            st.session_state["viewport_nm"] = None
+    st.session_state.setdefault("auto_viewport", True)
+    st.session_state.setdefault("normalization_mode", "unit")
+    st.session_state.setdefault("differential_mode", "Off")
+    st.session_state.setdefault("reference_trace_id", None)
+    st.session_state.setdefault(
+        "similarity_metrics", ["cosine", "rmse", "xcorr", "line_match"]
+    )
+    st.session_state.setdefault("similarity_primary_metric", "cosine")
+    st.session_state.setdefault("similarity_line_peaks", 8)
+    st.session_state.setdefault(
+        "similarity_normalization", st.session_state.get("normalization_mode", "unit")
+    )
+    st.session_state.setdefault("duplicate_policy", "skip")
+    st.session_state.setdefault("local_upload_registry", {})
+    st.session_state.setdefault("differential_result", None)
+    st.session_state.setdefault("differential_sample_points", 2000)
+    st.session_state.setdefault("network_available", True)
+    st.session_state.setdefault("example_recent", [])
+    st.session_state.setdefault("duplicate_base_policy", "skip")
+    st.session_state.setdefault("duplicate_ledger_lock", False)
+    st.session_state.setdefault("duplicate_ledger_pending_action", None)
+    st.session_state.setdefault("ingest_queue", [])
+    if "duplicate_ledger" not in st.session_state:
+        st.session_state["duplicate_ledger"] = DuplicateLedger()
+    if "similarity_cache" not in st.session_state:
+        st.session_state["similarity_cache"] = SimilarityCache()
+
+
+def _is_full_resolution_enabled() -> bool:
+    session_state = getattr(st, "session_state", None)
+    if session_state is None:
+        return False
+    getter = getattr(session_state, "get", None)
+    if callable(getter):
+        return bool(getter("display_full_resolution", False))
+    try:
+        return bool(session_state["display_full_resolution"])
+    except (KeyError, TypeError):
+        return False
 
 
 MAST_DOWNLOAD_ENDPOINT = "https://mast.stsci.edu/api/v0.1/Download/file"
@@ -253,22 +570,6 @@ _OVERLAY_STATUS_PROGRESS = {
     "running": 0.1,
     "downloading": 0.4,
     "ingesting": 0.7,
-    "success": 1.0,
-    "info": 1.0,
-    "error": 1.0,
-}
-
-_PLUGIN_STATUS_LABELS = {
-    "queued": "Queued",
-    "running": "Running",
-    "success": "Completed",
-    "info": "Completed",
-    "error": "Failed",
-}
-
-_PLUGIN_STATUS_PROGRESS = {
-    "queued": 0.0,
-    "running": 0.5,
     "success": 1.0,
     "info": 1.0,
     "error": 1.0,
@@ -510,7 +811,7 @@ def _refresh_ingest_jobs(runtime: Dict[str, Any]) -> None:
         final_detail = detail
         if payload is not None:
             try:
-                added, message = _controller().add_overlay_payload(payload)
+                added, message = _add_overlay_payload(payload)
             except Exception as exc:  # pragma: no cover - overlay addition failure
                 final_status = "error"
                 final_detail = f"Failed to add overlay: {exc}"
@@ -607,269 +908,354 @@ def _render_ingest_queue_panel(container: DeltaGenerator) -> None:
             entry.caption(summary)
 
 
-def _ensure_plugin_runtime() -> Dict[str, Any]:
-    runtime = st.session_state.get("plugin_runtime")
-    if not isinstance(runtime, dict):
-        runtime = {}
-
-    executor = runtime.get("executor")
-    if not isinstance(executor, ThreadPoolExecutor) or getattr(executor, "_shutdown", False):
-        executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="plugin-jobs")
-        runtime["executor"] = executor
-
-    lock = runtime.get("lock")
-    if lock is None or not hasattr(lock, "acquire"):
-        lock = threading.Lock()
-        runtime["lock"] = lock
-
-    runtime.setdefault("jobs", {})
-    runtime.setdefault("futures", {})
-    st.session_state["plugin_runtime"] = runtime
-    return runtime
+def _get_overlays() -> List[OverlayTrace]:
+    return list(st.session_state.get("overlay_traces", []))
 
 
-def _update_plugin_job(
-    runtime: Mapping[str, Any],
-    job_id: str,
+def _set_overlays(overlays: Sequence[OverlayTrace]) -> None:
+    st.session_state["overlay_traces"] = list(overlays)
+    _ensure_reference_consistency()
+
+
+def _get_example_spec(slug: str) -> Optional[ExampleSpec]:
+    return EXAMPLE_MAP.get(slug)
+
+
+def _register_example_usage(spec: ExampleSpec, *, success: bool) -> None:
+    if not success:
+        return
+    recents = list(st.session_state.get("example_recent", []))
+    if spec.slug in recents:
+        recents.remove(spec.slug)
+    recents.insert(0, spec.slug)
+    st.session_state["example_recent"] = recents[:5]
+def _ensure_reference_consistency() -> None:
+    overlays = _get_overlays()
+    current = st.session_state.get("reference_trace_id")
+    if current and any(trace.trace_id == current for trace in overlays):
+        return
+    if overlays:
+        st.session_state["reference_trace_id"] = overlays[0].trace_id
+    else:
+        st.session_state["reference_trace_id"] = None
+
+
+def _trace_label(trace_id: Optional[str]) -> str:
+    if trace_id is None:
+        return "—"
+    for trace in _get_overlays():
+        if trace.trace_id == trace_id:
+            suffix = f" ({trace.provider})" if trace.provider else ""
+            return f"{trace.label}{suffix}"
+    return trace_id
+
+
+def _compute_fingerprint(wavelengths: Sequence[float], flux: Sequence[float]) -> str:
+    arr_w = np.asarray([float(w) for w in wavelengths], dtype=np.float64)
+    arr_f = np.asarray([float(f) for f in flux], dtype=np.float64)
+    combined = np.stack((np.round(arr_w, 6), np.round(arr_f, 6)), axis=1)
+    return hashlib.sha1(combined.tobytes()).hexdigest()
+
+
+def _compute_image_fingerprint(image: Mapping[str, object]) -> str:
+    data = image.get("data")
+    arr = np.asarray(data, dtype=np.float64)
+    flattened = np.round(arr.reshape(-1), 6)
+    payload_parts = [flattened.tobytes()]
+    mask = image.get("mask")
+    if mask is not None:
+        mask_arr = np.asarray(mask, dtype=np.bool_).reshape(-1)
+        payload_parts.append(mask_arr.tobytes())
+    shape = image.get("shape")
+    if isinstance(shape, (list, tuple)):
+        shape_tuple = tuple(int(dim) for dim in shape)
+    else:
+        shape_tuple = tuple(int(dim) for dim in arr.shape)
+    payload_parts.append(repr(shape_tuple).encode("utf-8"))
+    dtype_label = str(image.get("dtype") or arr.dtype)
+    payload_parts.append(dtype_label.encode("utf-8"))
+    return hashlib.sha1(b"".join(payload_parts)).hexdigest()
+
+
+def _add_overlay(
+    label: str,
+    wavelengths: Sequence[float],
+    flux: Sequence[float],
     *,
-    status: Optional[str] = None,
-    detail: Optional[str] = None,
-    progress: Optional[float] = None,
-    finished: Optional[bool] = None,
-    extra: Optional[Mapping[str, Any]] = None,
-) -> None:
-    lock = runtime.get("lock") if isinstance(runtime, Mapping) else None
-    jobs = runtime.get("jobs") if isinstance(runtime, Mapping) else None
-    if lock is None or jobs is None or not hasattr(lock, "acquire"):
-        return
-    with lock:
-        job = jobs.get(job_id) if isinstance(jobs, dict) else None
-        if job is None:
-            return
-        if status is not None:
-            job["status"] = status
-        if detail is not None:
-            job["detail"] = detail
-        if progress is not None:
-            job["progress"] = progress
-        if finished is not None:
-            job["finished"] = bool(finished)
-        if extra:
-            for key, value in extra.items():
-                job[key] = value
+    flux_unit: Optional[str] = None,
+    flux_kind: Optional[str] = None,
+    kind: str = "spectrum",
+    provider: Optional[str] = None,
+    summary: Optional[str] = None,
+    metadata: Optional[Dict[str, object]] = None,
+    provenance: Optional[Dict[str, object]] = None,
+    hover: Optional[Sequence[str]] = None,
+    axis: Optional[str] = None,
+    axis_kind: Optional[str] = None,
+    downsample: Optional[Mapping[int, Mapping[str, Sequence[float]]]] = None,
+    cache_dataset_id: Optional[str] = None,
+    image: Optional[Mapping[str, object]] = None,
+) -> Tuple[bool, str]:
+    normalized_axis_kind = _normalize_axis_kind(
+        axis_kind or (metadata or {}).get("axis_kind") if metadata else axis_kind
+    )
 
-
-def _snapshot_plugin_jobs(runtime: Optional[Mapping[str, Any]]) -> List[Dict[str, Any]]:
-    if not isinstance(runtime, Mapping):
-        return []
-
-    lock = runtime.get("lock")
-    jobs = runtime.get("jobs")
-    if lock is None or jobs is None or not hasattr(lock, "acquire"):
-        return []
-
-    with lock:
-        values = list(jobs.values()) if isinstance(jobs, dict) else []
-        return [dict(job) for job in values]
-
-
-def _run_plugin_job(
-    plugin_id: str,
-    selection: Sequence[str],
-    config: Mapping[str, Any],
-    workspace: WorkspaceService,
-    overlays: Sequence[OverlayTrace],
-) -> PluginResult:
-    plugin_cls = plugin_registry.get(plugin_id)
-    context = PluginRuntimeContext(workspace=workspace, overlays=overlays)
-    plugin = plugin_cls(context)
-    result = plugin.execute(selection, config)
-    if not isinstance(result, PluginResult):
-        raise PluginError(
-            f"Plugin '{plugin_cls.label}' returned an unexpected result type: {type(result)!r}."
+    if normalized_axis_kind == "time":
+        return (
+            False,
+            "Time-series overlays are not supported. Provide a spectral product instead.",
         )
-    return result
 
-
-def _submit_plugin_job(
-    runtime: Dict[str, Any],
-    workspace: WorkspaceService,
-    overlays: Sequence[OverlayTrace],
-    job: Mapping[str, Any],
-) -> str:
-    executor: ThreadPoolExecutor = runtime["executor"]
-    plugin_id = str(job.get("plugin_id") or "").strip()
-    if not plugin_id:
-        raise PluginError("Plugin identifier missing from job queue entry.")
-    selection = tuple(str(value) for value in job.get("selection", ()))
-    config = dict(job.get("config") or {})
-    plugin_label = str(job.get("plugin_label") or plugin_id)
-    selection_labels = list(job.get("selection_labels") or [])
-    overlays_snapshot = tuple(replace(trace) for trace in overlays)
-
-    future = executor.submit(
-        _run_plugin_job,
-        plugin_id,
-        selection,
-        config,
-        workspace,
-        overlays_snapshot,
-    )
-
-    job_id = uuid.uuid4().hex
-    lock = runtime.get("lock")
-    jobs = runtime.get("jobs")
-    if lock is None or jobs is None or not hasattr(lock, "acquire"):
-        lock = threading.Lock()
-        runtime["lock"] = lock
-        jobs = {}
-        runtime["jobs"] = jobs
-
-    with lock:
-        jobs[job_id] = {
-            "id": job_id,
-            "plugin_id": plugin_id,
-            "label": plugin_label,
-            "selection": selection,
-            "selection_labels": selection_labels,
-            "status": "queued",
-            "detail": "Queued for execution",
-            "progress": 0.1,
-            "submitted_at": time.time(),
-        }
-        futures = runtime.setdefault("futures", {})
-        futures[job_id] = future
-
-    _update_plugin_job(
-        runtime,
-        job_id,
-        status="running",
-        detail="Running analysis",
-        progress=0.4,
-    )
-
-    return job_id
-
-
-def _refresh_plugin_jobs(runtime: Dict[str, Any]) -> None:
-    futures = runtime.get("futures")
-    if not isinstance(futures, dict):
-        return
-
-    completed: List[str] = []
-    for job_id, future in list(futures.items()):
-        if not isinstance(future, Future):
-            completed.append(job_id)
-            continue
-        if not future.done():
-            continue
-
+    if normalized_axis_kind == "image":
+        if not isinstance(image, Mapping):
+            return False, "No image payload provided."
+        data = image.get("data")
         try:
-            result = future.result()
-        except PluginError as exc:
-            status, detail, payload = "error", str(exc), None
-        except Exception as exc:  # pragma: no cover - defensive guard
-            status, detail, payload = "error", f"Plugin execution failed: {exc}", None
-        else:
-            status, detail, payload = "success", "Completed", result
+            data_array = np.asarray(data, dtype=float)
+        except Exception as exc:
+            return False, f"Unable to interpret image pixels: {exc}"
+        if data_array.size == 0:
+            return False, "Image payload contains no pixels."
+        overlays = _get_overlays()
+        fingerprint = _compute_image_fingerprint(image)
+        policy = st.session_state.get("duplicate_policy", "allow")
+        if policy in {"skip", "ledger"}:
+            for existing in overlays:
+                if existing.fingerprint == fingerprint:
+                    return False, f"Skipped duplicate trace: {label}"
+            if policy == "ledger":
+                ledger: DuplicateLedger = st.session_state["duplicate_ledger"]
+                if ledger.seen(fingerprint):
+                    return False, f"Trace already recorded in ledger: {label}"
 
-        overlay_messages: List[str] = []
-        warnings: List[str] = []
-        plugin_messages: List[str] = []
-        provenance: Mapping[str, Any] = {}
-        tables_payload: List[Dict[str, Any]] = []
+        trace = OverlayTrace(
+            trace_id=str(uuid.uuid4()),
+            label=label,
+            wavelength_nm=tuple(),
+            flux=tuple(),
+            kind=kind,
+            provider=provider,
+            summary=summary,
+            metadata=dict(metadata or {}),
+            provenance=dict(provenance or {}),
+            fingerprint=fingerprint,
+            hover=None,
+            flux_unit=str(flux_unit or "arb"),
+            flux_kind=str(flux_kind or "relative"),
+            axis=str(axis or "image"),
+            axis_kind="image",
+            image=dict(image),
+            downsample={},
+            cache_dataset_id=cache_dataset_id,
+        )
+        overlays = _get_overlays()
+        overlays.append(trace)
+        _set_overlays(overlays)
 
-        if isinstance(payload, PluginResult):
-            provenance = dict(payload.provenance or {})
-            plugin_messages = [str(message) for message in payload.messages or ()]
-            tables_payload = [
+        if st.session_state.get("duplicate_policy", "allow") == "ledger":
+            ledger = st.session_state["duplicate_ledger"]
+            ledger.record(
+                fingerprint,
                 {
-                    "name": table.name,
-                    "rows": [dict(row) for row in table.rows],
-                    "description": table.description,
-                }
-                for table in payload.tables
-            ]
-            overlays = list(payload.overlays or [])
-            for overlay in overlays:
-                data = dict(overlay)
-                overlay_prov = dict(provenance)
-                raw_prov = data.get("provenance")
-                if isinstance(raw_prov, Mapping):
-                    overlay_prov.update(raw_prov)
-                data["provenance"] = overlay_prov
-                try:
-                    added, message = _controller().add_overlay_payload(data)
-                except Exception as exc:  # pragma: no cover - overlay failure guard
-                    warnings.append(f"Overlay add failed: {exc}")
-                else:
-                    if added:
-                        overlay_messages.append(message)
-                    else:
-                        warnings.append(message)
-            detail = "; ".join(filter(None, overlay_messages + warnings)) or detail
-            if warnings and not overlay_messages:
-                status = "info"
-        elif status == "success":
-            status = "error"
-            detail = "Plugin returned no result payload."
+                    "label": label,
+                    "provider": provider,
+                    "session_id": st.session_state.get("session_id"),
+                    "added_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                },
+            )
 
-        _update_plugin_job(
-            runtime,
-            job_id,
-            status=status,
-            detail=detail,
-            progress=1.0,
-            finished=True,
-            extra={
-                "completed_at": time.time(),
-                "overlay_messages": overlay_messages,
-                "plugin_messages": plugin_messages,
-                "warnings": warnings,
-                "tables": tables_payload,
-                "provenance": provenance,
+        if not st.session_state.get("reference_trace_id"):
+            spectral_candidates = [
+                existing
+                for existing in overlays
+                if _normalize_axis_kind(existing.axis_kind) not in {"image", "time"}
+            ]
+            if spectral_candidates:
+                st.session_state["reference_trace_id"] = spectral_candidates[0].trace_id
+
+        message = f"Added {label}"
+        if provider:
+            message += f" ({provider})"
+        return True, message
+
+    try:
+        values_w = [float(v) for v in wavelengths]
+        values_f = [float(v) for v in flux]
+    except (TypeError, ValueError):
+        return False, "Unable to coerce spectral data to floats."
+    if not values_w or not values_f or len(values_w) != len(values_f):
+        return False, "No spectral samples available."
+
+    if hover is not None and len(hover) == len(values_w):
+        paired = sorted(zip(values_w, values_f, hover), key=lambda item: float(item[0]))
+        values_w = [float(item[0]) for item in paired]
+        values_f = [float(item[1]) for item in paired]
+        hover_sorted = [item[2] for item in paired]
+    else:
+        paired = sorted(zip(values_w, values_f), key=lambda item: float(item[0]))
+        values_w = [float(item[0]) for item in paired]
+        values_f = [float(item[1]) for item in paired]
+        hover_sorted = list(hover) if hover is not None else None
+
+    downsample_map: Dict[int, Tuple[Tuple[float, ...], Tuple[float, ...]]] = {}
+    if downsample:
+        for tier, payload in downsample.items():
+            try:
+                tier_value = int(tier)
+            except (TypeError, ValueError):
+                continue
+            wavelengths_ds = (
+                payload.get("wavelength_nm") if isinstance(payload, Mapping) else None
+            )
+            flux_ds = payload.get("flux") if isinstance(payload, Mapping) else None
+            if not wavelengths_ds or not flux_ds:
+                continue
+            if len(wavelengths_ds) != len(flux_ds):
+                continue
+            downsample_map[tier_value] = (
+                tuple(float(value) for value in wavelengths_ds),
+                tuple(float(value) for value in flux_ds),
+            )
+    if not downsample_map:
+        generated = build_downsample_tiers(values_w, values_f, strategy="lttb")
+        downsample_map = {
+            tier: (tuple(result.wavelength_nm), tuple(result.flux))
+            for tier, result in generated.items()
+        }
+
+    overlays = _get_overlays()
+    fingerprint = _compute_fingerprint(values_w, values_f)
+    policy = st.session_state.get("duplicate_policy", "allow")
+    if policy in {"skip", "ledger"}:
+        for existing in overlays:
+            if existing.fingerprint == fingerprint:
+                return False, f"Skipped duplicate trace: {label}"
+        if policy == "ledger":
+            ledger: DuplicateLedger = st.session_state["duplicate_ledger"]
+            if ledger.seen(fingerprint):
+                return False, f"Trace already recorded in ledger: {label}"
+
+    resolved_axis_kind = normalized_axis_kind or "wavelength"
+
+    trace = OverlayTrace(
+        trace_id=str(uuid.uuid4()),
+        label=label,
+        wavelength_nm=tuple(values_w),
+        flux=tuple(values_f),
+        kind=kind,
+        provider=provider,
+        summary=summary,
+        metadata=dict(metadata or {}),
+        provenance=dict(provenance or {}),
+        fingerprint=fingerprint,
+        hover=(
+            tuple(str(text) for text in (hover_sorted or [])) if hover_sorted else None
+        ),
+        flux_unit=str(flux_unit or "arb"),
+        flux_kind=str(flux_kind or "relative"),
+        axis=str(axis or "emission"),
+        axis_kind=resolved_axis_kind,
+        image=None,
+        downsample=downsample_map,
+        cache_dataset_id=cache_dataset_id,
+    )
+    overlays.append(trace)
+    _set_overlays(overlays)
+
+    if policy == "ledger":
+        ledger = st.session_state["duplicate_ledger"]
+        ledger.record(
+            fingerprint,
+            {
+                "label": label,
+                "provider": provider,
+                "session_id": st.session_state.get("session_id"),
+                "added_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             },
         )
 
-        if isinstance(payload, PluginResult):
-            outputs = st.session_state.get("plugin_outputs")
-            if not isinstance(outputs, list):
-                outputs = []
-            job_meta = runtime.get("jobs", {}).get(job_id, {})
-            outputs.append(
-                {
-                    "plugin_id": job_meta.get("plugin_id"),
-                    "plugin_label": job_meta.get("label"),
-                    "completed_at": time.time(),
-                    "messages": plugin_messages,
-                    "overlay_messages": overlay_messages,
-                    "warnings": warnings,
-                    "tables": tables_payload,
-                    "provenance": provenance,
-                }
+    if not st.session_state.get("reference_trace_id"):
+        st.session_state["reference_trace_id"] = trace.trace_id
+
+    message = f"Added {label}"
+    if provider:
+        message += f" ({provider})"
+    return True, message
+
+
+def _add_overlay_payload(payload: Dict[str, object]) -> Tuple[bool, str]:
+    base_added, base_message = _add_overlay(
+        str(payload.get("label") or "Trace"),
+        payload.get("wavelength_nm") or [],
+        payload.get("flux") or [],
+        flux_unit=payload.get("flux_unit"),
+        flux_kind=payload.get("flux_kind"),
+        kind=str(payload.get("kind") or "spectrum"),
+        provider=payload.get("provider"),
+        summary=payload.get("summary"),
+        metadata=payload.get("metadata"),
+        provenance=payload.get("provenance"),
+        hover=payload.get("hover"),
+        axis=payload.get("axis"),
+        axis_kind=payload.get("axis_kind")
+        or ((payload.get("metadata") or {}).get("axis_kind") if isinstance(payload.get("metadata"), Mapping) else None),
+        downsample=payload.get("downsample"),
+        cache_dataset_id=payload.get("cache_dataset_id"),
+        image=payload.get("image") if isinstance(payload.get("image"), Mapping) else None,
+    )
+    additional = payload.get("additional_traces")
+    extra_success = 0
+    failure_messages: List[str] = []
+    if isinstance(additional, Sequence):
+        for entry in additional:
+            if not isinstance(entry, Mapping):
+                continue
+            label = entry.get("label")
+            extra_label = str(label) if label is not None else f"{payload.get('label', 'Trace')} (extra)"
+            success, message = _add_overlay(
+                extra_label,
+                entry.get("wavelength_nm") or [],
+                entry.get("flux") or [],
+                flux_unit=entry.get("flux_unit") or payload.get("flux_unit"),
+                flux_kind=entry.get("flux_kind") or payload.get("flux_kind"),
+                kind=str(entry.get("kind") or payload.get("kind") or "spectrum"),
+                provider=entry.get("provider") or payload.get("provider"),
+                summary=entry.get("summary") or payload.get("summary"),
+                metadata=entry.get("metadata") or payload.get("metadata"),
+                provenance=entry.get("provenance") or payload.get("provenance"),
+                hover=entry.get("hover"),
+                axis=entry.get("axis") or payload.get("axis"),
+                axis_kind=entry.get("axis_kind")
+                or (
+                    (entry.get("metadata") or {}).get("axis_kind")
+                    if isinstance(entry.get("metadata"), Mapping)
+                    else None
+                )
+                or (
+                    (payload.get("metadata") or {}).get("axis_kind")
+                    if isinstance(payload.get("metadata"), Mapping)
+                    else None
+                ),
+                downsample=entry.get("downsample"),
+                cache_dataset_id=entry.get("cache_dataset_id")
+                or payload.get("cache_dataset_id"),
+                image=entry.get("image")
+                if isinstance(entry.get("image"), Mapping)
+                else (payload.get("image") if isinstance(payload.get("image"), Mapping) else None),
             )
-            st.session_state["plugin_outputs"] = outputs
+            if success:
+                extra_success += 1
+            else:
+                failure_messages.append(message)
 
-        completed.append(job_id)
+    combined_message = base_message
+    if extra_success:
+        combined_message += f"; added {extra_success} additional series"
+    if failure_messages:
+        combined_message += "; " + "; ".join(failure_messages)
 
-    for job_id in completed:
-        futures.pop(job_id, None)
+    return base_added or extra_success > 0, combined_message
 
-
-def _process_plugin_queue() -> None:
-    runtime = _ensure_plugin_runtime()
-    queue = list(st.session_state.get("plugin_queue", []))
-    if queue:
-        overlays = _controller().get_overlays()
-        workspace = _workspace()
-        for entry in queue:
-            try:
-                _submit_plugin_job(runtime, workspace, overlays, entry)
-            except PluginError as exc:
-                st.error(str(exc))
-        st.session_state["plugin_queue"] = []
-
-    _refresh_plugin_jobs(runtime)
 
 def _add_example_trace(spec: ExampleSpec) -> Tuple[bool, str]:
     try:
@@ -894,8 +1280,7 @@ def _add_example_trace(spec: ExampleSpec) -> Tuple[bool, str]:
         summary_parts.append(spec.description)
     summary = " • ".join(part for part in summary_parts if part)
 
-    controller = _controller()
-    return controller.add_overlay(
+    return _add_overlay(
         hit.label,
         [float(value) for value in hit.wavelengths_nm],
         [float(value) for value in hit.flux],
@@ -934,7 +1319,7 @@ def _render_examples_group(container: DeltaGenerator) -> None:
         added, message = _load_example(selection)
         (container.success if added else container.info)(message)
 
-    overlays = _controller().get_overlays()
+    overlays = _get_overlays()
     if not overlays:
         container.caption("Load an example or fetch from an archive to begin.")
 
@@ -982,248 +1367,13 @@ def _render_nist_form(container: DeltaGenerator) -> None:
     if not payload:
         container.warning("NIST returned no lines for that query.")
         return
-    added, message = _controller().add_overlay_payload(payload)
+    added, message = _add_overlay_payload(payload)
     (container.success if added else container.info)(message)
 
 
-def _render_plugin_queue_panel(container: DeltaGenerator) -> None:
-    container.markdown("### Plugin queue")
-    runtime = st.session_state.get("plugin_runtime")
-    jobs = _snapshot_plugin_jobs(runtime)
-    if not jobs:
-        container.caption(
-            "Queued plugin runs will appear here while analysis jobs execute in the background."
-        )
-        return
-
-    jobs_sorted = sorted(jobs, key=lambda job: job.get("submitted_at") or 0.0, reverse=True)
-    for job in jobs_sorted:
-        label = str(job.get("label") or job.get("plugin_id") or "Plugin run")
-        status = str(job.get("status") or "queued")
-        detail = str(job.get("detail") or "").strip()
-        status_label = _PLUGIN_STATUS_LABELS.get(status, status.replace("_", " ").title())
-        progress = job.get("progress")
-        try:
-            progress_value = max(0.0, min(1.0, float(progress)))
-        except Exception:
-            progress_value = _PLUGIN_STATUS_PROGRESS.get(status, 0.0)
-
-        entry = container.container()
-        entry.markdown(f"**{label}**")
-        selection_labels = job.get("selection_labels")
-        if isinstance(selection_labels, (list, tuple)) and selection_labels:
-            entry.caption(
-                "Targets: "
-                + ", ".join(str(candidate) for candidate in selection_labels if candidate)
-            )
-        if status == "success":
-            entry.success(detail or status_label)
-        elif status == "info":
-            entry.info(detail or status_label)
-        elif status == "error":
-            entry.error(detail or status_label)
-        else:
-            entry.progress(progress_value)
-            entry.caption(detail or status_label)
-
-
-def _render_plugin_results_panel(container: DeltaGenerator) -> None:
-    container.markdown("### Recent plugin outputs")
-    outputs = st.session_state.get("plugin_outputs")
-    if not isinstance(outputs, list) or not outputs:
-        container.caption("Completed plugin runs will appear here with parameter tables and provenance.")
-        return
-
-    entries = sorted(outputs, key=lambda entry: entry.get("completed_at") or 0.0, reverse=True)
-    for entry in entries[:10]:
-        label = str(entry.get("plugin_label") or entry.get("plugin_id") or "Plugin run")
-        timestamp = entry.get("completed_at")
-        if isinstance(timestamp, (int, float)):
-            header = (
-                f"{label} • "
-                f"{datetime.fromtimestamp(float(timestamp), tz=timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}"
-            )
-        else:
-            header = label
-        expander = container.expander(header)
-        with expander:
-            for message in entry.get("messages") or []:
-                expander.write(message)
-            for overlay_message in entry.get("overlay_messages") or []:
-                expander.success(overlay_message)
-            for warning in entry.get("warnings") or []:
-                expander.warning(warning)
-            for table in entry.get("tables") or []:
-                name = str(table.get("name") or "Results table")
-                expander.markdown(f"**{name}**")
-                description = table.get("description")
-                if description:
-                    expander.caption(str(description))
-                rows = table.get("rows") or []
-                if rows:
-                    try:
-                        df = pd.DataFrame(rows)
-                    except Exception:
-                        df = None
-                    if df is not None and not df.empty:
-                        expander.dataframe(df)
-                    else:
-                        expander.json(rows)
-                else:
-                    expander.caption("No rows returned.")
-            provenance = entry.get("provenance")
-            if isinstance(provenance, Mapping) and provenance:
-                expander.markdown("**Provenance**")
-                expander.json(provenance)
-
-
-def _render_plugin_tab() -> None:
-    st.markdown("### Analysis plugins")
-    plugin_classes = plugin_registry.list_plugins()
-    if not plugin_classes:
-        st.info("No plugins have been registered yet.")
-        return
-
-    plugin_options = [plugin.plugin_id for plugin in plugin_classes]
-    labels = {plugin.plugin_id: plugin.label for plugin in plugin_classes}
-    selected_id = st.selectbox(
-        "Plugin",
-        plugin_options,
-        index=plugin_options.index(
-            st.session_state.get("plugin_selected_id") or plugin_options[0]
-        )
-        if st.session_state.get("plugin_selected_id") in plugin_options
-        else 0,
-        format_func=lambda value: labels.get(value, value),
-        key="plugin_selected_id",
-    )
-    plugin_cls = plugin_registry.get(selected_id)
-
-    overlays = _controller().get_overlays()
-    context = PluginRuntimeContext(_workspace(), [replace(trace) for trace in overlays])
-    plugin_instance = plugin_cls(context)
-    if plugin_instance.description:
-        st.caption(plugin_instance.description)
-
-    form_key = f"plugin_form_{plugin_cls.plugin_id}"
-    selection: List[str] = []
-    overlay_labels = {trace.trace_id: trace.label for trace in overlays}
-
-    with st.form(form_key):
-        if plugin_instance.supports_selection():
-            if plugin_instance.selection_mode == "multiple":
-                default_selection = list(plugin_instance.default_selection())
-                selection = st.multiselect(
-                    "Datasets",
-                    list(overlay_labels.keys()),
-                    default=default_selection,
-                    format_func=lambda trace_id: overlay_labels.get(trace_id, trace_id),
-                    key=f"{form_key}_selection",
-                )
-            else:
-                options = list(overlay_labels.keys())
-                if options:
-                    default_selection = list(plugin_instance.default_selection())
-                    default_value = default_selection[0] if default_selection else options[0]
-                    try:
-                        default_index_single = options.index(default_value)
-                    except ValueError:
-                        default_index_single = 0
-                    chosen = st.selectbox(
-                        "Dataset",
-                        options,
-                        index=default_index_single,
-                        format_func=lambda trace_id: overlay_labels.get(trace_id, trace_id),
-                        key=f"{form_key}_selection_single",
-                    )
-                    if chosen:
-                        selection = [chosen]
-                else:
-                    st.warning("Load at least one spectrum to run this plugin.")
-
-        config_values: Dict[str, Any] = {}
-        for field in plugin_instance.config_fields():
-            control_key = f"{form_key}_{field.name}"
-            if field.kind == "checkbox":
-                config_values[field.name] = st.checkbox(
-                    field.label,
-                    value=bool(field.default),
-                    help=field.help,
-                    key=control_key,
-                )
-            elif field.kind == "select":
-                options = list(field.options)
-                if not options and field.default is not None:
-                    options = [field.default]
-                try:
-                    default_index = options.index(field.default)
-                except ValueError:
-                    default_index = 0
-                config_values[field.name] = st.selectbox(
-                    field.label,
-                    options or [""],
-                    index=default_index if options else 0,
-                    help=field.help,
-                    key=control_key,
-                )
-            elif field.kind == "slider":
-                min_value = float(field.min_value if field.min_value is not None else 0.0)
-                max_value = float(field.max_value if field.max_value is not None else min_value + 1.0)
-                default_value = float(field.default if field.default is not None else min_value)
-                step = float(
-                    field.step
-                    if field.step is not None
-                    else max((max_value - min_value) / 100.0, 1e-6)
-                )
-                config_values[field.name] = st.slider(
-                    field.label,
-                    min_value=min_value,
-                    max_value=max_value,
-                    value=max(min(default_value, max_value), min_value),
-                    step=step,
-                    help=field.help,
-                    key=control_key,
-                )
-            else:
-                value = float(field.default) if field.default is not None else 0.0
-                config_values[field.name] = st.number_input(
-                    field.label,
-                    value=value,
-                    min_value=field.min_value,
-                    max_value=field.max_value,
-                    step=field.step or 0.1,
-                    help=field.help,
-                    key=control_key,
-                )
-
-        submitted = st.form_submit_button("Queue plugin run")
-
-    if submitted:
-        if plugin_instance.supports_selection() and not selection:
-            st.warning("Select at least one dataset before running the plugin.")
-        else:
-            queue = list(st.session_state.get("plugin_queue", []))
-            queue.append(
-                {
-                    "plugin_id": plugin_cls.plugin_id,
-                    "plugin_label": plugin_cls.label,
-                    "selection": list(selection),
-                    "selection_labels": [overlay_labels.get(item, item) for item in selection],
-                    "config": dict(config_values),
-                }
-            )
-            st.session_state["plugin_queue"] = queue
-            st.success("Plugin run queued. Monitor progress below.")
-
-    st.divider()
-    queue_container = st.container()
-    _render_plugin_queue_panel(queue_container)
-    st.divider()
-    results_container = st.container()
-    _render_plugin_results_panel(results_container)
 def _render_display_section(container: DeltaGenerator) -> None:
     container.markdown("#### Display & viewport")
-    overlays = _controller().get_overlays()
+    overlays = _get_overlays()
     cleared = container.button(
         "Clear overlays",
         key="clear_overlays_button",
@@ -1277,10 +1427,10 @@ def _render_display_section(container: DeltaGenerator) -> None:
     )
     st.session_state["auto_viewport"] = auto
     if auto:
-        _controller().set_viewport_for_kind(primary_axis, (None, None))
+        _set_viewport_for_kind(primary_axis, (None, None))
         return
 
-    stored_viewport = _controller().get_viewport_for_kind(primary_axis)
+    stored_viewport = _get_viewport_for_kind(primary_axis)
     default_low, default_high = _effective_viewport(
         selected_group, stored_viewport, axis_kind=primary_axis
     )
@@ -1309,7 +1459,7 @@ def _render_display_section(container: DeltaGenerator) -> None:
         value=(float(default_low), float(default_high)),
         step=float(step),
     )
-    _controller().set_viewport_for_kind(
+    _set_viewport_for_kind(
         primary_axis, (float(selection[0]), float(selection[1]))
     )
 
@@ -1428,6 +1578,494 @@ def _render_uploads_group(container: DeltaGenerator) -> None:
 # Overlay rendering helpers
 
 
+def _infer_viewport_bounds(overlays: Sequence[OverlayTrace]) -> Tuple[float, float]:
+    if not overlays:
+        return 350.0, 900.0
+
+    meta_ranges: List[Tuple[float, float]] = []
+    data_wavelengths: List[float] = []
+
+    for trace in overlays:
+        meta_range = _extract_metadata_range(trace.metadata)
+        if meta_range is not None:
+            meta_ranges.append(meta_range)
+        data_wavelengths.extend(trace.wavelength_nm)
+
+    if meta_ranges:
+        lows, highs = zip(*meta_ranges)
+        low = float(min(lows))
+        high = float(max(highs))
+        if math.isfinite(low) and math.isfinite(high) and low < high:
+            return low, high
+
+    arr = np.array(data_wavelengths, dtype=float)
+    arr = arr[np.isfinite(arr)]
+    if arr.size == 0:
+        return 350.0, 900.0
+    return float(arr.min()), float(arr.max())
+
+
+def _auto_viewport_range(
+    overlays: Sequence[OverlayTrace],
+    *,
+    coverage: float = 0.99,
+    axis_kind: Optional[str] = None,
+) -> Optional[Tuple[float, float]]:
+    normalized_kind = _normalize_axis_kind(axis_kind) if axis_kind else None
+    if normalized_kind is not None:
+        overlays = [
+            trace for trace in overlays if _axis_kind_for_trace(trace) == normalized_kind
+        ]
+    visible = [trace for trace in overlays if trace.visible]
+    target = visible if visible else list(overlays)
+    if not target:
+        return None
+
+    ranges: List[Tuple[float, float]] = []
+    data_low = math.inf
+    data_high = -math.inf
+    for trace in target:
+        wavelengths = np.asarray(trace.wavelength_nm, dtype=float)
+        flux_values = np.asarray(trace.flux, dtype=float)
+        mask = np.isfinite(wavelengths) & np.isfinite(flux_values)
+        if mask.sum() < 2:
+            continue
+        wavelengths = wavelengths[mask]
+        flux_values = flux_values[mask]
+        if wavelengths.size < 2:
+            continue
+
+        data_low = min(data_low, float(np.min(wavelengths)))
+        data_high = max(data_high, float(np.max(wavelengths)))
+
+        interval = flux_percentile_range(wavelengths, flux_values, coverage=coverage)
+        if interval is not None:
+            ranges.append((float(interval[0]), float(interval[1])))
+
+    if not ranges:
+        return None
+
+    low = min(low for low, _ in ranges)
+    high = max(high for _, high in ranges)
+    if not (math.isfinite(low) and math.isfinite(high)) or low >= high:
+        return None
+
+    if math.isfinite(data_low) and math.isfinite(data_high) and data_high > data_low:
+        pad = 0.01 * (data_high - data_low)
+        if pad > 0.0:
+            low = max(low - pad, data_low)
+            high = min(high + pad, data_high)
+
+    return float(low), float(high)
+
+
+def _effective_viewport(
+    overlays: Sequence[OverlayTrace],
+    viewport: Tuple[float | None, float | None],
+    *,
+    axis_kind: Optional[str] = None,
+) -> Tuple[float | None, float | None]:
+    if not overlays:
+        return (None, None)
+
+    normalized_viewport = _normalize_viewport_tuple(viewport)
+    low, high = normalized_viewport
+    if low is not None or high is not None:
+        return (
+            float(low) if low is not None else None,
+            float(high) if high is not None else None,
+        )
+
+    target_kind = axis_kind or _axis_kind_for_trace(overlays[0])
+    auto_range = _auto_viewport_range(overlays, axis_kind=target_kind)
+    if auto_range is not None:
+        return float(auto_range[0]), float(auto_range[1])
+
+    fallback_low, fallback_high = _infer_viewport_bounds(overlays)
+    return float(fallback_low), float(fallback_high)
+
+
+def _extract_metadata_range(
+    metadata: Dict[str, object],
+) -> Optional[Tuple[float, float]]:
+    axis_kind = None
+    if isinstance(metadata, Mapping):
+        axis_kind = metadata.get("axis_kind")
+    if axis_kind == "time":
+        keys = ("data_time_range", "time_range")
+    else:
+        keys = ("wavelength_effective_range_nm", "wavelength_range_nm")
+    for key in keys:
+        value = metadata.get(key) if metadata else None
+        if isinstance(value, (list, tuple)) and len(value) == 2:
+            try:
+                low = float(value[0])
+                high = float(value[1])
+            except (TypeError, ValueError):
+                continue
+            if math.isfinite(low) and math.isfinite(high) and low < high:
+                return min(low, high), max(low, high)
+    return None
+
+
+def _filter_viewport(
+    df: pd.DataFrame, viewport: Tuple[float | None, float | None]
+) -> pd.DataFrame:
+    low, high = viewport
+    if low is not None:
+        df = df[df["wavelength_nm"] >= low]
+    if high is not None:
+        df = df[df["wavelength_nm"] <= high]
+    return df
+
+
+def _convert_wavelength(series: pd.Series, unit: str) -> Tuple[pd.Series, str]:
+    unit = unit or "nm"
+    values = pd.to_numeric(series, errors="coerce")
+    if unit == "Å":
+        return values * 10.0, "Wavelength (Å)"
+    if unit == "µm":
+        return values / 1000.0, "Wavelength (µm)"
+    if unit == "cm^-1":
+        safe = values.replace(0, np.nan)
+        return 1e7 / safe, "Wavenumber (cm⁻¹)"
+    return values, "Wavelength (nm)"
+
+
+def _time_axis_labels(
+    metadata: Mapping[str, object], provenance: Mapping[str, object]
+) -> Tuple[Optional[str], Optional[str]]:
+    def _clean(value: object) -> Optional[str]:
+        if isinstance(value, str):
+            text = value.strip()
+            if text:
+                return text
+        return None
+
+    meta = metadata if isinstance(metadata, Mapping) else {}
+    provenance_map = provenance if isinstance(provenance, Mapping) else {}
+    units_meta = provenance_map.get("units") if isinstance(provenance_map, Mapping) else {}
+    if not isinstance(units_meta, Mapping):
+        units_meta = {}
+
+    unit_label = (
+        _clean(meta.get("time_unit"))
+        or _clean(meta.get("reported_time_unit"))
+        or _clean(meta.get("time_original_unit"))
+        or _clean(meta.get("axis_unit"))
+        or _clean(units_meta.get("time_converted_to"))
+        or _clean(units_meta.get("time_reported"))
+        or _clean(units_meta.get("time_original_unit"))
+    )
+
+    reference_label = (
+        _clean(meta.get("time_original_unit"))
+        or _clean(units_meta.get("time_original_unit"))
+        or _clean(meta.get("reported_time_unit"))
+        or _clean(units_meta.get("time_reported"))
+    )
+
+    offset_value: Optional[object] = meta.get("time_offset") if isinstance(meta, Mapping) else None
+    if offset_value is None and isinstance(units_meta, Mapping):
+        offset_value = units_meta.get("time_offset")
+
+    frame_label = _clean(meta.get("time_frame")) if isinstance(meta, Mapping) else None
+    if not frame_label and isinstance(units_meta, Mapping):
+        frame_label = _clean(units_meta.get("time_frame"))
+
+    if reference_label is None and offset_value is not None:
+        try:
+            offset_float = float(offset_value)
+            offset_text = f"{offset_float:g}"
+        except (TypeError, ValueError):
+            offset_text = str(offset_value)
+        if frame_label:
+            reference_label = f"{frame_label} - {offset_text}"
+        else:
+            reference_label = f"offset {offset_text}"
+    elif reference_label and offset_value is not None and frame_label:
+        try:
+            offset_float = float(offset_value)
+            offset_text = f"{offset_float:g}"
+        except (TypeError, ValueError):
+            offset_text = str(offset_value)
+        if frame_label not in reference_label:
+            reference_label = f"{frame_label} - {offset_text}"
+
+    return unit_label, reference_label
+
+
+def _convert_time_axis(series: pd.Series, trace: OverlayTrace) -> Tuple[pd.Series, str]:
+    values = pd.to_numeric(series, errors="coerce")
+    metadata = trace.metadata or {}
+    provenance = trace.provenance or {}
+    unit_label, reference_label = _time_axis_labels(metadata, provenance)
+    axis_title = f"Time ({unit_label})" if unit_label else "Time"
+    if reference_label:
+        axis_title = f"{axis_title} — ref {reference_label}"
+    return values, axis_title
+
+
+def _convert_axis_series(
+    series: pd.Series, trace: OverlayTrace, display_units: str
+) -> Tuple[pd.Series, str]:
+    if getattr(trace, "axis_kind", "wavelength") == "time":
+        return _convert_time_axis(series, trace)
+    return _convert_wavelength(series, display_units)
+
+
+def _axis_title_for_kind(
+    axis_kind: str,
+    overlays: Sequence[OverlayTrace],
+    display_units: str,
+) -> Optional[str]:
+    normalized = _normalize_axis_kind(axis_kind)
+    for trace in overlays:
+        if _axis_kind_for_trace(trace) != normalized:
+            continue
+        values = list(trace.wavelength_nm)
+        if not values:
+            continue
+        sample = pd.Series(values[: min(len(values), 256)])
+        _, axis_title = _convert_axis_series(sample, trace, display_units)
+        if axis_title:
+            return axis_title
+    return None
+
+
+def _normalize_hover_values(
+    values: Optional[Sequence[object]],
+) -> Optional[List[Optional[str]]]:
+    if values is None:
+        return None
+    normalized: List[Optional[str]] = []
+    has_text = False
+    for value in values:
+        if pd.isna(value):
+            normalized.append(None)
+            continue
+        text = str(value)
+        normalized.append(text)
+        if text:
+            has_text = True
+    return normalized if has_text else None
+
+
+def _add_line_trace(
+    fig: go.Figure,
+    df: pd.DataFrame,
+    label: str,
+    hover_values: Optional[Sequence[Optional[str]]] = None,
+) -> None:
+    xs: List[float | None] = []
+    ys: List[float | None] = []
+    resolved_hover = (
+        _normalize_hover_values(hover_values)
+        if hover_values is not None
+        else _normalize_hover_values(df.get("hover"))
+    )
+    hover: Optional[List[Optional[str]]] = [] if resolved_hover is not None else None
+    for idx, (_, row) in enumerate(df.iterrows()):
+        x = row.get("wavelength")
+        y = float(row.get("flux", 0.0))
+        text = resolved_hover[idx] if resolved_hover is not None else None
+        xs.extend([x, x, None])
+        ys.extend([0.0, y, None])
+        if hover is not None:
+            hover.extend([text, text, None])
+    fig.add_trace(
+        go.Scatter(
+            x=xs,
+            y=ys,
+            mode="lines",
+            name=label,
+            hovertext=hover if hover is not None else None,
+            hoverinfo="text" if hover is not None else None,
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=df["wavelength"],
+            y=df["flux"],
+            mode="markers",
+            marker=dict(size=6, symbol="line-ns"),
+            name=f"{label} markers",
+            hovertext=resolved_hover,
+            hoverinfo="text" if resolved_hover is not None else None,
+            showlegend=False,
+        )
+    )
+
+
+def _build_overlay_figure(
+    overlays: Sequence[OverlayTrace],
+    display_units: str,
+    display_mode: str,
+    normalization_mode: str,
+    viewport_by_kind: Mapping[str, Tuple[float | None, float | None]],
+    reference: Optional[OverlayTrace],
+    differential_mode: str,
+    version_tag: str,
+    *,
+    axis_viewport_by_kind: Optional[
+        Mapping[str, Tuple[float | None, float | None]]
+    ] = None,
+) -> Tuple[go.Figure, str]:
+    fig = go.Figure()
+    axis_title = "Wavelength (nm)"
+    full_resolution = _is_full_resolution_enabled()
+    max_points = 3000000 if full_resolution else 1500000
+    viewport_lookup = {
+        _normalize_axis_kind(kind): _normalize_viewport_tuple(viewport)
+        for kind, viewport in (viewport_by_kind or {}).items()
+    }
+    axis_lookup = (
+        {
+            _normalize_axis_kind(kind): _normalize_viewport_tuple(viewport)
+            for kind, viewport in axis_viewport_by_kind.items()
+        }
+        if axis_viewport_by_kind
+        else {}
+    )
+    reference_vectors: Optional[TraceVectors] = None
+    if reference and _axis_kind_for_trace(reference) not in {"image", "time"}:
+        ref_kind = _axis_kind_for_trace(reference)
+        reference_vectors = reference.to_vectors(
+            max_points=max_points,
+            viewport=viewport_lookup.get(ref_kind, (None, None)),
+        )
+
+    visible_axis_kinds: List[str] = []
+    axis_titles: Dict[str, str] = {}
+
+    for trace in overlays:
+        if not trace.visible:
+            continue
+
+        axis_kind = _axis_kind_for_trace(trace)
+        if axis_kind in {"image", "time"}:
+            continue
+        viewport = viewport_lookup.get(axis_kind, (None, None))
+        visible_axis_kinds.append(axis_kind)
+
+        if trace.kind == "lines":
+            df = trace.to_dataframe()
+            df = _filter_viewport(df, viewport)
+            if df.empty:
+                continue
+            converted, candidate_title = _convert_axis_series(
+                df["wavelength_nm"], trace, display_units
+            )
+            df = df.assign(wavelength=converted, flux=df["flux"].astype(float))
+            hover_values = _normalize_hover_values(df.get("hover"))
+            _add_line_trace(fig, df, trace.label, hover_values)
+            axis_titles.setdefault(axis_kind, candidate_title)
+            continue
+
+        sample_w, sample_flux, sample_hover, _ = trace.sample(
+            viewport,
+            max_points=max_points,
+            include_hover=True,
+        )
+        if sample_w.size == 0:
+            continue
+
+        if (
+            differential_mode == "Relative to reference"
+            and reference_vectors is not None
+            and trace.trace_id != reference_vectors.trace_id
+        ):
+            trace_vectors = TraceVectors(
+                trace_id=trace.trace_id,
+                label=trace.label,
+                wavelengths_nm=sample_w,
+                flux=sample_flux,
+                kind=trace.kind,
+                fingerprint=trace.fingerprint,
+            )
+            axis, values_trace, values_ref = viewport_alignment(
+                trace_vectors,
+                reference_vectors,
+                viewport,
+            )
+            if axis is None or values_trace is None or values_ref is None:
+                continue
+            sample_w = np.asarray(axis, dtype=float)
+            sample_flux = np.asarray(values_trace - values_ref, dtype=float)
+            sample_hover = None
+
+        converted, candidate_title = _convert_axis_series(
+            pd.Series(sample_w), trace, display_units
+        )
+        axis_titles.setdefault(axis_kind, candidate_title)
+        flux_array = np.asarray(sample_flux, dtype=float)
+
+        if display_mode != "Flux (raw)":
+            flux_array = apply_normalization(flux_array, "max")
+        elif normalization_mode and normalization_mode != "none":
+            flux_array = apply_normalization(flux_array, normalization_mode)
+
+        hover_values = (
+            _normalize_hover_values(sample_hover) if sample_hover is not None else None
+        )
+
+        fig.add_trace(
+            go.Scatter(
+                x=converted.tolist(),
+                y=flux_array.tolist(),
+                mode="lines",
+                name=trace.label,
+                hovertext=hover_values if hover_values is not None else None,
+                hoverinfo="text" if hover_values is not None else None,
+            )
+        )
+
+    if axis_titles:
+        unique_kinds = sorted({kind for kind in visible_axis_kinds})
+        if len(unique_kinds) == 1:
+            axis_title = axis_titles.get(unique_kinds[0], axis_title)
+        else:
+            friendly = " + ".join(kind.replace("_", " ") for kind in unique_kinds)
+            axis_title = f"Mixed axes ({friendly})"
+
+    fig.update_layout(
+        xaxis_title=axis_title,
+        yaxis_title="Normalized flux" if display_mode != "Flux (raw)" else "Flux",
+        legend=dict(itemclick="toggleothers"),
+        margin=dict(t=50, b=40, l=60, r=20),
+        height=520,
+    )
+    unique_kinds = sorted({kind for kind in visible_axis_kinds})
+    if len(unique_kinds) == 1 and axis_lookup:
+        axis_range = axis_lookup.get(unique_kinds[0])
+        if axis_range is not None:
+            axis_low, axis_high = axis_range
+            if (
+                axis_low is not None
+                and axis_high is not None
+                and math.isfinite(axis_low)
+                and math.isfinite(axis_high)
+                and axis_high > axis_low
+            ):
+                fig.update_xaxes(range=[float(axis_low), float(axis_high)])
+    fig.update_layout(
+        annotations=[
+            dict(
+                text=version_tag,
+                xref="paper",
+                yref="paper",
+                x=0.99,
+                y=-0.22,
+                showarrow=False,
+                font=dict(size=12),
+                align="right",
+                opacity=0.7,
+            )
+        ]
+    )
+    return fig, axis_title
+
+
 def _render_overlay_table(overlays: Sequence[OverlayTrace]) -> None:
     if not overlays:
         return
@@ -1445,7 +2083,7 @@ def _render_overlay_table(overlays: Sequence[OverlayTrace]) -> None:
                 trace.visible = desired_state
                 mutated = True
         if mutated:
-            _controller().set_overlays(overlays)
+            _set_overlays(overlays)
 
     options = [trace.trace_id for trace in overlays]
 
@@ -1482,7 +2120,7 @@ def _render_overlay_table(overlays: Sequence[OverlayTrace]) -> None:
                 trace.visible = desired
                 mutated = True
     if mutated:
-        _controller().set_overlays(overlays)
+        _set_overlays(overlays)
 
     selected = st.multiselect(
         "Remove overlays",
@@ -1605,7 +2243,13 @@ def _render_image_overlay_panels(overlays: Sequence[OverlayTrace]) -> None:
 
 
 def _remove_overlays(trace_ids: Sequence[str]) -> None:
-    _workspace().remove_overlays(trace_ids)
+    remaining = [
+        trace for trace in _get_overlays() if trace.trace_id not in set(trace_ids)
+    ]
+    _set_overlays(remaining)
+    cache = st.session_state.get("similarity_cache")
+    if isinstance(cache, SimilarityCache):
+        cache.reset()
 
 
 def _normalise_wavelength_range(meta: Dict[str, object]) -> str:
@@ -1674,79 +2318,6 @@ def _format_axis_range(trace: OverlayTrace, meta: Mapping[str, object]) -> str:
     return "—"
 
 
-def _resolve_image_statistics(
-    trace: OverlayTrace, meta: Mapping[str, object]
-) -> Optional[Mapping[str, object]]:
-    stats = meta.get("image_statistics")
-    if isinstance(stats, Mapping):
-        return stats
-    if isinstance(trace.metadata, Mapping):
-        raw = trace.metadata.get("image_statistics")
-        if isinstance(raw, Mapping):
-            return raw
-    if isinstance(trace.image, Mapping):
-        image_stats = trace.image.get("statistics")
-        if isinstance(image_stats, Mapping):
-            return image_stats
-    return None
-
-
-def _format_pixel_range(trace: OverlayTrace, meta: Mapping[str, object]) -> str:
-    if str(trace.axis_kind or meta.get("axis_kind") or "wavelength").lower() != "image":
-        return "—"
-    stats = _resolve_image_statistics(trace, meta)
-    if not isinstance(stats, Mapping):
-        return "—"
-    minimum = stats.get("min")
-    maximum = stats.get("max")
-    if not isinstance(minimum, (int, float)) or not isinstance(maximum, (int, float)):
-        return "—"
-    if not math.isfinite(float(minimum)) or not math.isfinite(float(maximum)):
-        return "—"
-    unit_suffix = f" {trace.flux_unit}" if trace.flux_unit else ""
-    return f"{float(minimum):.3g} – {float(maximum):.3g}{unit_suffix}"
-
-
-def _format_pixel_spread(trace: OverlayTrace, meta: Mapping[str, object]) -> str:
-    if str(trace.axis_kind or meta.get("axis_kind") or "wavelength").lower() != "image":
-        return "—"
-    stats = _resolve_image_statistics(trace, meta)
-    if not isinstance(stats, Mapping):
-        return "—"
-    p16 = stats.get("p16")
-    p84 = stats.get("p84")
-    median = stats.get("median")
-    components: List[str] = []
-    if isinstance(median, (int, float)) and math.isfinite(float(median)):
-        components.append(f"median {float(median):.3g}")
-    if isinstance(p16, (int, float)) and isinstance(p84, (int, float)):
-        if math.isfinite(float(p16)) and math.isfinite(float(p84)):
-            components.append(f"16–84% {float(p16):.3g}–{float(p84):.3g}")
-    if not components:
-        return "—"
-    unit_suffix = f" {trace.flux_unit}" if trace.flux_unit else ""
-    return ", ".join(components) + unit_suffix
-
-
-def _format_spatial_axes(trace: OverlayTrace) -> str:
-    if str(trace.axis_kind or "wavelength").lower() != "image":
-        return "—"
-    provenance_units = None
-    if isinstance(trace.provenance, Mapping):
-        units = trace.provenance.get("units")
-        if isinstance(units, Mapping):
-            provenance_units = units.get("image_axes")
-    axes: Sequence[str] = ()
-    if isinstance(provenance_units, Sequence) and not isinstance(provenance_units, str):
-        axes = [str(axis) for axis in provenance_units if axis]
-    if not axes:
-        if isinstance(trace.metadata, Mapping):
-            ctype = trace.metadata.get("image_axis_ctype")
-            if isinstance(ctype, str) and ctype.strip():
-                axes = [ctype.strip()]
-    return ", ".join(axes) if axes else "—"
-
-
 def _build_metadata_summary_rows(
     overlays: Sequence[OverlayTrace],
 ) -> List[Dict[str, object]]:
@@ -1769,9 +2340,6 @@ def _build_metadata_summary_rows(
                 "Resolution": meta.get("resolution_native")
                 or meta.get("resolution")
                 or "—",
-                "Pixel range": _format_pixel_range(trace, meta),
-                "Pixel stats": _format_pixel_spread(trace, meta),
-                "Spatial axes": _format_spatial_axes(trace),
             }
         )
     return rows
@@ -1907,13 +2475,18 @@ def _render_local_upload() -> None:
             }
             continue
 
-        added, message = _controller().add_overlay_payload(payload)
+        added, message = _add_overlay_payload(payload)
         registry[checksum] = {"name": uploaded.name, "added": added, "message": message}
         (st.success if added else st.info)(message)
 
 
 def _clear_overlays() -> None:
-    _workspace().clear_overlays()
+    st.session_state["overlay_traces"] = []
+    st.session_state["reference_trace_id"] = None
+    cache: SimilarityCache = st.session_state["similarity_cache"]
+    cache.reset()
+    st.session_state["local_upload_registry"] = {}
+    st.session_state["differential_result"] = None
 
 
 def _export_current_view(
@@ -1923,19 +2496,68 @@ def _export_current_view(
     display_mode: str,
     viewport: Mapping[str, Tuple[float | None, float | None]],
 ) -> None:
-    result = _workspace().export_view(
-        overlays,
-        display_units,
-        display_mode,
-        viewport,
-        fig=fig,
-    )
-    if not result.success:
-        st.warning(result.message)
+    rows: List[Dict[str, object]] = []
+    for trace in overlays:
+        if not trace.visible:
+            continue
+        axis_kind = _axis_kind_for_trace(trace)
+        axis_view = viewport.get(axis_kind, (None, None))
+        df = _filter_viewport(trace.to_dataframe(), axis_view)
+        if df.empty:
+            continue
+        converted, axis_title = _convert_axis_series(
+            df["wavelength_nm"], trace, display_units
+        )
+        scaled = df["flux"].to_numpy(dtype=float)
+        if display_mode != "Flux (raw)":
+            scaled = apply_normalization(scaled, "max")
+        for wavelength_value, flux_value in zip(converted, scaled):
+            if not math.isfinite(float(wavelength_value)) or not math.isfinite(
+                float(flux_value)
+            ):
+                continue
+            if axis_kind == "wavelength":
+                unit_label = display_units
+            elif axis_title and "(" in axis_title and axis_title.rstrip().endswith(")"):
+                unit_label = axis_title.rsplit("(", 1)[1].rstrip(") ")
+            else:
+                unit_label = axis_title or axis_kind
+            rows.append(
+                {
+                    "series": trace.label,
+                    "wavelength": float(wavelength_value),
+                    "axis_kind": axis_kind,
+                    "unit": unit_label,
+                    "flux": float(flux_value),
+                    "display_mode": display_mode,
+                }
+            )
+    if not rows:
+        st.warning("Nothing to export in the current viewport.")
         return
-    for note in result.warnings:
-        st.warning(note)
-    st.success(result.message)
+    df_export = pd.DataFrame(rows)
+    timestamp = time.strftime("%Y%m%d-%H%M%S")
+    csv_path = EXPORT_DIR / f"spectra_export_{timestamp}.csv"
+    png_path = EXPORT_DIR / f"spectra_export_{timestamp}.png"
+    manifest_path = EXPORT_DIR / f"spectra_export_{timestamp}.manifest.json"
+    df_export.to_csv(csv_path, index=False)
+    try:
+        fig.write_image(str(png_path))
+    except Exception as exc:
+        st.warning(f"PNG export requires kaleido ({exc}).")
+    viewport_payload = {
+        kind: {"low": vp[0], "high": vp[1]}
+        for kind, vp in viewport.items()
+    }
+    manifest = build_manifest(
+        rows,
+        display_units=display_units,
+        display_mode=display_mode,
+        exported_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        viewport=viewport_payload,
+    )
+    manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    st.success(f"Exported: {csv_path.name}, {png_path.name}, {manifest_path.name}")
 
 
 # ---------------------------------------------------------------------------
@@ -2088,12 +2710,12 @@ def _convert_nist_payload(data: Dict[str, object]) -> Optional[Dict[str, object]
 
 
 def _render_status_bar(version_info: Mapping[str, object]) -> None:
-    overlays = _controller().get_overlays()
+    overlays = _get_overlays()
     target_overlays = [trace for trace in overlays if trace.visible] or overlays
     axis_groups = _group_overlays_by_axis_kind(target_overlays)
     primary_axis = _determine_primary_axis_kind(target_overlays)
     selected_group = axis_groups.get(primary_axis) or target_overlays
-    stored_viewport = _controller().get_viewport_for_kind(primary_axis)
+    stored_viewport = _get_viewport_for_kind(primary_axis)
     effective_viewport = _effective_viewport(
         selected_group, stored_viewport, axis_kind=primary_axis
     )
@@ -2176,7 +2798,7 @@ def _render_overlay_tab(version_info: Dict[str, str]) -> None:
     cleared_message = st.session_state.pop("overlay_clear_message", None)
     if cleared_message:
         st.warning(str(cleared_message))
-    overlays = _controller().get_overlays()
+    overlays = _get_overlays()
     if not overlays:
         st.info("Upload a recorded spectrum or fetch from the archive tab to begin.")
         return
@@ -2193,7 +2815,7 @@ def _render_overlay_tab(version_info: Dict[str, str]) -> None:
         for kind, group in axis_groups.items()
         if kind not in {"image", "time"}
     }
-    viewport_store = _controller().get_viewport_store()
+    viewport_store = _get_viewport_store()
     auto_enabled = bool(st.session_state.get("auto_viewport", True))
     effective_viewports: Dict[str, Tuple[float | None, float | None]] = {}
     filter_viewports: Dict[str, Tuple[float | None, float | None]] = {}
@@ -2228,7 +2850,6 @@ def _render_overlay_tab(version_info: Dict[str, str]) -> None:
     if reference is not None and _axis_kind_for_trace(reference) in {"image", "time"}:
         reference = None
 
-    full_resolution = is_full_resolution_enabled(st.session_state)
     fig, axis_title = _build_overlay_figure(
         overlays,
         display_units,
@@ -2239,7 +2860,6 @@ def _render_overlay_tab(version_info: Dict[str, str]) -> None:
         differential_mode,
         version_info.get("version", "v?"),
         axis_viewport_by_kind=effective_viewports if single_axis else None,
-        full_resolution=full_resolution,
     )
     st.plotly_chart(fig, use_container_width=True)
     _render_image_overlay_panels(overlays)
@@ -2268,35 +2888,185 @@ def _render_overlay_tab(version_info: Dict[str, str]) -> None:
     _render_line_tables(overlays)
 
 
-def _add_differential_overlay(result: DifferentialResult) -> Tuple[bool, str]:
-    controller = _controller()
-    metadata = {
-        "kind": "differential",
-        "operation_code": result.operation_code,
-        "operation_label": result.operation_label,
-        "normalization": result.normalization,
-        "sample_points": result.sample_points,
-        "trace_a_id": result.trace_a_id,
-        "trace_b_id": result.trace_b_id,
+def _normalization_display(mode: str) -> str:
+    mapping = {
+        "unit": "Unit vector (L2)",
+        "l2": "Unit vector (L2)",
+        "max": "Peak normalised",
+        "peak": "Peak normalised",
+        "zscore": "Z-score",
+        "z": "Z-score",
+        "standard": "Z-score",
+        "none": "Raw",
     }
-    provenance = {
-        "differential": {
-            "trace_a": result.trace_a_label,
-            "trace_b": result.trace_b_label,
-            "computed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(result.computed_at)),
-        }
-    }
-    summary = (
-        f"{result.operation_label} of {result.trace_a_label} and {result.trace_b_label}"
+    key = (mode or "raw").lower()
+    return mapping.get(key, mode or "Raw")
+
+
+def _compute_differential_result(
+    trace_a: OverlayTrace,
+    trace_b: OverlayTrace,
+    operation_label: str,
+    sample_points: int,
+    normalization: str,
+) -> DifferentialResult:
+    meta = DIFFERENTIAL_OPERATIONS[operation_label]
+    grid, values_a, values_b = resample_to_common_grid(
+        trace_a.wavelength_nm,
+        trace_a.flux,
+        trace_b.wavelength_nm,
+        trace_b.flux,
+        n=int(sample_points),
     )
-    return controller.add_overlay(
+    arr_a = np.asarray(values_a, dtype=float)
+    arr_b = np.asarray(values_b, dtype=float)
+    norm_a = apply_normalization(arr_a, normalization)
+    norm_b = apply_normalization(arr_b, normalization)
+    func = meta["func"]
+    result_values = func(norm_a, norm_b)
+    symbol = meta["symbol"]
+    label = f"{trace_a.label} {symbol} {trace_b.label}"
+    return DifferentialResult(
+        grid_nm=tuple(float(v) for v in grid),
+        values_a=tuple(float(v) for v in norm_a),
+        values_b=tuple(float(v) for v in norm_b),
+        result=tuple(float(v) for v in result_values),
+        trace_a_id=trace_a.trace_id,
+        trace_b_id=trace_b.trace_id,
+        trace_a_label=trace_a.label,
+        trace_b_label=trace_b.label,
+        operation_code=str(meta["code"]),
+        operation_label=operation_label,
+        normalization=normalization,
+        sample_points=int(sample_points),
+        computed_at=time.time(),
+        label=label,
+    )
+
+
+def _build_differential_figure(result: DifferentialResult) -> go.Figure:
+    grid = np.asarray(result.grid_nm, dtype=float)
+    values_a = np.asarray(result.values_a, dtype=float)
+    values_b = np.asarray(result.values_b, dtype=float)
+    result_values = np.asarray(result.result, dtype=float)
+    fig = make_subplots(
+        rows=2,
+        cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.08,
+        row_heights=[0.6, 0.4],
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=grid,
+            y=values_a,
+            name=f"A • {result.trace_a_label}",
+            mode="lines",
+        ),
+        row=1,
+        col=1,
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=grid,
+            y=values_b,
+            name=f"B • {result.trace_b_label}",
+            mode="lines",
+        ),
+        row=1,
+        col=1,
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=grid,
+            y=result_values,
+            name=f"Result ({result.operation_label})",
+            mode="lines",
+        ),
+        row=2,
+        col=1,
+    )
+    fig.update_layout(
+        height=520,
+        margin=dict(t=30, b=36, l=32, r=16),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1.0),
+    )
+    fig.update_xaxes(title_text="Wavelength (nm)", row=2, col=1)
+    fig.update_yaxes(
+        title_text=f"Flux ({_normalization_display(result.normalization)})",
+        row=1,
+        col=1,
+    )
+    fig.update_yaxes(title_text=result.operation_label, row=2, col=1)
+    return fig
+
+
+def _build_differential_summary(result: DifferentialResult) -> pd.DataFrame:
+    grid = np.asarray(result.grid_nm, dtype=float)
+    if grid.size:
+        range_text = f"{grid.min():.2f} – {grid.max():.2f}"
+    else:
+        range_text = "—"
+
+    def _series_stats(label: str, values: Sequence[float]) -> Dict[str, object]:
+        arr = np.asarray(values, dtype=float)
+        finite = arr[np.isfinite(arr)]
+        if finite.size:
+            min_val = float(finite.min())
+            max_val = float(finite.max())
+            mean_val = float(finite.mean())
+            std_val = float(finite.std())
+        else:
+            min_val = max_val = mean_val = std_val = float("nan")
+        return {
+            "Series": label,
+            "Min": min_val,
+            "Max": max_val,
+            "Mean": mean_val,
+            "Std": std_val,
+            "Samples": int(arr.size),
+            "Range (nm)": range_text,
+        }
+
+    rows = [
+        _series_stats(f"A • {result.trace_a_label}", result.values_a),
+        _series_stats(f"B • {result.trace_b_label}", result.values_b),
+        _series_stats(f"Result ({result.operation_label})", result.result),
+    ]
+    return pd.DataFrame(rows)
+
+
+def _add_differential_overlay(result: DifferentialResult) -> Tuple[bool, str]:
+    timestamp = (
+        datetime.fromtimestamp(result.computed_at, tz=timezone.utc)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
+    metadata = {
+        "source": "differential",
+        "operation": result.operation_code,
+        "operation_label": result.operation_label,
+        "trace_a": {"id": result.trace_a_id, "label": result.trace_a_label},
+        "trace_b": {"id": result.trace_b_id, "label": result.trace_b_label},
+        "sample_points": result.sample_points,
+        "normalization": result.normalization,
+        "computed_at": timestamp,
+    }
+    if result.grid_nm:
+        metadata["wavelength_range_nm"] = [
+            float(min(result.grid_nm)),
+            float(max(result.grid_nm)),
+        ]
+    summary = f"{result.operation_label} on {result.sample_points} samples"
+    return _add_overlay(
         result.label,
         result.grid_nm,
         result.result,
-        provider="Differential",
+        provider="DIFF",
         summary=summary,
         metadata=metadata,
-        provenance=provenance,
+        provenance=dict(metadata),
+        flux_kind="derived",
     )
 
 
@@ -2320,7 +3090,7 @@ def _render_differential_result(result: Optional[DifferentialResult]) -> None:
 
 def _render_differential_tab() -> None:
     st.header("Differential analysis")
-    overlays = _controller().get_overlays()
+    overlays = _get_overlays()
     _render_reference_controls(overlays)
     spectral_overlays = [
         trace
@@ -2445,10 +3215,30 @@ def _render_differential_tab() -> None:
 
     sample_default = int(st.session_state.get("differential_sample_points", 2000))
     normalization = st.session_state.get("normalization_mode", "unit")
-    viewport_store = _controller().get_viewport_store()
-    visible_vectors, effective_viewport, similarity_options, cache = prepare_similarity_inputs(
-        st.session_state, spectral_overlays, viewport_store
-    )
+    viewport_store = _get_viewport_store()
+    similarity_sources = [
+        trace
+        for trace in spectral_overlays
+        if trace.visible and _axis_kind_for_trace(trace) not in {"image", "time"}
+    ]
+    if len(similarity_sources) < 2:
+        similarity_sources = [
+            trace
+            for trace in spectral_overlays
+            if _axis_kind_for_trace(trace) not in {"image", "time"}
+        ]
+    wavelength_sources = [
+        trace for trace in similarity_sources if _axis_kind_for_trace(trace) == "wavelength"
+    ]
+    stored_wavelength_view = viewport_store.get("wavelength", (None, None))
+    if wavelength_sources:
+        effective_viewport = _effective_viewport(
+            wavelength_sources,
+            stored_wavelength_view,
+            axis_kind="wavelength",
+        )
+    else:
+        effective_viewport = (None, None)
 
     with st.form(key="differential_compute_form"):
         col_a, col_b = st.columns(2)
@@ -2511,12 +3301,31 @@ def _render_differential_tab() -> None:
         "Differential maths uses the normalization chosen above and resamples "
         "both traces onto a shared wavelength grid."
     )
+    if "similarity_cache" not in st.session_state:
+        st.session_state["similarity_cache"] = SimilarityCache()
+    cache: SimilarityCache = st.session_state["similarity_cache"]
+    full_resolution = _is_full_resolution_enabled()
+    vector_max_points = None if full_resolution else 15000
+    viewport_map = {"wavelength": effective_viewport} if wavelength_sources else {}
+    visible_vectors = [
+        trace.to_vectors(
+            max_points=vector_max_points,
+            viewport=viewport_map.get(_axis_kind_for_trace(trace), (None, None)),
+        )
+        for trace in similarity_sources
+    ]
     if len(visible_vectors) >= 2:
+        options = SimilarityOptions(
+            metrics=tuple(st.session_state.get("similarity_metrics", ["cosine"])),
+            normalization=st.session_state.get(
+                "similarity_normalization", normalization
+            ),
+            line_match_top_n=int(st.session_state.get("similarity_line_peaks", 8)),
+            primary_metric=st.session_state.get("similarity_primary_metric", "cosine"),
+            reference_id=st.session_state.get("reference_trace_id"),
+        )
         render_similarity_panel(
-            visible_vectors,
-            effective_viewport,
-            similarity_options,
-            cache,
+            visible_vectors, effective_viewport, options, cache
         )
     _render_differential_result(result)
 
@@ -2604,7 +3413,7 @@ def _render_docs_tab(version_info: Mapping[str, object]) -> None:
             if modified:
                 st.caption(f"Last updated {modified}")
 
-    overlays = _controller().get_overlays()
+    overlays = _get_overlays()
     if overlays:
         st.divider()
         st.subheader("Session provenance")
@@ -2729,11 +3538,9 @@ def _render_app_header(version_info: Mapping[str, object]) -> None:
     st.caption(" • ".join(part for part in caption_parts if part))
 
 
-def render(workspace_service: WorkspaceService | None = None) -> None:
-    _workspace(workspace_service)
+def render() -> None:
     _ensure_session_state()
     _process_ingest_queue()
-    _process_plugin_queue()
     version_info = get_version_info()
 
     _render_app_header(version_info)
@@ -2743,23 +3550,18 @@ def render(workspace_service: WorkspaceService | None = None) -> None:
     registry = get_panel_registry()
 
     sidebar = st.sidebar
-    controls_panel = sidebar.container()
-    _render_settings_group(controls_panel)
-    _render_ingest_queue_panel(controls_panel)
+    for panel in registry.iter_sidebar():
+        container = sidebar.container()
+        panel.render(container, panel_context)
 
-    overlay_tab, plugin_tab, diff_tab, library_tab, docs_tab = st.tabs(
-        ["Overlay", "Plugins", "Differential", "Library", "Docs & Provenance"]
-    )
-    with overlay_tab:
-        _render_overlay_tab(version_info)
-    with plugin_tab:
-        _render_plugin_tab()
-    with diff_tab:
-        _render_differential_tab()
-    with library_tab:
-        _render_library_tab()
-    with docs_tab:
-        _render_docs_tab(version_info)
+    workspace_panels = list(registry.iter_workspace())
+    if workspace_panels:
+        tabs = st.tabs([panel.label for panel in workspace_panels])
+        for spec, tab in zip(workspace_panels, tabs):
+            with tab:
+                spec.render(panel_context)
+    else:
+        st.info("No workspace panels registered.")
 
     _render_status_bar(version_info)
 

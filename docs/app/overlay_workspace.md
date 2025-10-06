@@ -2,11 +2,7 @@
 
 The overlay tab is the heart of Spectra App. It renders every trace that is
 currently loaded and keeps controls close to the chart so you can stay in the
-analysis flow. Feature roadmaps that align with SpecViz are summarised in the
-[Spectra ↔ SpecViz parity matrix](../research/specviz_improvement_backlog.md#spectra--specviz-parity-matrix).
-
-> **Attribution.** Viewer comparisons draw on the SpecViz guides curated by the
-> [jdaviz authors](https://github.com/spacetelescope/jdaviz).
+analysis flow.
 
 ## Plot controls
 

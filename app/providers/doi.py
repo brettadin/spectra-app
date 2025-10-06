@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import unicodedata
 import re
-from typing import Dict, Iterable, List, Tuple
+from typing import Iterable, List, Tuple
 
 from app.server.fetchers import doi as doi_fetcher
 
@@ -65,36 +65,29 @@ def _match_spectra(query: ProviderQuery) -> List[_DoiInfo]:
     if not _SPECTRA:
         return []
 
-    catalog_filter = query.catalog.lower() if query.catalog else ""
-
     search_terms: List[str] = []
     for value in (query.doi, query.target, query.text):
         if value:
             search_terms.append(value)
 
     if not search_terms:
-        matches = list(_SPECTRA)
-    else:
-        matches = []
-        seen: set[str] = set()
-        for term in search_terms:
-            token = _normalise_token(term)
-            if not token:
-                continue
-            for spec in _SPECTRA:
-                for alias in spec.search_tokens:
-                    if not alias:
-                        continue
-                    if alias.startswith(token) or token.startswith(alias):
-                        if spec.doi not in seen:
-                            matches.append(spec)
-                            seen.add(spec.doi)
-                        break
+        return list(_SPECTRA)
 
-    if catalog_filter:
-        matches = [
-            spec for spec in matches if catalog_filter in spec.archive.lower()
-        ]
+    matches: List[_DoiInfo] = []
+    seen: set[str] = set()
+    for term in search_terms:
+        token = _normalise_token(term)
+        if not token:
+            continue
+        for spec in _SPECTRA:
+            for alias in spec.search_tokens:
+                if not alias:
+                    continue
+                if alias.startswith(token) or token.startswith(alias):
+                    if spec.doi not in seen:
+                        matches.append(spec)
+                        seen.add(spec.doi)
+                    break
     return matches
 
 
@@ -181,38 +174,21 @@ def search(query: ProviderQuery) -> Iterable[ProviderHit]:
 
     limit = max(1, int(query.limit or 1))
     yielded = 0
-    aggregate_errors: List[Dict[str, object]] = []
+    errors: List[str] = []
 
     for spec in spectra:
         try:
             payload = doi_fetcher.fetch(doi=spec.doi, target=spec.target_name)
         except doi_fetcher.DoiFetchError as exc:
-            aggregate_errors.append(
-                {
-                    "doi": spec.doi,
-                    "archive": spec.archive,
-                    "error": str(exc),
-                }
-            )
+            errors.append(str(exc))
             continue
-        hit = _build_hit(payload, query, spec)
-        if query.catalog:
-            hit.metadata.setdefault("requested_catalog", query.catalog)
-        if query.diagnostics and aggregate_errors:
-            hit.provenance.setdefault("diagnostics", list(aggregate_errors))
-        yield hit
+        yield _build_hit(payload, query, spec)
         yielded += 1
         if yielded >= limit:
             break
 
-    if yielded == 0 and aggregate_errors:
-        details = "\n".join(
-            f"- {error.get('doi')} ({error.get('archive')}): {error.get('error')}"
-            for error in aggregate_errors
-        )
-        raise doi_fetcher.DoiFetchError(
-            "DOI fetch attempts failed for all matching records.\n" + details
-        )
+    if yielded == 0 and errors:
+        raise doi_fetcher.DoiFetchError(errors[0])
 
 
 refresh_spectra()

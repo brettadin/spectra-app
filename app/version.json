@@ -1,5 +1,11 @@
 {
+<<<<<<< HEAD
   "version": "v1.2.1m",
   "date_utc": "2025-10-26T00:00:00Z",
   "summary": "Add a plugin registry with SpecViz-aligned analysis tools, surface a dedicated plugin tray in the UI, and document the new workflows alongside regression coverage."
+=======
+  "version": "v1.2.1i",
+  "date_utc": "2025-10-05T00:00:00Z",
+  "summary": "Introduce a panel registry to dynamically build sidebar and workspace layouts."
+>>>>>>> parent of 57fc619c (Merge pull request #153 from brettadin/codex/review-specviz-for-project-adaptation)
 }

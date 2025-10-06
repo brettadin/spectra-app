@@ -1,11 +1,7 @@
 # Archive lookups and provenance
 
 Spectra App connects to several provider stubs so you can experiment with
-lookups without leaving the UI. Broader ingest roadmap context lives in the
-[Spectra ↔ SpecViz parity matrix](../research/specviz_improvement_backlog.md#spectra--specviz-parity-matrix).
-
-> **Attribution.** Ingestion comparisons acknowledge the SpecViz documentation
-> authored by the [jdaviz team](https://github.com/spacetelescope/jdaviz).
+lookups without leaving the UI.
 
 ## Archive lookups
 
