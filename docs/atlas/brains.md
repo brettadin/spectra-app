@@ -137,3 +137,8 @@
 - Swap the MAST CALSPEC downloader to `astroquery.mast.Observations.download_file`, capturing the download agent and cache metadata in the returned provenance. 【F:app/server/fetchers/mast.py†L1-L210】
 - Replace the sample shim with a curated-library materialiser that walks the vetted CALSPEC roster and persists per-target provenance summaries. 【F:app/server/fetch_archives.py†L1-L74】【F:scripts/fetch_samples.py†L1-L15】
 - Rebuilt `data_registry` and `catalog.csv` so UI metrics and manifests surface only the curated CALSPEC spectra. 【F:data_registry/catalog.csv†L1-L10】【F:data_registry/Vega/manifest.json†L1-L44】
+
+## Workspace service refactor for helper parity — 2025-10-25
+- Wrapped overlay, viewport, and export logic in a `WorkspaceService` so controllers operate on explicit contexts instead of `st.session_state`. 【F:app/services/workspace.py†L1-L197】
+- Injected the workspace service into the Streamlit UI, making export and removal flows delegate to the shared layer. 【F:app/ui/main.py†L189-L208】【F:app/ui/main.py†L1390-L1409】
+- Rebuilt the SpecViz helper to drive the service layer directly, exposing SpecViz-compatible methods for scripts. 【F:spectra/helpers/specviz_compat.py†L1-L209】

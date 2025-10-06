@@ -4,7 +4,14 @@ from pathlib import Path
 
 import pytest
 
-from app.helpers.specviz_compat import HelperResult, SpecvizCompatError, SpecvizCompatHelper
+pytest.importorskip("specutils")
+
+from app.helpers.specviz_compat import (
+    HelperResult,
+    SpecvizCompatError,
+    SpecvizCompatHelper,
+)
+from app.services.workspace import WorkspaceContext
 
 
 def _write_ascii(path: Path, name: str) -> Path:
@@ -62,3 +69,42 @@ def test_helper_raises_when_empty(tmp_path):
     helper = SpecvizCompatHelper()
     with pytest.raises(SpecvizCompatError):
         helper.load_data([], allow_empty=False)
+
+
+def test_helper_get_spectra_and_limits(tmp_path):
+    context = WorkspaceContext(state={}, export_dir=tmp_path)
+    helper = SpecvizCompatHelper(context=context)
+    path = _write_ascii(tmp_path, "spec.csv")
+
+    helper.load_data([path], data_label="Custom")
+
+    spectra = helper.get_spectra()
+    assert len(spectra) == 1
+    _, data = next(iter(spectra.items()))
+    assert data["label"] == "Custom"
+
+    helper.set_limits(405.0, 425.0, axis_kind=data["axis_kind"])
+    viewport = helper.workspace.get_viewport_for_kind(data["axis_kind"])
+    assert viewport == (405.0, 425.0)
+    assert helper.context.state["auto_viewport"] is False
+
+
+def test_helper_export_and_plugin(tmp_path):
+    context = WorkspaceContext(state={}, export_dir=tmp_path)
+    helper = SpecvizCompatHelper(context=context)
+    path = _write_ascii(tmp_path, "export.csv")
+
+    helper.load_data([path], data_label="Export")
+
+    export = helper.export_view(display_units="nm", display_mode="Flux (raw)")
+    assert export.csv_path.exists()
+    assert export.manifest_path.exists()
+    assert export.png_path is None
+
+    plugin_export = helper.run_plugin(
+        "Export View",
+        display_units="nm",
+        display_mode="Flux (raw)",
+    )
+    assert plugin_export.csv_path.exists()
+    assert plugin_export.manifest_path.exists()
