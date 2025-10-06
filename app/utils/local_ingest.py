@@ -9,6 +9,7 @@ from typing import Dict, List, Mapping, Optional, Sequence, Tuple
 import numpy as np
 
 from app.server.ingest_ascii import parse_ascii, parse_ascii_segments
+from app.server.ingest_jcamp import parse_jcamp
 from app.server.ingest_fits import parse_fits
 from app.utils.io_readers import read_table
 from app.utils.spectrum_cache import SpectrumCache
@@ -37,6 +38,8 @@ SUPPORTED_ASCII_EXTENSIONS = {
 
 SUPPORTED_FITS_EXTENSIONS = {".fits", ".fit", ".fts"}
 
+SUPPORTED_JCAMP_EXTENSIONS = {".jdx", ".dx", ".jcm", ".jcamp"}
+
 _DENSE_SIZE_THRESHOLD = 12_000_000  # bytes
 _DENSE_LINE_THRESHOLD = 400_000
 _DENSE_CHUNK_SIZE = 500_000
@@ -53,9 +56,14 @@ def _detect_format(name: str, content: bytes) -> str:
         return "zip"
     if any(suffix in SUPPORTED_FITS_EXTENSIONS for suffix in suffixes):
         return "fits"
+    if any(suffix in SUPPORTED_JCAMP_EXTENSIONS for suffix in suffixes if suffix):
+        return "jcamp"
     signature = content[:6].upper()
     if signature.startswith(b"SIMPLE"):
         return "fits"
+    prefix_text = content[:512].decode("utf-8", errors="ignore")
+    if "##JCAMP" in prefix_text.upper():
+        return "jcamp"
     if any(suffix in SUPPORTED_ASCII_EXTENSIONS for suffix in suffixes if suffix):
         return "ascii"
     try:
@@ -367,6 +375,8 @@ def ingest_local_file(name: str, content: bytes) -> Dict[str, object]:
                     provenance["dense_parser_fallback"] = fallback_info
                     parsed["provenance"] = provenance
  
+        elif detected_format == "jcamp":
+            parsed = parse_jcamp(payload, filename=processed_name)
         else:
             if _should_use_dense_parser(processed_name, payload):
                 try:
