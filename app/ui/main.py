@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 import time
 import uuid
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -452,6 +453,7 @@ def _ensure_session_state() -> None:
     st.session_state.setdefault("session_id", str(uuid.uuid4()))
     st.session_state.setdefault("overlay_traces", [])
     st.session_state.setdefault("display_units", "nm")
+    st.session_state.setdefault("display_units_user_override", False)
     st.session_state.setdefault("display_mode", "Flux (raw)")
     st.session_state.setdefault("display_full_resolution", False)
     if VIEWPORT_STATE_KEY not in st.session_state:
@@ -953,6 +955,88 @@ def _compute_image_fingerprint(image: Mapping[str, object]) -> str:
     return hashlib.sha1(b"".join(payload_parts)).hexdigest()
 
 
+def _normalise_display_unit_hint(value: object) -> Optional[str]:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    folded = text.casefold()
+    folded = (
+        folded.replace("µ", "u")
+        .replace("μ", "u")
+        .replace("å", "angstrom")
+        .replace("Å", "angstrom")
+    )
+    collapsed = re.sub(r"[^a-z0-9]+", "", folded)
+    if not collapsed:
+        return None
+    if collapsed in {"nm", "nanometer", "nanometre", "nanometers", "nanometres"}:
+        return "nm"
+    if collapsed in {
+        "angstrom",
+        "angstroem",
+        "angstroms",
+        "angstroems",
+    }:
+        return "Å"
+    if collapsed in {
+        "um",
+        "micrometer",
+        "micrometre",
+        "micrometers",
+        "micrometres",
+        "micron",
+        "microns",
+        "mum",
+    }:
+        return "µm"
+    if collapsed in {
+        "cm1",
+        "1cm",
+        "1percm",
+        "percm",
+        "wavenumber",
+        "wavenumbers",
+        "kayser",
+        "kaysers",
+    }:
+        return "cm^-1"
+    return None
+
+
+def _preferred_display_unit(
+    metadata: Optional[Mapping[str, object]],
+    provenance: Optional[Mapping[str, object]],
+) -> Optional[str]:
+    meta = metadata or {}
+    prov = provenance or {}
+    candidates: List[object] = []
+    if isinstance(meta, Mapping):
+        for key in (
+            "wavelength_display_unit",
+            "preferred_wavelength_unit",
+            "original_wavelength_unit",
+            "reported_wavelength_unit",
+            "wavelength_unit",
+            "axis_unit",
+        ):
+            candidate = meta.get(key)
+            if candidate:
+                candidates.append(candidate)
+    units_meta = prov.get("units") if isinstance(prov, Mapping) else None
+    if isinstance(units_meta, Mapping):
+        for key in ("wavelength_reported", "wavelength_original", "wavelength_input"):
+            candidate = units_meta.get(key)
+            if candidate:
+                candidates.append(candidate)
+    for candidate in candidates:
+        normalized = _normalise_display_unit_hint(candidate)
+        if normalized and normalized != "nm":
+            return normalized
+    return None
+
+
 def _add_overlay(
     label: str,
     wavelengths: Sequence[float],
@@ -1100,6 +1184,7 @@ def _add_overlay(
         }
 
     overlays = _get_overlays()
+    overlays_before = len(overlays)
     fingerprint = _compute_fingerprint(values_w, values_f)
     policy = st.session_state.get("duplicate_policy", "allow")
     if policy in {"skip", "ledger"}:
@@ -1149,6 +1234,17 @@ def _add_overlay(
                 "added_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             },
         )
+
+    if (
+        overlays_before == 0
+        and not st.session_state.get("display_units_user_override")
+    ):
+        preferred_unit = _preferred_display_unit(trace.metadata, trace.provenance)
+        if (
+            preferred_unit
+            and preferred_unit != st.session_state.get("display_units", "nm")
+        ):
+            st.session_state["display_units"] = preferred_unit
 
     if not st.session_state.get("reference_trace_id"):
         st.session_state["reference_trace_id"] = trace.trace_id
@@ -1359,14 +1455,19 @@ def _render_display_section(container: DeltaGenerator) -> None:
     if cleared:
         _clear_overlays()
         st.session_state["overlay_clear_message"] = "Cleared all overlays."
+        st.session_state["display_units_user_override"] = False
 
+    unit_options = ["nm", "Å", "µm", "cm^-1"]
+    current_units = st.session_state.get("display_units", "nm")
+    if current_units not in unit_options:
+        current_units = "nm"
     units = container.selectbox(
         "Wavelength units",
-        ["nm", "Å", "µm", "cm^-1"],
-        index=["nm", "Å", "µm", "cm^-1"].index(
-            st.session_state.get("display_units", "nm")
-        ),
+        unit_options,
+        index=unit_options.index(current_units),
     )
+    if units != current_units:
+        st.session_state["display_units_user_override"] = True
     st.session_state["display_units"] = units
     display_mode_options = ["Flux (raw)", "Flux (normalized)"]
     current_mode = st.session_state.get("display_mode", "Flux (raw)")

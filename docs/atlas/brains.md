@@ -3,6 +3,8 @@
 - Updated `_detect_format` and ingest routing so `.jdx` extensions or JCAMP headers trigger the new parser before falling back to ASCII handling. 【F:app/utils/local_ingest.py†L11-L75】【F:app/utils/local_ingest.py†L305-L404】
 - Added a regression using a dual-section JCAMP fixture to confirm the spectrum imports cleanly while uncertainty data stays filtered out. 【F:tests/server/test_local_ingest.py†L360-L403】
 - Expanded the Streamlit upload widget so JCAMP extensions join the accepted list and `.jdx` files pass the client-side filter alongside updated captions. 【F:app/ui/main.py†L2368-L2383】【F:app/utils/local_ingest.py†L34-L45】
+- Normalised display-unit hints and first-overlay defaults so uploads reported in wavenumber, microns, or angstroms render on matching axes without manual toggles. 【F:app/ui/main.py†L1010-L1052】【F:app/ui/main.py†L1199-L1242】
+- Added regression coverage for the new normaliser and provenance fallbacks so display units stay aligned with uploaded metadata. 【F:tests/ui/test_display_unit_preferences.py†L1-L45】
 
 ## Specviz adoption blueprint — 2025-10-05
 - Documented Specviz feature inventory spanning ingestion, visualization, analysis plugins, and export hooks to guide Spectra App parity goals. 【F:docs/atlas/Specviz_Adoption_Blueprint.md†L3-L44】

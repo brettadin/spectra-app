@@ -23,7 +23,9 @@ multiple files at once and records a checksum so accidental duplicates are
 flagged. After ingestion you can:
 
 - Toggle visibility per trace.
-- Switch the wavelength unit (nm, Å, µm, cm⁻¹) from the sidebar.
+- Switch the wavelength unit (nm, Å, µm, cm⁻¹) from the sidebar. The first
+  overlay in a session seeds the selector with its reported unit (e.g. wavenumber
+  for infrared JCAMP files) so the default axis matches the uploaded data.
 - Choose how flux is displayed (raw vs. normalized) without altering your
   source data.
 
