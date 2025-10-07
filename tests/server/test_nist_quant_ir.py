@@ -94,7 +94,7 @@ def test_choose_measurement_prefers_priority_apodization():
 
 
 def test_manual_species_catalog_includes_requested_entries():
-    manual_catalog = nist_quant_ir._manual_species_catalog()
+    manual_catalog = nist_quant_ir.manual_species_catalog()
     assert "h2o" in manual_catalog
     water = manual_catalog["h2o"]
     measurement = water.measurements[0]

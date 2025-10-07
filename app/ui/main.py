@@ -1585,12 +1585,22 @@ def _render_nist_quant_ir_form(
     form.caption(
         f"Resolution fixed at {NIST_QUANT_IR_RESOLUTION:.3f} cm⁻¹ using catalogued apodization windows."
     )
-    manual_names = sorted(
-        {
-            species.name
-            for species in nist_quant_ir._manual_species_catalog().values()
-        }
-    )
+    manual_catalog_getter = getattr(
+        nist_quant_ir, "manual_species_catalog", None
+    ) or getattr(nist_quant_ir, "_manual_species_catalog", None)
+    manual_names: Tuple[str, ...] = ()
+    if callable(manual_catalog_getter):
+        try:
+            manual_names = tuple(
+                sorted(
+                    {
+                        species.name
+                        for species in manual_catalog_getter().values()
+                    }
+                )
+            )
+        except Exception:  # pragma: no cover - defensive fallback
+            manual_names = ()
     if manual_names:
         form.caption(
             "Manual entries ({names}) map to the highest-resolution NIST WebBook IR spectra and are flagged in provenance.".format(
