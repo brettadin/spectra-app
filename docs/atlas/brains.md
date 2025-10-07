@@ -186,3 +186,8 @@
 - Converted Quant IR absorption coefficients into percent transmittance by applying Beer–Lambert defaults (1 µmol/mol over 1 m), recording the calibration so downstream tools can re-scale.
 - Normalised manual WebBook spectra onto the same percent scale and stored a friendly flux label for the UI axis selector.
 - Updated the workspace plotter to derive y-axis titles from overlay flux metadata so Quant IR traces render with "Transmittance (%)" labels alongside existing spectra.
+
+## Quant IR WebBook realignment — 2025-10-28
+- Expanded the manual Quant IR catalog to cover the supplied NIST WebBook JCAMP spectra and kept alias tokens in sync with the new presets. 【F:app/server/fetchers/nist_quant_ir.py†L603-L781】
+- Derived percent transmittance with a pressure-aware Beer–Lambert calibration while surfacing cm⁻¹ axis metadata and wavenumber ranges in payloads and provenance. 【F:app/server/fetchers/nist_quant_ir.py†L259-L547】
+- Refreshed the Quant IR sidebar presets and regression coverage to track the updated catalog and axis defaults. 【F:app/ui/main.py†L60-L95】【F:tests/server/test_nist_quant_ir.py†L12-L181】

@@ -47,3 +47,4 @@ Spectra App — Patch Log (append-only)
 - v1.2.1u: Convert Quant IR absorbance payloads into transmission curves and align metadata/provenance units with the WebBook baselines.
 - v1.2.1v: Reverse wavenumber display axes so Quant IR overlays present high wavenumbers on the left, extend UI coverage, and refresh release collateral.
 - v1.2.1w: Calibrate Quant IR flux to percent transmittance, attach Beer–Lambert calibration metadata, and surface UI flux labels.
+- v1.2.1x: Rebuild the Quant IR manual catalog around authoritative WebBook JCAMP links, convert catalog spectra using pressure-derived Beer–Lambert scaling, and promote cm⁻¹ axis metadata across server and UI layers.
