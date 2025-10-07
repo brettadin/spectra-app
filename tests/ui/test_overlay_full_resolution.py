@@ -39,7 +39,6 @@ def test_full_resolution_preference_returns_all_points(session_state):
         overlays=[trace],
         display_units="nm",
         display_mode="Flux (raw)",
-        normalization_mode="none",
         viewport_by_kind={"wavelength": (None, None)},
         reference=None,
         differential_mode="Off",
