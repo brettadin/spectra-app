@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.1r",
+  "version": "v1.2.1s",
   "date_utc": "2025-10-28T00:00:00Z",
-  "summary": "Expose a public Quant IR manual catalog helper, guard the sidebar selector against missing APIs, and retain provenance cues."
+  "summary": "Harden the Quant IR sidebar against legacy fetcher attributes so manual WebBook fallbacks render without crashes."
 }

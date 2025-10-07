@@ -8,6 +8,10 @@
 - Hardened the Quant IR sidebar helper to consume either accessor and swallow unexpected catalog errors so the UI keeps rendering. 【F:app/ui/main.py†L1565-L1590】
 - Updated the Quant IR regression to rely on the supported helper, keeping manual coverage assertions aligned with the new API. 【F:tests/server/test_nist_quant_ir.py†L96-L109】
 
+# Quant IR sidebar legacy compatibility — 2025-10-28
+- Updated the Quant IR manual caption lookup to catch missing `_manual_species_catalog` attributes so older deployments keep rendering the sidebar without raising AttributeError. 【F:app/ui/main.py†L1583-L1597】
+- Recorded the release metadata bump for the resilience fix. 【F:app/version.json†L1-L5】
+
 # JCAMP-DX overlay ingestion — 2025-10-27
 - Implemented a JCAMP parser that tokenises XYDATA blocks, converts X units to nanometres with spectral equivalencies, drops uncertainty-labelled segments, and records provenance for caching tiers. 【F:app/server/ingest_jcamp.py†L20-L383】
 - Updated `_detect_format` and ingest routing so `.jdx` extensions or JCAMP headers trigger the new parser before falling back to ASCII handling. 【F:app/utils/local_ingest.py†L11-L75】【F:app/utils/local_ingest.py†L305-L404】

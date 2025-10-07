@@ -1585,9 +1585,12 @@ def _render_nist_quant_ir_form(
     form.caption(
         f"Resolution fixed at {NIST_QUANT_IR_RESOLUTION:.3f} cm⁻¹ using catalogued apodization windows."
     )
-    manual_catalog_getter = getattr(
-        nist_quant_ir, "manual_species_catalog", None
-    ) or getattr(nist_quant_ir, "_manual_species_catalog", None)
+    manual_catalog_getter = getattr(nist_quant_ir, "manual_species_catalog", None)
+    if manual_catalog_getter is None:
+        try:
+            manual_catalog_getter = nist_quant_ir._manual_species_catalog  # type: ignore[attr-defined]
+        except AttributeError:
+            manual_catalog_getter = None
     manual_names: Tuple[str, ...] = ()
     if callable(manual_catalog_getter):
         try:
