@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.1m",
+  "version": "v1.2.1o",
   "date_utc": "2025-10-27T00:00:00Z",
-  "summary": "Auto-select original wavelength units for uploaded spectra and document the behaviour."
+  "summary": "Fix the overlay vectoriser fallback when sampling Quant IR traces with viewports."
 }

@@ -42,6 +42,7 @@ from ..ingest import OverlayIngestResult
 from ..export_manifest import build_manifest
 from ..server.differential import ratio, resample_to_common_grid, subtract
 from ..server.fetch_archives import FetchError, fetch_spectrum
+from ..server.fetchers import nist_quant_ir
 from ..similarity import (
     SimilarityCache,
     SimilarityOptions,
@@ -64,6 +65,36 @@ st.set_page_config(page_title="Spectra App", layout="wide")
 
 EXPORT_DIR = Path("exports")
 EXPORT_DIR.mkdir(parents=True, exist_ok=True)
+
+
+NIST_QUANT_IR_MOLECULES: Tuple[Dict[str, str], ...] = (
+    {"label": "H2O", "query": "H2O"},
+    {"label": "Methane", "query": "Methane"},
+    {"label": "CO₂", "query": "CO2"},
+    {"label": "Ethanol", "query": "Ethanol"},
+    {"label": "Methanol", "query": "Methanol"},
+    {"label": "Butane", "query": "Butane"},
+    {"label": "1,4-Dimethylbenzene", "query": "1,4- Dimethylbenzene"},
+    {"label": "Dichlorodifluoromethane", "query": "Dichlorodifluoromethane"},
+    {"label": "Dichloromethane", "query": "Dichloromethane"},
+    {"label": "1,2-Dimethylbenzene", "query": "1,2- Dimethylbenzene"},
+    {"label": "1,3-Dimethylbenzene", "query": "1,3- Dimethylbenzene"},
+    {"label": "Carbon Tetrachloride", "query": "Carbon Tetrachloride"},
+    {"label": "Sulfur dioxide", "query": "Sulfur dioxide"},
+    {"label": "Toluene", "query": "Toluene"},
+    {"label": "2-Butanone", "query": "2-Butanone"},
+    {"label": "Sulfur Hexafluoride", "query": "Sulfur Hexafluoride"},
+    {"label": "1-Butanol", "query": "1-Butanol"},
+    {"label": "Benzene", "query": "Benzene"},
+    {"label": "Ethyl Acetate", "query": "Ethyl Acetate"},
+)
+
+NIST_QUANT_IR_RESOLUTION = nist_quant_ir.DEFAULT_RESOLUTION_CM_1
+
+
+@st.cache_data(show_spinner=False)
+def _cached_quant_ir_catalog() -> Tuple[Dict[str, object], ...]:
+    return nist_quant_ir.available_species()
 
 
 @dataclass
@@ -194,6 +225,7 @@ class OverlayTrace:
                 kind=self.kind,
                 fingerprint=self.fingerprint,
             )
+
         selected_w, selected_f, _, _ = self.sample(
             viewport or (None, None),
             max_points=max_points,
@@ -207,6 +239,15 @@ class OverlayTrace:
             kind=self.kind,
             fingerprint=self.fingerprint,
         )
+
+
+@dataclass(frozen=True)
+class QuantIROption:
+    label: str
+    query: str
+    available: bool
+    relative_uncertainty: Optional[str] = None
+    apodizations: Tuple[str, ...] = ()
 
     @property
     def points(self) -> int:
@@ -1402,9 +1443,13 @@ def _render_line_catalog_group(container: DeltaGenerator) -> None:
     if not online:
         container.caption("Using local cache")
         container.info("NIST lookups are unavailable while offline.")
-        return
     container.markdown("NIST ASD lines")
-    _render_nist_form(container)
+    if online:
+        _render_nist_form(container)
+    else:
+        container.caption("Connect to the network to fetch NIST ASD lines.")
+    container.markdown("NIST Quantitative IR spectra")
+    _render_nist_quant_ir_form(container, online=online)
 
 
 def _render_nist_form(container: DeltaGenerator) -> None:
@@ -1438,6 +1483,111 @@ def _render_nist_form(container: DeltaGenerator) -> None:
     payload = _convert_nist_payload(result)
     if not payload:
         container.warning("NIST returned no lines for that query.")
+        return
+    added, message = _add_overlay_payload(payload)
+    (container.success if added else container.info)(message)
+
+
+def _normalise_quant_ir_token(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", (value or "").lower())
+
+
+def _build_quant_ir_options(
+    catalog: Sequence[Mapping[str, object]]
+) -> List[QuantIROption]:
+    lookup: Dict[str, Mapping[str, object]] = {}
+    for entry in catalog:
+        name = str(entry.get("name") or "")
+        if not name:
+            continue
+        lookup[_normalise_quant_ir_token(name)] = entry
+
+    options: List[QuantIROption] = []
+    for molecule in NIST_QUANT_IR_MOLECULES:
+        query = molecule["query"]
+        entry = lookup.get(_normalise_quant_ir_token(query))
+        if entry:
+            relative = entry.get("relative_uncertainty")
+            relative_str = str(relative) if isinstance(relative, str) and relative else None
+            apodizations_raw = entry.get("measurements") or ()
+            apodizations: List[str] = []
+            for candidate in apodizations_raw:
+                if isinstance(candidate, Mapping):
+                    label = candidate.get("apodization")
+                    if label:
+                        apodizations.append(str(label))
+            options.append(
+                QuantIROption(
+                    label=molecule["label"],
+                    query=query,
+                    available=True,
+                    relative_uncertainty=relative_str,
+                    apodizations=tuple(apodizations),
+                )
+            )
+        else:
+            options.append(
+                QuantIROption(
+                    label=molecule["label"],
+                    query=query,
+                    available=False,
+                    relative_uncertainty=None,
+                    apodizations=(),
+                )
+            )
+    return options
+
+
+def _format_quant_ir_option(option: QuantIROption) -> str:
+    label = option.label
+    if not option.available:
+        return f"{label} — unavailable"
+    if option.relative_uncertainty:
+        return f"{label} ({option.relative_uncertainty} uncertainty)"
+    return label
+
+
+def _render_nist_quant_ir_form(
+    container: DeltaGenerator, *, online: bool
+) -> None:
+    if not online:
+        container.caption("Connect to the network to fetch NIST Quantitative IR spectra.")
+        return
+    try:
+        catalog = _cached_quant_ir_catalog()
+    except nist_quant_ir.QuantIRFetchError as exc:
+        container.error(f"NIST Quant IR catalog unavailable: {exc}")
+        return
+    options = _build_quant_ir_options(catalog)
+    if not options:
+        container.warning("No NIST Quant IR molecules configured.")
+        return
+
+    form = container.form("nist_quant_ir_form", clear_on_submit=False)
+    selection = form.selectbox(
+        "Molecule",
+        options,
+        format_func=_format_quant_ir_option,
+    )
+    form.caption(
+        f"Resolution fixed at {NIST_QUANT_IR_RESOLUTION:.3f} cm⁻¹ using catalogued apodization windows."
+    )
+    submitted = form.form_submit_button("Fetch spectrum", use_container_width=True)
+    if not submitted:
+        return
+    if not selection.available:
+        container.info(
+            f"{selection.label} is not currently available in the NIST Quantitative IR catalog."
+        )
+        return
+    try:
+        payload = fetch_spectrum(
+            "nist-quant-ir",
+            species=selection.query,
+            resolution_cm_1=NIST_QUANT_IR_RESOLUTION,
+        )
+    except (FetchError, ValueError, RuntimeError) as exc:
+        container.error(f"NIST Quant IR fetch failed: {exc}")
         return
     added, message = _add_overlay_payload(payload)
     (container.success if added else container.info)(message)
