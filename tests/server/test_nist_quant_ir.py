@@ -1,4 +1,5 @@
 import pytest
+from astropy import units as u
 
 from app.server.fetchers import nist_quant_ir
 
