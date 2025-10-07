@@ -17,6 +17,7 @@ __all__ = [
     "DEFAULT_RESOLUTION_CM_1",
     "QuantIRFetchError",
     "available_species",
+    "manual_species_catalog",
     "fetch",
 ]
 
@@ -155,6 +156,12 @@ def _cached_catalog() -> Dict[str, QuantIRSpecies]:
 
 
 def _manual_species_catalog() -> Dict[str, QuantIRSpecies]:
+    return manual_species_catalog()
+
+
+def manual_species_catalog() -> Dict[str, QuantIRSpecies]:
+    """Return manually curated Quant IR species records."""
+
     return dict(_MANUAL_SPECIES_CATALOG)
 
 
