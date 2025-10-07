@@ -32,6 +32,34 @@ def test_overlay_trace_methods_available_for_build():
     assert fig.data[0].x[0] == pytest.approx(500.0)
 
 
+def test_wavenumber_display_reverses_axis():
+    wavenumbers = np.linspace(3500.0, 500.0, 12)
+    wavelengths_nm = tuple(np.sort(1e7 / wavenumbers))
+    overlay = _build_overlay(
+        trace_id="quant-ir",
+        label="Quant IR",
+        wavelength_nm=wavelengths_nm,
+        flux=tuple(np.linspace(0.2, 0.8, len(wavelengths_nm))),
+    )
+
+    fig, axis_title = _build_overlay_figure(
+        overlays=[overlay],
+        display_units="cm^-1",
+        display_mode="Flux (raw)",
+        viewport_by_kind={"wavelength": (None, None)},
+        reference=None,
+        differential_mode="Off",
+        version_tag="vtest",
+    )
+
+    assert axis_title == "Wavenumber (cm⁻¹)"
+    assert fig.layout.xaxis.autorange == "reversed"
+
+    plotted_trace = fig.data[0]
+    xs = list(plotted_trace.x)
+    assert xs[0] > xs[-1]
+
+
 @pytest.fixture
 def bjd_offset_overlay() -> OverlayTrace:
     base_time = np.array([0.0, 1.0, 2.0], dtype=float)

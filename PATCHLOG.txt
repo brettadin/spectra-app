@@ -41,3 +41,8 @@ Spectra App — Patch Log (append-only)
 - v1.2.1o: Fix the overlay vectoriser fallback so sampled Quant IR traces construct wavelength/flux arrays without raising.
 - v1.2.1p: Restore the overlay table by deriving a points total for Quant IR traces and updating release collateral.
 - v1.2.1q: Map NIST WebBook fallbacks for H2O/CO2/methane, resample them to the 0.125 cm⁻¹ grid, and flag manual provenance in the UI and docs.
+- v1.2.1r: Expose the Quant IR manual catalog helper publicly, guard the sidebar fallback against missing aliases, and refresh release collateral.
+- v1.2.1s: Harden the Quant IR sidebar manual catalog lookup when only the public helper exists and roll documentation for the hotfix.
+- v1.2.1t: Invert Quant IR absorption spectra so plots dip like the manual WebBook traces and update release metadata.
+- v1.2.1u: Convert Quant IR absorbance payloads into transmission curves and align metadata/provenance units with the WebBook baselines.
+- v1.2.1v: Reverse wavenumber display axes so Quant IR overlays present high wavenumbers on the left, extend UI coverage, and refresh release collateral.

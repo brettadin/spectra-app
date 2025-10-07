@@ -1585,12 +1585,25 @@ def _render_nist_quant_ir_form(
     form.caption(
         f"Resolution fixed at {NIST_QUANT_IR_RESOLUTION:.3f} cm⁻¹ using catalogued apodization windows."
     )
-    manual_names = sorted(
-        {
-            species.name
-            for species in nist_quant_ir._manual_species_catalog().values()
-        }
-    )
+    manual_catalog_getter = getattr(nist_quant_ir, "manual_species_catalog", None)
+    if manual_catalog_getter is None:
+        try:
+            manual_catalog_getter = nist_quant_ir._manual_species_catalog  # type: ignore[attr-defined]
+        except AttributeError:
+            manual_catalog_getter = None
+    manual_names: Tuple[str, ...] = ()
+    if callable(manual_catalog_getter):
+        try:
+            manual_names = tuple(
+                sorted(
+                    {
+                        species.name
+                        for species in manual_catalog_getter().values()
+                    }
+                )
+            )
+        except Exception:  # pragma: no cover - defensive fallback
+            manual_names = ()
     if manual_names:
         form.caption(
             "Manual entries ({names}) map to the highest-resolution NIST WebBook IR spectra and are flagged in provenance.".format(
@@ -2280,13 +2293,18 @@ def _build_overlay_figure(
             friendly = " + ".join(kind.replace("_", " ") for kind in unique_kinds)
             axis_title = f"Mixed axes ({friendly})"
 
-    fig.update_layout(
+    layout_kwargs = dict(
         xaxis_title=axis_title,
         yaxis_title="Normalized flux" if display_mode != "Flux (raw)" else "Flux",
         legend=dict(itemclick="toggleothers"),
         margin=dict(t=50, b=40, l=60, r=20),
         height=520,
     )
+
+    if display_units == "cm^-1":
+        layout_kwargs["xaxis"] = dict(autorange="reversed")
+
+    fig.update_layout(**layout_kwargs)
     unique_kinds = sorted({kind for kind in visible_axis_kinds})
     if len(unique_kinds) == 1 and axis_lookup:
         axis_range = axis_lookup.get(unique_kinds[0])
@@ -2299,7 +2317,13 @@ def _build_overlay_figure(
                 and math.isfinite(axis_high)
                 and axis_high > axis_low
             ):
-                fig.update_xaxes(range=[float(axis_low), float(axis_high)])
+                if display_units == "cm^-1":
+                    fig.update_xaxes(
+                        range=[float(axis_high), float(axis_low)],
+                        autorange="reversed",
+                    )
+                else:
+                    fig.update_xaxes(range=[float(axis_low), float(axis_high)])
     fig.update_layout(
         annotations=[
             dict(

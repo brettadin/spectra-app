@@ -17,6 +17,7 @@ __all__ = [
     "DEFAULT_RESOLUTION_CM_1",
     "QuantIRFetchError",
     "available_species",
+    "manual_species_catalog",
     "fetch",
 ]
 
@@ -155,6 +156,12 @@ def _cached_catalog() -> Dict[str, QuantIRSpecies]:
 
 
 def _manual_species_catalog() -> Dict[str, QuantIRSpecies]:
+    return manual_species_catalog()
+
+
+def manual_species_catalog() -> Dict[str, QuantIRSpecies]:
+    """Return manually curated Quant IR species records."""
+
     return dict(_MANUAL_SPECIES_CATALOG)
 
 
@@ -306,6 +313,109 @@ def _resample_manual_payload(
     return median_step
 
 
+def _orient_flux(payload: Dict[str, object], *, manual_entry: bool) -> None:
+    flux = payload.get("flux")
+    if not isinstance(flux, (list, tuple)):
+        return
+    try:
+        flux_array = np.asarray(flux, dtype=float)
+    except Exception:
+        return
+    if flux_array.ndim != 1 or flux_array.size == 0:
+        return
+
+    metadata = payload.get("metadata")
+    provenance = payload.get("provenance")
+
+    if manual_entry:
+        if not str(payload.get("axis") or "").strip():
+            payload["axis"] = "transmission"
+        if isinstance(metadata, Mapping):
+            metadata.setdefault("axis", "transmission")
+            metadata.setdefault("axis_kind", "wavelength")
+            original_unit = metadata.get("reported_flux_unit")
+            if original_unit:
+                metadata.setdefault("flux_unit", original_unit)
+            else:
+                metadata.setdefault("flux_unit", "transmittance")
+            if "flux_unit_original" not in metadata and original_unit is not None:
+                metadata["flux_unit_original"] = original_unit
+        if isinstance(provenance, Mapping):
+            provenance.setdefault("axis", "transmission")
+            original_unit = None
+            if isinstance(metadata, Mapping):
+                original_unit = metadata.get("flux_unit_original") or metadata.get(
+                    "flux_unit"
+                )
+            if original_unit:
+                provenance.setdefault("flux_unit", original_unit)
+            else:
+                provenance.setdefault("flux_unit", "transmittance")
+            original_unit = None
+            if isinstance(metadata, Mapping):
+                original_unit = metadata.get("flux_unit_original")
+            if original_unit is not None:
+                provenance.setdefault("flux_unit_original", original_unit)
+        original_unit = None
+        if isinstance(metadata, Mapping):
+            original_unit = metadata.get("flux_unit_original") or metadata.get(
+                "flux_unit"
+            )
+        if original_unit:
+            payload.setdefault("flux_unit", original_unit)
+        else:
+            payload.setdefault("flux_unit", "transmittance")
+        payload["flux_kind"] = "transmission"
+        return
+
+    safe_absorbance = np.clip(flux_array, a_min=0.0, a_max=None)
+    transmittance = np.power(10.0, -safe_absorbance)
+    payload["flux"] = np.asarray(transmittance, dtype=float).tolist()
+
+    downsample = payload.get("downsample")
+    if isinstance(downsample, Mapping):
+        for tier in list(downsample.values()):
+            if not isinstance(tier, Mapping):
+                continue
+            samples = tier.get("flux")
+            if not isinstance(samples, (list, tuple)):
+                continue
+            try:
+                tier_flux = np.asarray(samples, dtype=float)
+            except Exception:
+                continue
+            tier_absorbance = np.clip(tier_flux, a_min=0.0, a_max=None)
+            tier_transmittance = np.power(10.0, -tier_absorbance)
+            tier["flux"] = np.asarray(tier_transmittance, dtype=float).tolist()
+
+    payload["axis"] = "transmission"
+    payload["flux_unit"] = "transmittance"
+    payload["flux_kind"] = "transmission"
+
+    if isinstance(metadata, Mapping):
+        metadata["axis"] = "transmission"
+        metadata.setdefault("axis_kind", "wavelength")
+        original_unit = metadata.get("reported_flux_unit")
+        if original_unit is not None:
+            metadata["flux_unit_original"] = original_unit
+        metadata["reported_flux_unit"] = "transmittance"
+        metadata["flux_unit"] = "transmittance"
+        metadata[
+            "transmittance_conversion"
+        ] = "Converted from Quant IR absorbance using T=10^(-absorbance)."
+    if isinstance(provenance, Mapping):
+        provenance["axis"] = "transmission"
+        provenance["flux_unit"] = "transmittance"
+        original_unit = None
+        if isinstance(metadata, Mapping):
+            original_unit = metadata.get("flux_unit_original")
+        if original_unit is not None:
+            provenance["flux_unit_original"] = original_unit
+        provenance[
+            "transmittance_conversion"
+        ] = "Converted from Quant IR absorbance using T=10^(-absorbance)."
+
+
 def _parse_relative_uncertainty(value: str) -> Optional[float]:
     match = _RELATIVE_UNCERTAINTY_PATTERN.search(value)
     if not match:
@@ -406,6 +516,8 @@ def fetch(
         f" ({record.relative_uncertainty})"
     )
     payload.setdefault("kind", "spectrum")
+
+    _orient_flux(payload, manual_entry=manual_entry)
 
     return payload
 @dataclass(frozen=True)
