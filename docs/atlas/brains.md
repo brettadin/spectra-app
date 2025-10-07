@@ -182,3 +182,7 @@
 - Swap the MAST CALSPEC downloader to `astroquery.mast.Observations.download_file`, capturing the download agent and cache metadata in the returned provenance. 【F:app/server/fetchers/mast.py†L1-L210】
 - Replace the sample shim with a curated-library materialiser that walks the vetted CALSPEC roster and persists per-target provenance summaries. 【F:app/server/fetch_archives.py†L1-L74】【F:scripts/fetch_samples.py†L1-L15】
 - Rebuilt `data_registry` and `catalog.csv` so UI metrics and manifests surface only the curated CALSPEC spectra. 【F:data_registry/catalog.csv†L1-L10】【F:data_registry/Vega/manifest.json†L1-L44】
+## Quant IR percent transmittance calibration — 2025-10-28
+- Converted Quant IR absorption coefficients into percent transmittance by applying Beer–Lambert defaults (1 µmol/mol over 1 m), recording the calibration so downstream tools can re-scale.
+- Normalised manual WebBook spectra onto the same percent scale and stored a friendly flux label for the UI axis selector.
+- Updated the workspace plotter to derive y-axis titles from overlay flux metadata so Quant IR traces render with "Transmittance (%)" labels alongside existing spectra.

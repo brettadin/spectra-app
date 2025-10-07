@@ -134,7 +134,7 @@ def test_resample_manual_payload_interpolates_to_target_resolution():
     assert np.allclose(diffs, 0.5, rtol=1e-3, atol=1e-6)
 
 
-def test_orient_flux_converts_absorbance_to_transmittance():
+def test_prepare_flux_converts_coefficients_to_percent_transmittance():
     payload = {
         "flux": [0.0, 0.5, 1.0],
         "downsample": {
@@ -146,31 +146,37 @@ def test_orient_flux_converts_absorbance_to_transmittance():
         "flux_unit": "(micromol/mol)-1m-1 (base 10)",
     }
 
-    nist_quant_ir._orient_flux(payload, manual_entry=False)
+    nist_quant_ir._prepare_flux(payload, manual_entry=False)
 
-    expected = [1.0, 10 ** (-0.5), 10 ** (-1.0)]
-    assert payload["flux"] == pytest.approx(expected)
-    assert payload["downsample"][64]["flux"] == pytest.approx(expected)
+    expected_fraction = np.power(10.0, -np.array([0.0, 0.5, 1.0])) * 100.0
+    assert payload["flux"] == pytest.approx(expected_fraction.tolist())
+    assert payload["downsample"][64]["flux"] == pytest.approx(
+        expected_fraction.tolist()
+    )
     assert payload["axis"] == "transmission"
-    assert payload["flux_unit"] == "transmittance"
+    assert payload["flux_unit"] == "percent transmittance"
     assert payload["flux_kind"] == "transmission"
-    assert payload["metadata"]["axis"] == "transmission"
-    assert payload["metadata"]["axis_kind"] == "wavelength"
-    assert payload["metadata"]["flux_unit"] == "transmittance"
-    assert payload["metadata"]["flux_unit_original"] == "(micromol/mol)-1m-1 (base 10)"
-    assert payload["provenance"]["axis"] == "transmission"
-    assert payload["provenance"]["flux_unit"] == "transmittance"
+    metadata = payload["metadata"]
+    assert metadata["axis"] == "transmission"
+    assert metadata["axis_kind"] == "wavelength"
+    assert metadata["flux_unit"] == "percent transmittance"
+    assert metadata["flux_unit_original"] == "(micromol/mol)-1m-1 (base 10)"
+    assert metadata["flux_unit_display"] == "Transmittance (%)"
+    calibration = metadata["quant_ir_calibration"]
+    assert calibration["mixing_ratio_umol_per_mol"] == pytest.approx(1.0)
+    assert calibration["path_length_m"] == pytest.approx(1.0)
+    provenance = payload["provenance"]
+    assert provenance["axis"] == "transmission"
+    assert provenance["flux_unit"] == "percent transmittance"
     assert (
-        payload["provenance"]["flux_unit_original"]
+        provenance["flux_unit_original"]
         == "(micromol/mol)-1m-1 (base 10)"
     )
-    assert (
-        payload["provenance"]["transmittance_conversion"]
-        == "Converted from Quant IR absorbance using T=10^(-absorbance)."
-    )
+    assert provenance["flux_unit_display"] == "Transmittance (%)"
+    assert "T=10^(-α·χ·L)" in provenance["transmittance_conversion"]
 
 
-def test_orient_flux_preserves_manual_transmission_payload():
+def test_prepare_flux_preserves_manual_transmission_payload():
     payload = {
         "flux": [0.95, 0.75],
         "downsample": {64: {"wavelength_nm": [1.0, 2.0], "flux": [0.95, 0.75]}},
@@ -179,15 +185,19 @@ def test_orient_flux_preserves_manual_transmission_payload():
         "axis": "",
     }
 
-    nist_quant_ir._orient_flux(payload, manual_entry=True)
+    nist_quant_ir._prepare_flux(payload, manual_entry=True)
 
-    assert payload["flux"] == pytest.approx([0.95, 0.75])
-    assert payload["downsample"][64]["flux"] == pytest.approx([0.95, 0.75])
+    assert payload["flux"] == pytest.approx([95.0, 75.0])
+    assert payload["downsample"][64]["flux"] == pytest.approx([95.0, 75.0])
     assert payload["axis"] == "transmission"
-    assert payload["metadata"]["axis"] == "transmission"
-    assert payload["metadata"]["axis_kind"] == "wavelength"
-    assert payload["metadata"]["flux_unit"] == "TRANSMITTANCE"
-    assert payload["metadata"]["flux_unit_original"] == "TRANSMITTANCE"
-    assert payload["provenance"]["axis"] == "transmission"
-    assert payload["provenance"]["flux_unit"] == "TRANSMITTANCE"
-    assert payload["provenance"]["flux_unit_original"] == "TRANSMITTANCE"
+    metadata = payload["metadata"]
+    assert metadata["axis"] == "transmission"
+    assert metadata["axis_kind"] == "wavelength"
+    assert metadata["flux_unit"] == "percent transmittance"
+    assert metadata["flux_unit_original"] == "TRANSMITTANCE"
+    assert metadata["flux_unit_display"] == "Transmittance (%)"
+    provenance = payload["provenance"]
+    assert provenance["axis"] == "transmission"
+    assert provenance["flux_unit"] == "percent transmittance"
+    assert provenance["flux_unit_original"] == "TRANSMITTANCE"
+    assert provenance["flux_unit_display"] == "Transmittance (%)"

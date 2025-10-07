@@ -30,6 +30,59 @@ def test_overlay_trace_methods_available_for_build():
     assert axis_title == "Wavelength (nm)"
     assert len(fig.data) == 1
     assert fig.data[0].x[0] == pytest.approx(500.0)
+    assert fig.layout.yaxis.title.text == "Flux"
+
+
+def test_wavenumber_display_reverses_axis():
+    wavenumbers = np.linspace(3500.0, 500.0, 12)
+    wavelengths_nm = tuple(np.sort(1e7 / wavenumbers))
+    overlay = _build_overlay(
+        trace_id="quant-ir",
+        label="Quant IR",
+        wavelength_nm=wavelengths_nm,
+        flux=tuple(np.linspace(0.2, 0.8, len(wavelengths_nm))),
+    )
+
+    fig, axis_title = _build_overlay_figure(
+        overlays=[overlay],
+        display_units="cm^-1",
+        display_mode="Flux (raw)",
+        viewport_by_kind={"wavelength": (None, None)},
+        reference=None,
+        differential_mode="Off",
+        version_tag="vtest",
+    )
+
+    assert axis_title == "Wavenumber (cm⁻¹)"
+    assert fig.layout.xaxis.autorange == "reversed"
+
+    plotted_trace = fig.data[0]
+    xs = list(plotted_trace.x)
+    assert xs[0] > xs[-1]
+
+
+def test_flux_axis_uses_transmittance_label():
+    overlay = _build_overlay(
+        trace_id="trans",
+        label="Transmittance",
+        wavelength_nm=(500.0, 520.0, 540.0),
+        flux=(100.0, 80.0, 60.0),
+        metadata={"flux_unit_display": "Transmittance (%)"},
+        flux_unit="percent transmittance",
+    )
+
+    fig, axis_title = _build_overlay_figure(
+        overlays=[overlay],
+        display_units="nm",
+        display_mode="Flux (raw)",
+        viewport_by_kind={"wavelength": (None, None)},
+        reference=None,
+        differential_mode="Off",
+        version_tag="vtest",
+    )
+
+    assert axis_title == "Wavelength (nm)"
+    assert fig.layout.yaxis.title.text == "Transmittance (%)"
 
 
 def test_wavenumber_display_reverses_axis():

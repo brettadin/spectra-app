@@ -10,6 +10,7 @@ from urllib.parse import urljoin
 
 import requests
 import numpy as np
+from astropy import units as u
 
 from ..ingest_jcamp import parse_jcamp
 
@@ -313,107 +314,143 @@ def _resample_manual_payload(
     return median_step
 
 
-def _orient_flux(payload: Dict[str, object], *, manual_entry: bool) -> None:
+def _percent_transmittance(
+    samples: np.ndarray,
+    *,
+    coefficient_units: bool,
+    mixing_ratio: u.Quantity,
+    path_length: u.Quantity,
+) -> np.ndarray:
+    if coefficient_units:
+        coefficient = np.asarray(samples, dtype=float)
+        coefficient = np.nan_to_num(coefficient, nan=0.0, posinf=0.0, neginf=0.0)
+        coefficient_quantity = coefficient * (u.mol / (u.umol * u.m))
+        absorbance = coefficient_quantity * mixing_ratio * path_length
+        absorbance_values = np.asarray(
+            absorbance.to_value(u.dimensionless_unscaled), dtype=float
+        )
+        safe_absorbance = np.clip(absorbance_values, a_min=0.0, a_max=None)
+        transmittance_fraction = np.power(10.0, -safe_absorbance)
+    else:
+        transmittance_fraction = np.asarray(samples, dtype=float)
+        transmittance_fraction = np.nan_to_num(
+            transmittance_fraction, nan=0.0, posinf=0.0, neginf=0.0
+        )
+        transmittance_fraction = np.clip(transmittance_fraction, a_min=0.0, a_max=None)
+    return transmittance_fraction * 100.0
+
+
+def _prepare_flux(payload: Dict[str, object], *, manual_entry: bool) -> None:
     flux = payload.get("flux")
     if not isinstance(flux, (list, tuple)):
         return
+
     try:
         flux_array = np.asarray(flux, dtype=float)
     except Exception:
         return
+
     if flux_array.ndim != 1 or flux_array.size == 0:
         return
 
     metadata = payload.get("metadata")
     provenance = payload.get("provenance")
 
-    if manual_entry:
-        if not str(payload.get("axis") or "").strip():
-            payload["axis"] = "transmission"
-        if isinstance(metadata, Mapping):
-            metadata.setdefault("axis", "transmission")
-            metadata.setdefault("axis_kind", "wavelength")
-            original_unit = metadata.get("reported_flux_unit")
-            if original_unit:
-                metadata.setdefault("flux_unit", original_unit)
-            else:
-                metadata.setdefault("flux_unit", "transmittance")
-            if "flux_unit_original" not in metadata and original_unit is not None:
-                metadata["flux_unit_original"] = original_unit
-        if isinstance(provenance, Mapping):
-            provenance.setdefault("axis", "transmission")
-            original_unit = None
-            if isinstance(metadata, Mapping):
-                original_unit = metadata.get("flux_unit_original") or metadata.get(
-                    "flux_unit"
-                )
-            if original_unit:
-                provenance.setdefault("flux_unit", original_unit)
-            else:
-                provenance.setdefault("flux_unit", "transmittance")
-            original_unit = None
-            if isinstance(metadata, Mapping):
-                original_unit = metadata.get("flux_unit_original")
-            if original_unit is not None:
-                provenance.setdefault("flux_unit_original", original_unit)
-        original_unit = None
-        if isinstance(metadata, Mapping):
-            original_unit = metadata.get("flux_unit_original") or metadata.get(
-                "flux_unit"
-            )
-        if original_unit:
-            payload.setdefault("flux_unit", original_unit)
-        else:
-            payload.setdefault("flux_unit", "transmittance")
-        payload["flux_kind"] = "transmission"
-        return
+    reported_unit = None
+    if isinstance(metadata, Mapping):
+        reported_unit = metadata.get("reported_flux_unit")
 
-    safe_absorbance = np.clip(flux_array, a_min=0.0, a_max=None)
-    transmittance = np.power(10.0, -safe_absorbance)
-    payload["flux"] = np.asarray(transmittance, dtype=float).tolist()
+    coefficient_units = False
+    if not manual_entry and isinstance(reported_unit, str):
+        if "(micromol/mol)-1m-1" in reported_unit.replace(" ", ""):
+            coefficient_units = True
+
+    default_mixing_ratio = 1.0 * (u.umol / u.mol)
+    default_path_length = 1.0 * u.m
+    converted = _percent_transmittance(
+        flux_array,
+        coefficient_units=coefficient_units,
+        mixing_ratio=default_mixing_ratio,
+        path_length=default_path_length,
+    )
+
+    payload["flux"] = converted.tolist()
+    payload["flux_unit"] = "percent transmittance"
+    payload["flux_kind"] = "transmission"
+    payload["axis"] = "transmission"
 
     downsample = payload.get("downsample")
     if isinstance(downsample, Mapping):
-        for tier in list(downsample.values()):
+        for tier in downsample.values():
             if not isinstance(tier, Mapping):
                 continue
             samples = tier.get("flux")
             if not isinstance(samples, (list, tuple)):
                 continue
             try:
-                tier_flux = np.asarray(samples, dtype=float)
+                tier_array = np.asarray(samples, dtype=float)
             except Exception:
                 continue
-            tier_absorbance = np.clip(tier_flux, a_min=0.0, a_max=None)
-            tier_transmittance = np.power(10.0, -tier_absorbance)
-            tier["flux"] = np.asarray(tier_transmittance, dtype=float).tolist()
+            tier_converted = _percent_transmittance(
+                tier_array,
+                coefficient_units=coefficient_units,
+                mixing_ratio=default_mixing_ratio,
+                path_length=default_path_length,
+            )
+            tier["flux"] = tier_converted.tolist()
 
-    payload["axis"] = "transmission"
-    payload["flux_unit"] = "transmittance"
-    payload["flux_kind"] = "transmission"
+    calibration = {
+        "mixing_ratio_umol_per_mol": float(
+            default_mixing_ratio.to_value(u.umol / u.mol)
+        ),
+        "path_length_m": float(default_path_length.to_value(u.m)),
+        "reference": "Beer–Lambert conversion of NIST Quant IR absorption coefficients",
+    }
 
     if isinstance(metadata, Mapping):
-        metadata["axis"] = "transmission"
+        metadata.setdefault("axis", "transmission")
         metadata.setdefault("axis_kind", "wavelength")
-        original_unit = metadata.get("reported_flux_unit")
-        if original_unit is not None:
-            metadata["flux_unit_original"] = original_unit
-        metadata["reported_flux_unit"] = "transmittance"
-        metadata["flux_unit"] = "transmittance"
-        metadata[
-            "transmittance_conversion"
-        ] = "Converted from Quant IR absorbance using T=10^(-absorbance)."
+        original_unit = metadata.get("flux_unit_original")
+        if original_unit is None and reported_unit is not None:
+            metadata["flux_unit_original"] = reported_unit
+        metadata["reported_flux_unit"] = "percent transmittance"
+        metadata["flux_unit"] = "percent transmittance"
+        metadata["flux_unit_display"] = "Transmittance (%)"
+        metadata["transmittance_basis"] = "percent"
+        if coefficient_units:
+            metadata["absorption_coefficient_unit"] = str(reported_unit)
+            metadata["quant_ir_calibration"] = calibration
+            metadata[
+                "transmittance_conversion"
+            ] = (
+                "Converted from Quant IR absorption coefficients using "
+                "T=10^(-α·χ·L) with χ=1 µmol/mol and L=1 m, expressed as percent transmittance."
+            )
+        else:
+            metadata[
+                "transmittance_conversion"
+            ] = "Scaled manual WebBook transmittance samples to percent."
+
     if isinstance(provenance, Mapping):
-        provenance["axis"] = "transmission"
-        provenance["flux_unit"] = "transmittance"
-        original_unit = None
+        provenance.setdefault("axis", "transmission")
+        provenance["flux_unit"] = "percent transmittance"
+        provenance["flux_unit_display"] = "Transmittance (%)"
         if isinstance(metadata, Mapping):
             original_unit = metadata.get("flux_unit_original")
-        if original_unit is not None:
-            provenance["flux_unit_original"] = original_unit
-        provenance[
-            "transmittance_conversion"
-        ] = "Converted from Quant IR absorbance using T=10^(-absorbance)."
+            if original_unit is not None:
+                provenance["flux_unit_original"] = original_unit
+        if coefficient_units:
+            provenance["quant_ir_calibration"] = calibration
+            provenance[
+                "transmittance_conversion"
+            ] = (
+                "Converted from Quant IR absorption coefficients using "
+                "T=10^(-α·χ·L) with χ=1 µmol/mol and L=1 m, expressed as percent transmittance."
+            )
+        else:
+            provenance[
+                "transmittance_conversion"
+            ] = "Scaled manual WebBook transmittance samples to percent."
 
 
 def _parse_relative_uncertainty(value: str) -> Optional[float]:
@@ -517,7 +554,7 @@ def fetch(
     )
     payload.setdefault("kind", "spectrum")
 
-    _orient_flux(payload, manual_entry=manual_entry)
+    _prepare_flux(payload, manual_entry=manual_entry)
 
     return payload
 @dataclass(frozen=True)

@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.1v",
+  "version": "v1.2.1w",
   "date_utc": "2025-10-28T00:00:00Z",
-  "summary": "Reverse wavenumber axes so Quant IR overlays align with standard IR orientation."
+  "summary": "Calibrate Quant IR spectra to percent transmittance with explicit unit metadata and UI labelling."
 }

@@ -2079,6 +2079,59 @@ def _convert_axis_series(
     return _convert_wavelength(series, display_units)
 
 
+def _trace_flux_unit_label(trace: OverlayTrace) -> Optional[str]:
+    metadata = trace.metadata if isinstance(trace.metadata, Mapping) else {}
+    candidates: List[str] = []
+    if isinstance(metadata, Mapping):
+        for key in (
+            "flux_unit_display",
+            "flux_unit",
+            "reported_flux_unit",
+            "flux_unit_original",
+        ):
+            value = metadata.get(key)
+            if isinstance(value, str) and value.strip():
+                candidates.append(value)
+    if getattr(trace, "flux_unit", None):
+        candidates.append(str(trace.flux_unit))
+
+    for candidate in candidates:
+        label = candidate.strip()
+        if not label:
+            continue
+        lowered = label.lower()
+        if "transmittance" in lowered and "percent" in lowered:
+            return "Transmittance (%)"
+        if lowered == "transmittance" or lowered == "transmission":
+            return "Transmittance"
+        if "absorbance" in lowered and "base" in lowered:
+            return "Absorbance (base 10)"
+        if "absorbance" in lowered:
+            return "Absorbance"
+        if lowered in {"arb", "arbitrary", "arbitrary flux"}:
+            continue
+        return label
+    return None
+
+
+def _resolve_flux_axis_title(
+    overlays: Sequence[OverlayTrace], display_mode: str
+) -> str:
+    if display_mode != "Flux (raw)":
+        return "Normalized flux"
+    labels = []
+    for trace in overlays:
+        label = _trace_flux_unit_label(trace)
+        if label:
+            labels.append(label)
+    unique = {label for label in labels if label}
+    if not unique:
+        return "Flux"
+    if len(unique) == 1:
+        return unique.pop()
+    return "Flux"
+
+
 def _axis_title_for_kind(
     axis_kind: str,
     overlays: Sequence[OverlayTrace],
@@ -2200,6 +2253,7 @@ def _build_overlay_figure(
             viewport=viewport_lookup.get(ref_kind, (None, None)),
         )
 
+    target_overlays = [trace for trace in overlays if trace.visible] or list(overlays)
     visible_axis_kinds: List[str] = []
     axis_titles: Dict[str, str] = {}
 
@@ -2293,9 +2347,11 @@ def _build_overlay_figure(
             friendly = " + ".join(kind.replace("_", " ") for kind in unique_kinds)
             axis_title = f"Mixed axes ({friendly})"
 
+    flux_axis_title = _resolve_flux_axis_title(target_overlays, display_mode)
+
     layout_kwargs = dict(
         xaxis_title=axis_title,
-        yaxis_title="Normalized flux" if display_mode != "Flux (raw)" else "Flux",
+        yaxis_title=flux_axis_title,
         legend=dict(itemclick="toggleothers"),
         margin=dict(t=50, b=40, l=60, r=20),
         height=520,
