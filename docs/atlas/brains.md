@@ -1,3 +1,8 @@
+# NIST Quantitative IR fetcher — 2025-10-27
+- Built a dedicated `nist_quant_ir` fetcher that scrapes the Quant IR catalog, selects the preferred 0.125 cm⁻¹ apodization window, resolves JCAMP links, and normalises metadata/provenance for overlays. 【F:app/server/fetchers/nist_quant_ir.py†L1-L220】
+- Exposed the new archive through the line catalog panel with a cached molecule selector that flags unavailable entries while funnelling successful picks through the overlay ingestion flow. 【F:app/ui/main.py†L53-L122】【F:app/ui/main.py†L1372-L1455】
+- Added parser and selection unit tests to lock the catalog row-span handling, JCAMP link extraction, and apodization priority behaviour. 【F:tests/server/test_nist_quant_ir.py†L1-L64】
+
 # JCAMP-DX overlay ingestion — 2025-10-27
 - Implemented a JCAMP parser that tokenises XYDATA blocks, converts X units to nanometres with spectral equivalencies, drops uncertainty-labelled segments, and records provenance for caching tiers. 【F:app/server/ingest_jcamp.py†L20-L383】
 - Updated `_detect_format` and ingest routing so `.jdx` extensions or JCAMP headers trigger the new parser before falling back to ASCII handling. 【F:app/utils/local_ingest.py†L11-L75】【F:app/utils/local_ingest.py†L305-L404】
@@ -142,6 +147,10 @@
 - Render the target manifest name, narrative summary, and status metrics in a dedicated container before offering the registry grid so the curated context stays visible. 【F:app/ui/targets.py†L260-L326】
 - Tuck the full catalog dataframe into an optional “Browse catalog entries” expander, keeping the manifest summary adjacent to the curated product groups. 【F:app/ui/targets.py†L328-L352】
 - Locked a regression asserting the new expander label is present and the grid remains available for discovery. 【F:tests/ui/test_targets_panel_layout.py†L53-L74】
+
+## Quant IR overlay point counts — 2025-10-27
+- Added a derived `points` property on overlay traces so the workspace visibility table can render Quant IR downloads without attribute errors. 【F:app/ui/main.py†L117-L138】【F:app/ui/main.py†L2332-L2344】
+- Treated image overlays with missing payloads as zero-point entries to avoid surfacing bogus counts when data arrays cannot be parsed. 【F:app/ui/main.py†L117-L138】
 
 ## Curated CALSPEC library via astroquery — 2025-10-02
 - Swap the MAST CALSPEC downloader to `astroquery.mast.Observations.download_file`, capturing the download agent and cache metadata in the returned provenance. 【F:app/server/fetchers/mast.py†L1-L210】

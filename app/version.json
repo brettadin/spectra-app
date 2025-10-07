@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.1m",
+  "version": "v1.2.1p",
   "date_utc": "2025-10-27T00:00:00Z",
-  "summary": "Auto-select original wavelength units for uploaded spectra and document the behaviour."
+  "summary": "Restore overlay table rendering by exposing a points count on Quant IR traces."
 }

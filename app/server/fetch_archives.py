@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict
 
-from .fetchers import doi, eso, mast, nist, sdss, simbad
+from .fetchers import doi, eso, mast, nist, nist_quant_ir, sdss, simbad
 
 class FetchError(Exception):
     pass
@@ -24,6 +24,8 @@ def fetch_spectrum(archive: str, **kwargs) -> Dict[str, Any]:
         return sdss.fetch(**kwargs)
     if archive == 'nist':
         return nist.fetch(**kwargs)
+    if archive in {'nist-quant-ir', 'nist_quant_ir', 'quant-ir'}:
+        return nist_quant_ir.fetch(**kwargs)
     if archive == 'doi':
         return doi.fetch(**kwargs)
     raise FetchError(f'Unsupported archive: {archive}')
