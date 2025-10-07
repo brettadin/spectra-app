@@ -166,6 +166,10 @@
 - Parsed JCAMP Δx metadata, resampled manual payloads onto the 0.125&nbsp;cm⁻¹ grid, and preserved the source sampling step in metadata/provenance. 【F:app/server/fetchers/nist_quant_ir.py†L238-L395】
 - Highlighted the manual provenance path inside the Quant IR selector so users see the WebBook fallbacks before fetching. 【F:app/ui/main.py†L1579-L1599】
 
+## Quant IR absorption orientation — 2025-10-28
+- Added a flux orientation helper that inverts Quant IR catalog spectra, updates downsample tiers, and labels the axis metadata/provenance as absorption so plots dip like the manual WebBook presets. 【F:app/server/fetchers/nist_quant_ir.py†L310-L371】【F:app/server/fetchers/nist_quant_ir.py†L373-L452】
+- Extended unit tests covering non-manual and manual payloads to confirm absorption traces flip while transmission spectra stay unchanged. 【F:tests/server/test_nist_quant_ir.py†L110-L151】
+
 ## Curated CALSPEC library via astroquery — 2025-10-02
 - Swap the MAST CALSPEC downloader to `astroquery.mast.Observations.download_file`, capturing the download agent and cache metadata in the returned provenance. 【F:app/server/fetchers/mast.py†L1-L210】
 - Replace the sample shim with a curated-library materialiser that walks the vetted CALSPEC roster and persists per-target provenance summaries. 【F:app/server/fetch_archives.py†L1-L74】【F:scripts/fetch_samples.py†L1-L15】

@@ -132,3 +132,43 @@ def test_resample_manual_payload_interpolates_to_target_resolution():
     resampled_wavenumbers = np.sort(1e7 / np.asarray(payload["wavelength_nm"]))
     diffs = np.diff(resampled_wavenumbers)
     assert np.allclose(diffs, 0.5, rtol=1e-3, atol=1e-6)
+
+
+def test_orient_flux_inverts_quant_ir_absorption_payload():
+    payload = {
+        "flux": [0.0, 0.5, -0.25],
+        "downsample": {
+            64: {"wavelength_nm": [1.0, 2.0, 3.0], "flux": [0.0, 0.5, -0.25]}
+        },
+        "metadata": {},
+        "provenance": {},
+        "axis": "emission",
+    }
+
+    nist_quant_ir._orient_flux(payload, manual_entry=False)
+
+    assert payload["flux"] == pytest.approx([0.0, -0.5, 0.25])
+    assert payload["downsample"][64]["flux"] == pytest.approx([0.0, -0.5, 0.25])
+    assert payload["axis"] == "absorption"
+    assert payload["metadata"]["axis"] == "absorption"
+    assert payload["metadata"]["axis_kind"] == "wavelength"
+    assert payload["provenance"]["axis"] == "absorption"
+
+
+def test_orient_flux_preserves_manual_transmission_payload():
+    payload = {
+        "flux": [0.95, 0.75],
+        "downsample": {64: {"wavelength_nm": [1.0, 2.0], "flux": [0.95, 0.75]}},
+        "metadata": {},
+        "provenance": {},
+        "axis": "",
+    }
+
+    nist_quant_ir._orient_flux(payload, manual_entry=True)
+
+    assert payload["flux"] == pytest.approx([0.95, 0.75])
+    assert payload["downsample"][64]["flux"] == pytest.approx([0.95, 0.75])
+    assert payload["axis"] == "transmission"
+    assert payload["metadata"]["axis"] == "transmission"
+    assert payload["metadata"]["axis_kind"] == "wavelength"
+    assert payload["provenance"]["axis"] == "transmission"

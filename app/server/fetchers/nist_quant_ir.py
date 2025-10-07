@@ -313,6 +313,56 @@ def _resample_manual_payload(
     return median_step
 
 
+def _orient_flux(payload: Dict[str, object], *, manual_entry: bool) -> None:
+    flux = payload.get("flux")
+    if not isinstance(flux, (list, tuple)):
+        return
+    try:
+        flux_array = np.asarray(flux, dtype=float)
+    except Exception:
+        return
+    if flux_array.ndim != 1 or flux_array.size == 0:
+        return
+
+    if manual_entry:
+        if not str(payload.get("axis") or "").strip():
+            payload["axis"] = "transmission"
+        metadata = payload.get("metadata")
+        if isinstance(metadata, Mapping):
+            metadata.setdefault("axis", "transmission")
+            metadata.setdefault("axis_kind", "wavelength")
+        provenance = payload.get("provenance")
+        if isinstance(provenance, Mapping):
+            provenance.setdefault("axis", "transmission")
+        return
+
+    inverted = -flux_array
+    payload["flux"] = inverted.tolist()
+
+    downsample = payload.get("downsample")
+    if isinstance(downsample, Mapping):
+        for tier in list(downsample.values()):
+            if not isinstance(tier, Mapping):
+                continue
+            samples = tier.get("flux")
+            if not isinstance(samples, (list, tuple)):
+                continue
+            try:
+                tier_flux = np.asarray(samples, dtype=float)
+            except Exception:
+                continue
+            tier["flux"] = (-tier_flux).tolist()
+
+    payload["axis"] = "absorption"
+    metadata = payload.get("metadata")
+    if isinstance(metadata, Mapping):
+        metadata.setdefault("axis", "absorption")
+        metadata.setdefault("axis_kind", "wavelength")
+    provenance = payload.get("provenance")
+    if isinstance(provenance, Mapping):
+        provenance.setdefault("axis", "absorption")
+
+
 def _parse_relative_uncertainty(value: str) -> Optional[float]:
     match = _RELATIVE_UNCERTAINTY_PATTERN.search(value)
     if not match:
@@ -413,6 +463,8 @@ def fetch(
         f" ({record.relative_uncertainty})"
     )
     payload.setdefault("kind", "spectrum")
+
+    _orient_flux(payload, manual_entry=manual_entry)
 
     return payload
 @dataclass(frozen=True)
