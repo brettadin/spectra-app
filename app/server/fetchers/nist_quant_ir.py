@@ -324,20 +324,53 @@ def _orient_flux(payload: Dict[str, object], *, manual_entry: bool) -> None:
     if flux_array.ndim != 1 or flux_array.size == 0:
         return
 
+    metadata = payload.get("metadata")
+    provenance = payload.get("provenance")
+
     if manual_entry:
         if not str(payload.get("axis") or "").strip():
             payload["axis"] = "transmission"
-        metadata = payload.get("metadata")
         if isinstance(metadata, Mapping):
             metadata.setdefault("axis", "transmission")
             metadata.setdefault("axis_kind", "wavelength")
-        provenance = payload.get("provenance")
+            original_unit = metadata.get("reported_flux_unit")
+            if original_unit:
+                metadata.setdefault("flux_unit", original_unit)
+            else:
+                metadata.setdefault("flux_unit", "transmittance")
+            if "flux_unit_original" not in metadata and original_unit is not None:
+                metadata["flux_unit_original"] = original_unit
         if isinstance(provenance, Mapping):
             provenance.setdefault("axis", "transmission")
+            original_unit = None
+            if isinstance(metadata, Mapping):
+                original_unit = metadata.get("flux_unit_original") or metadata.get(
+                    "flux_unit"
+                )
+            if original_unit:
+                provenance.setdefault("flux_unit", original_unit)
+            else:
+                provenance.setdefault("flux_unit", "transmittance")
+            original_unit = None
+            if isinstance(metadata, Mapping):
+                original_unit = metadata.get("flux_unit_original")
+            if original_unit is not None:
+                provenance.setdefault("flux_unit_original", original_unit)
+        original_unit = None
+        if isinstance(metadata, Mapping):
+            original_unit = metadata.get("flux_unit_original") or metadata.get(
+                "flux_unit"
+            )
+        if original_unit:
+            payload.setdefault("flux_unit", original_unit)
+        else:
+            payload.setdefault("flux_unit", "transmittance")
+        payload["flux_kind"] = "transmission"
         return
 
-    inverted = -flux_array
-    payload["flux"] = inverted.tolist()
+    safe_absorbance = np.clip(flux_array, a_min=0.0, a_max=None)
+    transmittance = np.power(10.0, -safe_absorbance)
+    payload["flux"] = np.asarray(transmittance, dtype=float).tolist()
 
     downsample = payload.get("downsample")
     if isinstance(downsample, Mapping):
@@ -351,16 +384,36 @@ def _orient_flux(payload: Dict[str, object], *, manual_entry: bool) -> None:
                 tier_flux = np.asarray(samples, dtype=float)
             except Exception:
                 continue
-            tier["flux"] = (-tier_flux).tolist()
+            tier_absorbance = np.clip(tier_flux, a_min=0.0, a_max=None)
+            tier_transmittance = np.power(10.0, -tier_absorbance)
+            tier["flux"] = np.asarray(tier_transmittance, dtype=float).tolist()
 
-    payload["axis"] = "absorption"
-    metadata = payload.get("metadata")
+    payload["axis"] = "transmission"
+    payload["flux_unit"] = "transmittance"
+    payload["flux_kind"] = "transmission"
+
     if isinstance(metadata, Mapping):
-        metadata.setdefault("axis", "absorption")
+        metadata["axis"] = "transmission"
         metadata.setdefault("axis_kind", "wavelength")
-    provenance = payload.get("provenance")
+        original_unit = metadata.get("reported_flux_unit")
+        if original_unit is not None:
+            metadata["flux_unit_original"] = original_unit
+        metadata["reported_flux_unit"] = "transmittance"
+        metadata["flux_unit"] = "transmittance"
+        metadata[
+            "transmittance_conversion"
+        ] = "Converted from Quant IR absorbance using T=10^(-absorbance)."
     if isinstance(provenance, Mapping):
-        provenance.setdefault("axis", "absorption")
+        provenance["axis"] = "transmission"
+        provenance["flux_unit"] = "transmittance"
+        original_unit = None
+        if isinstance(metadata, Mapping):
+            original_unit = metadata.get("flux_unit_original")
+        if original_unit is not None:
+            provenance["flux_unit_original"] = original_unit
+        provenance[
+            "transmittance_conversion"
+        ] = "Converted from Quant IR absorbance using T=10^(-absorbance)."
 
 
 def _parse_relative_uncertainty(value: str) -> Optional[float]:

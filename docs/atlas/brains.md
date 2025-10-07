@@ -170,6 +170,10 @@
 - Added a flux orientation helper that inverts Quant IR catalog spectra, updates downsample tiers, and labels the axis metadata/provenance as absorption so plots dip like the manual WebBook presets. 【F:app/server/fetchers/nist_quant_ir.py†L310-L371】【F:app/server/fetchers/nist_quant_ir.py†L373-L452】
 - Extended unit tests covering non-manual and manual payloads to confirm absorption traces flip while transmission spectra stay unchanged. 【F:tests/server/test_nist_quant_ir.py†L110-L151】
 
+## Quant IR transmittance conversion — 2025-10-28
+- Converted Quant IR absorbance payloads to fractional transmission using T = 10^(-absorbance), updated downsample tiers, and aligned flux metadata/provenance with transmission units so catalog overlays mirror the WebBook baselines. 【F:app/server/fetchers/nist_quant_ir.py†L303-L385】
+- Extended orientation tests to lock the transmission conversion for catalog spectra while preserving manual WebBook units, then refreshed release metadata, patch notes, and patch log for v1.2.1u. 【F:tests/server/test_nist_quant_ir.py†L110-L170】【F:app/version.json†L1-L5】【F:docs/patch_notes/v1.2.1u.md†L1-L11】【F:PATCHLOG.txt†L42-L43】
+
 ## Curated CALSPEC library via astroquery — 2025-10-02
 - Swap the MAST CALSPEC downloader to `astroquery.mast.Observations.download_file`, capturing the download agent and cache metadata in the returned provenance. 【F:app/server/fetchers/mast.py†L1-L210】
 - Replace the sample shim with a curated-library materialiser that walks the vetted CALSPEC roster and persists per-target provenance summaries. 【F:app/server/fetch_archives.py†L1-L74】【F:scripts/fetch_samples.py†L1-L15】

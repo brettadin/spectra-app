@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.1t",
+  "version": "v1.2.1u",
   "date_utc": "2025-10-28T00:00:00Z",
-  "summary": "Flip Quant IR absorption spectra to match the manual WebBook transmission orientation."
+  "summary": "Convert Quant IR absorbance spectra into transmission curves aligned with the WebBook baselines."
 }
