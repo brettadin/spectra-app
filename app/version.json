@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.1q",
-  "date_utc": "2025-10-27T00:00:00Z",
-  "summary": "Map WebBook IR fallbacks for H2O/CO2/methane, resample them to 0.125 cm⁻¹, and flag provenance in the Quant IR selector."
+  "version": "v1.2.1r",
+  "date_utc": "2025-10-28T00:00:00Z",
+  "summary": "Expose a public Quant IR manual catalog helper, guard the sidebar selector against missing APIs, and retain provenance cues."
 }
