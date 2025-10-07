@@ -1,4 +1,3 @@
-import numpy as np
 import pytest
 
 from app.server.fetchers import nist_quant_ir
@@ -94,14 +93,35 @@ def test_choose_measurement_prefers_priority_apodization():
 
 
 def test_manual_species_catalog_includes_requested_entries():
-    manual_catalog = nist_quant_ir._manual_species_catalog()
-    assert "h2o" in manual_catalog
-    water = manual_catalog["h2o"]
+    manual_catalog = nist_quant_ir.manual_species_catalog()
+    expected_names = [
+        "Water",
+        "Methane",
+        "Carbon Dioxide",
+        "Benzene",
+        "Ethylene",
+        "Acetone",
+        "Ethanol",
+        "Methanol",
+        "2-Propanol",
+        "Ethyl Acetate",
+        "1-Butanol",
+        "Sulfur Hexafluoride",
+        "Acetonitrile",
+        "Acrylonitrile",
+        "Sulfur Dioxide",
+        "Carbon Tetrachloride",
+        "Butane",
+        "Ethylbenzene",
+    ]
+    for name in expected_names:
+        token = nist_quant_ir._normalise_token(name)
+        assert token in manual_catalog, f"missing manual record for {name}"
+
+    water = manual_catalog[nist_quant_ir._normalise_token("Water")]
     measurement = water.measurements[0]
     link = measurement.resolution_links[nist_quant_ir.DEFAULT_RESOLUTION_CM_1]
-    assert link.startswith("https://webbook.nist.gov/cgi/cbook.cgi?ID=7732-18-5")
-    assert "methane" in manual_catalog
-    assert "co2" in manual_catalog
+    assert link.startswith("https://webbook.nist.gov/cgi/cbook.cgi?JCAMP=C7732185")
 
 
 def test_extract_delta_x_parses_numeric_value():
@@ -109,26 +129,28 @@ def test_extract_delta_x_parses_numeric_value():
     assert nist_quant_ir._extract_delta_x(b"##TITLE=Test") is None
 
 
-def test_resample_manual_payload_interpolates_to_target_resolution():
-    wavenumbers = np.arange(450.0, 462.0, 4.0)
-    wavelengths_nm = (1e7 / wavenumbers).tolist()
-    flux = np.linspace(0.0, 1.0, len(wavelengths_nm)).tolist()
-
-    class DummyQuantity:
-        def __init__(self, unit: float):
-            self.unit = unit
-
+def test_finalise_payload_preserves_samples_and_tags_units():
+    wavelengths = [500.0, 510.0, 520.0]
+    flux = [0.1, 0.2, 0.3]
     payload = {
-        "wavelength_nm": list(wavelengths_nm),
+        "wavelength_nm": list(wavelengths),
         "flux": list(flux),
-        "wavelength": {"values": list(wavelengths_nm)},
-        "wavelength_quantity": DummyQuantity(1.0),
+        "metadata": {"reported_flux_unit": "Transmittance"},
+        "provenance": {},
+        "axis": "transmission",
     }
 
-    original_step = nist_quant_ir._resample_manual_payload(
-        payload, target_resolution=0.5
-    )
-    assert original_step == pytest.approx(4.0)
-    resampled_wavenumbers = np.sort(1e7 / np.asarray(payload["wavelength_nm"]))
-    diffs = np.diff(resampled_wavenumbers)
-    assert np.allclose(diffs, 0.5, rtol=1e-3, atol=1e-6)
+    nist_quant_ir._finalise_payload(payload)
+
+    assert payload["flux"] == flux
+    metadata = payload["metadata"]
+    provenance = payload["provenance"]
+    assert metadata["axis"] == "transmission"
+    assert metadata["axis_kind"] == "wavelength"
+    assert metadata["wavelength_unit"] == "cm^-1"
+    assert metadata["preferred_wavelength_unit"] == "cm^-1"
+    assert metadata["wavelength_display_unit"] == "cm^-1"
+    assert provenance["axis"] == "transmission"
+    units_meta = provenance.get("units")
+    assert units_meta["preferred_wavelength"] == "cm^-1"
+    assert "wavenumber_cm_1" in payload
