@@ -39,3 +39,4 @@ Spectra App — Patch Log (append-only)
 - v1.2.1m: Auto-select original wavelength units when the first overlay loads so wavenumber uploads land on matching axes and extend regression coverage for the display-unit hints.
 - v1.2.1n: Add a NIST Quantitative IR fetcher with preset molecules at 0.125 cm⁻¹ and document the workflow.
 - v1.2.1o: Fix the overlay vectoriser fallback so sampled Quant IR traces construct wavelength/flux arrays without raising.
+- v1.2.1p: Restore the overlay table by deriving a points total for Quant IR traces and updating release collateral.

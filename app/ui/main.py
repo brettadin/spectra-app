@@ -121,6 +121,19 @@ class OverlayTrace:
     )
     cache_dataset_id: Optional[str] = None
 
+    @property
+    def points(self) -> int:
+        if str(self.axis_kind).strip().lower() == "image":
+            if isinstance(self.image, Mapping):
+                data = self.image.get("data")
+                try:
+                    array = np.asarray(data)
+                except Exception:
+                    return 0
+                return int(array.size)
+            return 0
+        return int(len(self.wavelength_nm))
+
     def to_dataframe(self) -> pd.DataFrame:
         if str(self.axis_kind).strip().lower() == "image":
             return pd.DataFrame(columns=["wavelength_nm", "flux"])

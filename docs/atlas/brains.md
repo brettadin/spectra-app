@@ -148,6 +148,10 @@
 - Tuck the full catalog dataframe into an optional “Browse catalog entries” expander, keeping the manifest summary adjacent to the curated product groups. 【F:app/ui/targets.py†L328-L352】
 - Locked a regression asserting the new expander label is present and the grid remains available for discovery. 【F:tests/ui/test_targets_panel_layout.py†L53-L74】
 
+## Quant IR overlay point counts — 2025-10-27
+- Added a derived `points` property on overlay traces so the workspace visibility table can render Quant IR downloads without attribute errors. 【F:app/ui/main.py†L117-L138】【F:app/ui/main.py†L2332-L2344】
+- Treated image overlays with missing payloads as zero-point entries to avoid surfacing bogus counts when data arrays cannot be parsed. 【F:app/ui/main.py†L117-L138】
+
 ## Curated CALSPEC library via astroquery — 2025-10-02
 - Swap the MAST CALSPEC downloader to `astroquery.mast.Observations.download_file`, capturing the download agent and cache metadata in the returned provenance. 【F:app/server/fetchers/mast.py†L1-L210】
 - Replace the sample shim with a curated-library materialiser that walks the vetted CALSPEC roster and persists per-target provenance summaries. 【F:app/server/fetch_archives.py†L1-L74】【F:scripts/fetch_samples.py†L1-L15】

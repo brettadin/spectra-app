@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.1o",
+  "version": "v1.2.1p",
   "date_utc": "2025-10-27T00:00:00Z",
-  "summary": "Fix the overlay vectoriser fallback when sampling Quant IR traces with viewports."
+  "summary": "Restore overlay table rendering by exposing a points count on Quant IR traces."
 }
