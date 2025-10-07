@@ -1,3 +1,4 @@
+import numpy as np
 import pytest
 
 from app.server.fetchers import nist_quant_ir
@@ -90,3 +91,44 @@ def test_choose_measurement_prefers_priority_apodization():
     assert resolution == pytest.approx(0.125)
     assert measurement.apodization == "Boxcar"
     assert href == "https://example.invalid/box"
+
+
+def test_manual_species_catalog_includes_requested_entries():
+    manual_catalog = nist_quant_ir._manual_species_catalog()
+    assert "h2o" in manual_catalog
+    water = manual_catalog["h2o"]
+    measurement = water.measurements[0]
+    link = measurement.resolution_links[nist_quant_ir.DEFAULT_RESOLUTION_CM_1]
+    assert link.startswith("https://webbook.nist.gov/cgi/cbook.cgi?ID=7732-18-5")
+    assert "methane" in manual_catalog
+    assert "co2" in manual_catalog
+
+
+def test_extract_delta_x_parses_numeric_value():
+    assert nist_quant_ir._extract_delta_x(b"##DELTAX=0.125\n") == pytest.approx(0.125)
+    assert nist_quant_ir._extract_delta_x(b"##TITLE=Test") is None
+
+
+def test_resample_manual_payload_interpolates_to_target_resolution():
+    wavenumbers = np.arange(450.0, 462.0, 4.0)
+    wavelengths_nm = (1e7 / wavenumbers).tolist()
+    flux = np.linspace(0.0, 1.0, len(wavelengths_nm)).tolist()
+
+    class DummyQuantity:
+        def __init__(self, unit: float):
+            self.unit = unit
+
+    payload = {
+        "wavelength_nm": list(wavelengths_nm),
+        "flux": list(flux),
+        "wavelength": {"values": list(wavelengths_nm)},
+        "wavelength_quantity": DummyQuantity(1.0),
+    }
+
+    original_step = nist_quant_ir._resample_manual_payload(
+        payload, target_resolution=0.5
+    )
+    assert original_step == pytest.approx(4.0)
+    resampled_wavenumbers = np.sort(1e7 / np.asarray(payload["wavelength_nm"]))
+    diffs = np.diff(resampled_wavenumbers)
+    assert np.allclose(diffs, 0.5, rtol=1e-3, atol=1e-6)

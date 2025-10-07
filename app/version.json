@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.1p",
+  "version": "v1.2.1q",
   "date_utc": "2025-10-27T00:00:00Z",
-  "summary": "Restore overlay table rendering by exposing a points count on Quant IR traces."
+  "summary": "Map WebBook IR fallbacks for H2O/CO2/methane, resample them to 0.125 cm⁻¹, and flag provenance in the Quant IR selector."
 }

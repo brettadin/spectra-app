@@ -40,3 +40,4 @@ Spectra App — Patch Log (append-only)
 - v1.2.1n: Add a NIST Quantitative IR fetcher with preset molecules at 0.125 cm⁻¹ and document the workflow.
 - v1.2.1o: Fix the overlay vectoriser fallback so sampled Quant IR traces construct wavelength/flux arrays without raising.
 - v1.2.1p: Restore the overlay table by deriving a points total for Quant IR traces and updating release collateral.
+- v1.2.1q: Map NIST WebBook fallbacks for H2O/CO2/methane, resample them to the 0.125 cm⁻¹ grid, and flag manual provenance in the UI and docs.

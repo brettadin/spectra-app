@@ -152,6 +152,11 @@
 - Added a derived `points` property on overlay traces so the workspace visibility table can render Quant IR downloads without attribute errors. 【F:app/ui/main.py†L117-L138】【F:app/ui/main.py†L2332-L2344】
 - Treated image overlays with missing payloads as zero-point entries to avoid surfacing bogus counts when data arrays cannot be parsed. 【F:app/ui/main.py†L117-L138】
 
+## Quant IR manual WebBook fallbacks — 2025-10-27
+- Registered manual species records for H2O, methane, and CO2 so the Quant IR preset tokens resolve through the WebBook IR pages when the catalog lacks native entries. 【F:app/server/fetchers/nist_quant_ir.py†L412-L463】【F:app/server/fetchers/nist_quant_ir.py†L151-L187】
+- Parsed JCAMP Δx metadata, resampled manual payloads onto the 0.125&nbsp;cm⁻¹ grid, and preserved the source sampling step in metadata/provenance. 【F:app/server/fetchers/nist_quant_ir.py†L238-L395】
+- Highlighted the manual provenance path inside the Quant IR selector so users see the WebBook fallbacks before fetching. 【F:app/ui/main.py†L1579-L1599】
+
 ## Curated CALSPEC library via astroquery — 2025-10-02
 - Swap the MAST CALSPEC downloader to `astroquery.mast.Observations.download_file`, capturing the download agent and cache metadata in the returned provenance. 【F:app/server/fetchers/mast.py†L1-L210】
 - Replace the sample shim with a curated-library materialiser that walks the vetted CALSPEC roster and persists per-target provenance summaries. 【F:app/server/fetch_archives.py†L1-L74】【F:scripts/fetch_samples.py†L1-L15】

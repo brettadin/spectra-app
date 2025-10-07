@@ -1585,6 +1585,18 @@ def _render_nist_quant_ir_form(
     form.caption(
         f"Resolution fixed at {NIST_QUANT_IR_RESOLUTION:.3f} cm⁻¹ using catalogued apodization windows."
     )
+    manual_names = sorted(
+        {
+            species.name
+            for species in nist_quant_ir._manual_species_catalog().values()
+        }
+    )
+    if manual_names:
+        form.caption(
+            "Manual entries ({names}) map to the highest-resolution NIST WebBook IR spectra and are flagged in provenance.".format(
+                names=", ".join(manual_names)
+            )
+        )
     submitted = form.form_submit_button("Fetch spectrum", use_container_width=True)
     if not submitted:
         return

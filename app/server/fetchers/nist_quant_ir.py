@@ -9,6 +9,7 @@ from typing import Dict, Mapping, Optional, Sequence, Tuple
 from urllib.parse import urljoin
 
 import requests
+import numpy as np
 
 from ..ingest_jcamp import parse_jcamp
 
@@ -33,6 +34,7 @@ DEFAULT_APODIZATION_PRIORITY: Tuple[str, ...] = (
 )
 _JCAMP_PATTERN = re.compile(r"display_jcamp\('([^']+)'", re.IGNORECASE)
 _RELATIVE_UNCERTAINTY_PATTERN = re.compile(r"([-+]?\d*\.?\d+)")
+_DELTA_X_PATTERN = re.compile(r"##DELTAX\s*=\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)", re.IGNORECASE)
 
 
 class QuantIRFetchError(RuntimeError):
@@ -149,20 +151,38 @@ def _parse_catalog(html: str) -> Dict[str, QuantIRSpecies]:
 @lru_cache(maxsize=1)
 def _cached_catalog() -> Dict[str, QuantIRSpecies]:
     html = _download_text(CATALOG_URL)
-    return _parse_catalog(html)
+    return _merge_manual_species(_parse_catalog(html))
+
+
+def _manual_species_catalog() -> Dict[str, QuantIRSpecies]:
+    return dict(_MANUAL_SPECIES_CATALOG)
+
+
+def _merge_manual_species(
+    catalog: Mapping[str, QuantIRSpecies]
+) -> Dict[str, QuantIRSpecies]:
+    merged = dict(catalog)
+    for key, species in _MANUAL_SPECIES_CATALOG.items():
+        merged.setdefault(key, species)
+    return merged
 
 
 def _load_catalog(*, session: Optional[requests.Session] = None) -> Dict[str, QuantIRSpecies]:
     if session is not None:
         html = _download_text(CATALOG_URL, session=session)
-        return _parse_catalog(html)
+        return _merge_manual_species(_parse_catalog(html))
     return _cached_catalog()
 
 
 def available_species(*, session: Optional[requests.Session] = None) -> Tuple[Dict[str, object], ...]:
     catalog = _load_catalog(session=session)
     entries: list[Dict[str, object]] = []
+    seen_names: set[str] = set()
     for species in sorted(catalog.values(), key=lambda item: item.name.lower()):
+        key = species.name.lower()
+        if key in seen_names:
+            continue
+        seen_names.add(key)
         entries.append(
             {
                 "name": species.name,
@@ -215,6 +235,77 @@ def _extract_jcamp_url(page_html: str, page_url: str) -> str:
     return urljoin(page_url, relative)
 
 
+def _extract_delta_x(jcamp_bytes: bytes) -> Optional[float]:
+    try:
+        text = jcamp_bytes.decode("latin-1", errors="ignore")
+    except Exception:  # pragma: no cover - extremely defensive
+        return None
+    match = _DELTA_X_PATTERN.search(text)
+    if not match:
+        return None
+    try:
+        return float(match.group(1))
+    except ValueError:  # pragma: no cover - defensive branch
+        return None
+
+
+def _resample_manual_payload(
+    payload: Dict[str, object], *, target_resolution: float
+) -> Optional[float]:
+    wavelengths_nm = payload.get("wavelength_nm")
+    flux = payload.get("flux")
+    if (
+        not isinstance(wavelengths_nm, list)
+        or not isinstance(flux, list)
+        or len(wavelengths_nm) != len(flux)
+        or len(wavelengths_nm) < 2
+    ):
+        return None
+
+    wavelength_array = np.asarray(wavelengths_nm, dtype=float)
+    flux_array = np.asarray(flux, dtype=float)
+    if wavelength_array.ndim != 1 or flux_array.ndim != 1:
+        return None
+
+    wavenumbers = 1e7 / wavelength_array
+    sort_idx = np.argsort(wavenumbers)
+    wavenumbers = wavenumbers[sort_idx]
+    flux_sorted = flux_array[sort_idx]
+
+    diffs = np.diff(wavenumbers)
+    if diffs.size == 0:
+        return None
+    median_step = float(np.median(diffs))
+    if math.isclose(median_step, target_resolution, rel_tol=0.01, abs_tol=1e-6):
+        return median_step
+
+    start = float(wavenumbers[0])
+    stop = float(wavenumbers[-1])
+    new_wavenumbers = np.arange(
+        start,
+        stop + target_resolution * 0.5,
+        target_resolution,
+        dtype=float,
+    )
+    new_flux = np.interp(new_wavenumbers, wavenumbers, flux_sorted)
+    new_wavelengths_nm = 1e7 / new_wavenumbers
+
+    payload["wavelength_nm"] = new_wavelengths_nm.tolist()
+    payload["flux"] = new_flux.tolist()
+
+    wavelength_dict = payload.get("wavelength")
+    if isinstance(wavelength_dict, dict):
+        wavelength_dict["values"] = new_wavelengths_nm.tolist()
+
+    wavelength_quantity = payload.get("wavelength_quantity")
+    unit = getattr(wavelength_quantity, "unit", None)
+    if unit is not None:
+        payload["wavelength_quantity"] = new_wavelengths_nm * unit
+
+    payload["downsample"] = {}
+    return median_step
+
+
 def _parse_relative_uncertainty(value: str) -> Optional[float]:
     match = _RELATIVE_UNCERTAINTY_PATTERN.search(value)
     if not match:
@@ -247,10 +338,22 @@ def fetch(
     page_url = page_href
     page_html = _download_text(page_url, session=session)
     jcamp_url = _extract_jcamp_url(page_html, page_url)
-    payload = parse_jcamp(_download_bytes(jcamp_url, session=session), filename=f"{record.name}.jdx")
+    jcamp_bytes = _download_bytes(jcamp_url, session=session)
+    payload = parse_jcamp(jcamp_bytes, filename=f"{record.name}.jdx")
+    delta_x = _extract_delta_x(jcamp_bytes)
+    manual_entry = key in _MANUAL_SPECIES_LOOKUP
+
+    resampled_from = None
+    if manual_entry:
+        resampled_from = _resample_manual_payload(
+            payload, target_resolution=actual_resolution
+        )
 
     metadata = dict(payload.get("metadata") or {})
-    metadata.setdefault("source", "NIST Quantitative IR Database")
+    metadata.setdefault(
+        "source",
+        "NIST IR (WebBook)" if manual_entry else "NIST Quantitative IR Database",
+    )
     metadata["relative_uncertainty"] = record.relative_uncertainty
     metadata["relative_uncertainty_fraction"] = _parse_relative_uncertainty(
         record.relative_uncertainty
@@ -259,6 +362,17 @@ def fetch(
     metadata["resolution_cm_1"] = actual_resolution
     metadata["catalog_page"] = page_url
     metadata["jcamp_url"] = jcamp_url
+    metadata["manual_entry"] = manual_entry
+    if manual_entry:
+        manual_record = _MANUAL_SPECIES_LOOKUP.get(key)
+        if manual_record and manual_record.tokens:
+            metadata["aliases"] = tuple(sorted({alias for alias in manual_record.tokens}))
+    if resampled_from is not None and not math.isclose(
+        resampled_from, actual_resolution, rel_tol=0.01, abs_tol=1e-6
+    ):
+        metadata["resampled_from_resolution_cm_1"] = resampled_from
+    if delta_x is not None:
+        metadata["source_delta_x_cm_1"] = delta_x
     payload["metadata"] = metadata
 
     provenance = dict(payload.get("provenance") or {})
@@ -268,11 +382,25 @@ def fetch(
     provenance["resolution_cm_1"] = actual_resolution
     provenance["catalog_page"] = page_url
     provenance["jcamp_url"] = jcamp_url
+    provenance["manual_entry"] = manual_entry
+    if manual_entry:
+        manual_record = _MANUAL_SPECIES_LOOKUP.get(key)
+        if manual_record and manual_record.tokens:
+            provenance["aliases"] = tuple(sorted({alias for alias in manual_record.tokens}))
+    if resampled_from is not None and not math.isclose(
+        resampled_from, actual_resolution, rel_tol=0.01, abs_tol=1e-6
+    ):
+        provenance["resampled_from_resolution_cm_1"] = resampled_from
+    if delta_x is not None:
+        provenance["source_delta_x_cm_1"] = delta_x
     payload["provenance"] = provenance
 
-    label = f"{record.name} • NIST Quant IR ({measurement.apodization}, {actual_resolution:.3f} cm⁻¹)"
+    provider_label = "NIST IR (manual 0.125 cm⁻¹)" if manual_entry else "NIST Quant IR"
+    label = (
+        f"{record.name} • {provider_label} ({measurement.apodization}, {actual_resolution:.3f} cm⁻¹)"
+    )
     payload["label"] = label
-    payload["provider"] = "NIST Quant IR"
+    payload["provider"] = provider_label
     payload["summary"] = (
         f"{record.name} {measurement.apodization} window at {actual_resolution:.3f} cm⁻¹"
         f" ({record.relative_uncertainty})"
@@ -280,3 +408,56 @@ def fetch(
     payload.setdefault("kind", "spectrum")
 
     return payload
+@dataclass(frozen=True)
+class ManualSpeciesRecord:
+    name: str
+    page_url: str
+    tokens: Tuple[str, ...]
+    relative_uncertainty: str = "—"
+    apodization: str = "Manual (best available)"
+
+    def species(self) -> QuantIRSpecies:
+        return QuantIRSpecies(
+            name=self.name,
+            relative_uncertainty=self.relative_uncertainty,
+            measurements=(
+                QuantIRMeasurement(
+                    apodization=self.apodization,
+                    resolution_links={DEFAULT_RESOLUTION_CM_1: self.page_url},
+                ),
+            ),
+        )
+
+    def all_tokens(self) -> Tuple[str, ...]:
+        return (self.name, *self.tokens)
+
+
+_MANUAL_SPECIES_RECORDS: Tuple[ManualSpeciesRecord, ...] = (
+    ManualSpeciesRecord(
+        name="H2O",
+        page_url="https://webbook.nist.gov/cgi/cbook.cgi?ID=7732-18-5&Type=IR-SPEC&Index=1#IR-SPEC",
+        tokens=("Water",),
+    ),
+    ManualSpeciesRecord(
+        name="Methane",
+        page_url="https://webbook.nist.gov/cgi/cbook.cgi?ID=C74828&Type=IR-SPEC&Index=1#IR-SPEC",
+        tokens=("CH4",),
+    ),
+    ManualSpeciesRecord(
+        name="CO2",
+        page_url="https://webbook.nist.gov/cgi/cbook.cgi?ID=C124389&Type=IR-SPEC&Index=1#IR-SPEC",
+        tokens=("Carbon dioxide",),
+    ),
+)
+
+_MANUAL_SPECIES_LOOKUP: Dict[str, ManualSpeciesRecord] = {}
+_MANUAL_SPECIES_CATALOG: Dict[str, QuantIRSpecies] = {}
+
+for manual_record in _MANUAL_SPECIES_RECORDS:
+    species = manual_record.species()
+    for token in manual_record.all_tokens():
+        normalised = _normalise_token(token)
+        if not normalised:
+            continue
+        _MANUAL_SPECIES_LOOKUP[normalised] = manual_record
+        _MANUAL_SPECIES_CATALOG[normalised] = species

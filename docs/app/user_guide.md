@@ -14,9 +14,13 @@ The **Reference spectra** drawer on the left keeps quick actions together:
   with metadata and can be toggled on or off alongside your uploaded spectra.
 - **NIST Quantitative IR spectra** – choose a molecule such as benzene,
   dichloromethane, or sulfur hexafluoride from the preset list to pull the
-  0.125&nbsp;cm⁻¹ resolution scan from the Quant IR database. Each overlay records
-  the advertised apodization window, relative uncertainty, and JCAMP source so
-  it is easy to compare the lab reference against your own measurements.
+  0.125&nbsp;cm⁻¹ resolution scan from the Quant IR database. The selector now
+  includes manual fallbacks for H<sub>2</sub>O, methane, and CO<sub>2</sub> that
+  source the highest-resolution NIST WebBook IR files, resample them to the
+  shared 0.125&nbsp;cm⁻¹ grid, and flag the provenance accordingly. Each overlay
+  records the advertised apodization window, relative uncertainty, and JCAMP
+  source so it is easy to compare the lab reference against your own
+  measurements.
 
 All traces land in the overlay table with provenance and duplicate controls so
 it is always obvious where each series originated.
