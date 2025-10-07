@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.1u",
+  "version": "v1.2.1v",
   "date_utc": "2025-10-28T00:00:00Z",
-  "summary": "Convert Quant IR absorbance spectra into transmission curves aligned with the WebBook baselines."
+  "summary": "Reverse wavenumber axes so Quant IR overlays align with standard IR orientation."
 }

@@ -45,3 +45,4 @@ Spectra App — Patch Log (append-only)
 - v1.2.1s: Harden the Quant IR sidebar manual catalog lookup when only the public helper exists and roll documentation for the hotfix.
 - v1.2.1t: Invert Quant IR absorption spectra so plots dip like the manual WebBook traces and update release metadata.
 - v1.2.1u: Convert Quant IR absorbance payloads into transmission curves and align metadata/provenance units with the WebBook baselines.
+- v1.2.1v: Reverse wavenumber display axes so Quant IR overlays present high wavenumbers on the left, extend UI coverage, and refresh release collateral.

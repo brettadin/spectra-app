@@ -2293,13 +2293,18 @@ def _build_overlay_figure(
             friendly = " + ".join(kind.replace("_", " ") for kind in unique_kinds)
             axis_title = f"Mixed axes ({friendly})"
 
-    fig.update_layout(
+    layout_kwargs = dict(
         xaxis_title=axis_title,
         yaxis_title="Normalized flux" if display_mode != "Flux (raw)" else "Flux",
         legend=dict(itemclick="toggleothers"),
         margin=dict(t=50, b=40, l=60, r=20),
         height=520,
     )
+
+    if display_units == "cm^-1":
+        layout_kwargs["xaxis"] = dict(autorange="reversed")
+
+    fig.update_layout(**layout_kwargs)
     unique_kinds = sorted({kind for kind in visible_axis_kinds})
     if len(unique_kinds) == 1 and axis_lookup:
         axis_range = axis_lookup.get(unique_kinds[0])
@@ -2312,7 +2317,13 @@ def _build_overlay_figure(
                 and math.isfinite(axis_high)
                 and axis_high > axis_low
             ):
-                fig.update_xaxes(range=[float(axis_low), float(axis_high)])
+                if display_units == "cm^-1":
+                    fig.update_xaxes(
+                        range=[float(axis_high), float(axis_low)],
+                        autorange="reversed",
+                    )
+                else:
+                    fig.update_xaxes(range=[float(axis_low), float(axis_high)])
     fig.update_layout(
         annotations=[
             dict(
