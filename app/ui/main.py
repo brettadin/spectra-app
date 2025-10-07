@@ -1585,12 +1585,25 @@ def _render_nist_quant_ir_form(
     form.caption(
         f"Resolution fixed at {NIST_QUANT_IR_RESOLUTION:.3f} cm⁻¹ using catalogued apodization windows."
     )
-    manual_names = sorted(
-        {
-            species.name
-            for species in nist_quant_ir._manual_species_catalog().values()
-        }
-    )
+    manual_catalog_getter = getattr(nist_quant_ir, "manual_species_catalog", None)
+    if manual_catalog_getter is None:
+        try:
+            manual_catalog_getter = nist_quant_ir._manual_species_catalog  # type: ignore[attr-defined]
+        except AttributeError:
+            manual_catalog_getter = None
+    manual_names: Tuple[str, ...] = ()
+    if callable(manual_catalog_getter):
+        try:
+            manual_names = tuple(
+                sorted(
+                    {
+                        species.name
+                        for species in manual_catalog_getter().values()
+                    }
+                )
+            )
+        except Exception:  # pragma: no cover - defensive fallback
+            manual_names = ()
     if manual_names:
         form.caption(
             "Manual entries ({names}) map to the highest-resolution NIST WebBook IR spectra and are flagged in provenance.".format(
@@ -2066,6 +2079,59 @@ def _convert_axis_series(
     return _convert_wavelength(series, display_units)
 
 
+def _trace_flux_unit_label(trace: OverlayTrace) -> Optional[str]:
+    metadata = trace.metadata if isinstance(trace.metadata, Mapping) else {}
+    candidates: List[str] = []
+    if isinstance(metadata, Mapping):
+        for key in (
+            "flux_unit_display",
+            "flux_unit",
+            "reported_flux_unit",
+            "flux_unit_original",
+        ):
+            value = metadata.get(key)
+            if isinstance(value, str) and value.strip():
+                candidates.append(value)
+    if getattr(trace, "flux_unit", None):
+        candidates.append(str(trace.flux_unit))
+
+    for candidate in candidates:
+        label = candidate.strip()
+        if not label:
+            continue
+        lowered = label.lower()
+        if "transmittance" in lowered and "percent" in lowered:
+            return "Transmittance (%)"
+        if lowered == "transmittance" or lowered == "transmission":
+            return "Transmittance"
+        if "absorbance" in lowered and "base" in lowered:
+            return "Absorbance (base 10)"
+        if "absorbance" in lowered:
+            return "Absorbance"
+        if lowered in {"arb", "arbitrary", "arbitrary flux"}:
+            continue
+        return label
+    return None
+
+
+def _resolve_flux_axis_title(
+    overlays: Sequence[OverlayTrace], display_mode: str
+) -> str:
+    if display_mode != "Flux (raw)":
+        return "Normalized flux"
+    labels = []
+    for trace in overlays:
+        label = _trace_flux_unit_label(trace)
+        if label:
+            labels.append(label)
+    unique = {label for label in labels if label}
+    if not unique:
+        return "Flux"
+    if len(unique) == 1:
+        return unique.pop()
+    return "Flux"
+
+
 def _axis_title_for_kind(
     axis_kind: str,
     overlays: Sequence[OverlayTrace],
@@ -2187,6 +2253,7 @@ def _build_overlay_figure(
             viewport=viewport_lookup.get(ref_kind, (None, None)),
         )
 
+    target_overlays = [trace for trace in overlays if trace.visible] or list(overlays)
     visible_axis_kinds: List[str] = []
     axis_titles: Dict[str, str] = {}
 
@@ -2280,13 +2347,20 @@ def _build_overlay_figure(
             friendly = " + ".join(kind.replace("_", " ") for kind in unique_kinds)
             axis_title = f"Mixed axes ({friendly})"
 
-    fig.update_layout(
+    flux_axis_title = _resolve_flux_axis_title(target_overlays, display_mode)
+
+    layout_kwargs = dict(
         xaxis_title=axis_title,
-        yaxis_title="Normalized flux" if display_mode != "Flux (raw)" else "Flux",
+        yaxis_title=flux_axis_title,
         legend=dict(itemclick="toggleothers"),
         margin=dict(t=50, b=40, l=60, r=20),
         height=520,
     )
+
+    if display_units == "cm^-1":
+        layout_kwargs["xaxis"] = dict(autorange="reversed")
+
+    fig.update_layout(**layout_kwargs)
     unique_kinds = sorted({kind for kind in visible_axis_kinds})
     if len(unique_kinds) == 1 and axis_lookup:
         axis_range = axis_lookup.get(unique_kinds[0])
@@ -2299,7 +2373,13 @@ def _build_overlay_figure(
                 and math.isfinite(axis_high)
                 and axis_high > axis_low
             ):
-                fig.update_xaxes(range=[float(axis_low), float(axis_high)])
+                if display_units == "cm^-1":
+                    fig.update_xaxes(
+                        range=[float(axis_high), float(axis_low)],
+                        autorange="reversed",
+                    )
+                else:
+                    fig.update_xaxes(range=[float(axis_low), float(axis_high)])
     fig.update_layout(
         annotations=[
             dict(

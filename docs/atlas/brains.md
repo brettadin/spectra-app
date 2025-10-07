@@ -3,6 +3,15 @@
 - Exposed the new archive through the line catalog panel with a cached molecule selector that flags unavailable entries while funnelling successful picks through the overlay ingestion flow. 【F:app/ui/main.py†L53-L122】【F:app/ui/main.py†L1372-L1455】
 - Added parser and selection unit tests to lock the catalog row-span handling, JCAMP link extraction, and apodization priority behaviour. 【F:tests/server/test_nist_quant_ir.py†L1-L64】
 
+# Quant IR manual catalog API — 2025-10-28
+- Promoted a public `manual_species_catalog()` accessor that mirrors the curated WebBook fallbacks while leaving the legacy `_manual_species_catalog()` alias intact for compatibility. 【F:app/server/fetchers/nist_quant_ir.py†L18-L120】【F:app/server/fetchers/nist_quant_ir.py†L126-L135】
+- Hardened the Quant IR sidebar helper to consume either accessor and swallow unexpected catalog errors so the UI keeps rendering. 【F:app/ui/main.py†L1565-L1590】
+- Updated the Quant IR regression to rely on the supported helper, keeping manual coverage assertions aligned with the new API. 【F:tests/server/test_nist_quant_ir.py†L96-L109】
+
+# Quant IR sidebar legacy compatibility — 2025-10-28
+- Updated the Quant IR manual caption lookup to catch missing `_manual_species_catalog` attributes so older deployments keep rendering the sidebar without raising AttributeError. 【F:app/ui/main.py†L1583-L1597】
+- Recorded the release metadata bump for the resilience fix. 【F:app/version.json†L1-L5】
+
 # JCAMP-DX overlay ingestion — 2025-10-27
 - Implemented a JCAMP parser that tokenises XYDATA blocks, converts X units to nanometres with spectral equivalencies, drops uncertainty-labelled segments, and records provenance for caching tiers. 【F:app/server/ingest_jcamp.py†L20-L383】
 - Updated `_detect_format` and ingest routing so `.jdx` extensions or JCAMP headers trigger the new parser before falling back to ASCII handling. 【F:app/utils/local_ingest.py†L11-L75】【F:app/utils/local_ingest.py†L305-L404】
@@ -157,7 +166,23 @@
 - Parsed JCAMP Δx metadata, resampled manual payloads onto the 0.125&nbsp;cm⁻¹ grid, and preserved the source sampling step in metadata/provenance. 【F:app/server/fetchers/nist_quant_ir.py†L238-L395】
 - Highlighted the manual provenance path inside the Quant IR selector so users see the WebBook fallbacks before fetching. 【F:app/ui/main.py†L1579-L1599】
 
+## Quant IR absorption orientation — 2025-10-28
+- Added a flux orientation helper that inverts Quant IR catalog spectra, updates downsample tiers, and labels the axis metadata/provenance as absorption so plots dip like the manual WebBook presets. 【F:app/server/fetchers/nist_quant_ir.py†L310-L371】【F:app/server/fetchers/nist_quant_ir.py†L373-L452】
+- Extended unit tests covering non-manual and manual payloads to confirm absorption traces flip while transmission spectra stay unchanged. 【F:tests/server/test_nist_quant_ir.py†L110-L151】
+
+## Quant IR transmittance conversion — 2025-10-28
+- Converted Quant IR absorbance payloads to fractional transmission using T = 10^(-absorbance), updated downsample tiers, and aligned flux metadata/provenance with transmission units so catalog overlays mirror the WebBook baselines. 【F:app/server/fetchers/nist_quant_ir.py†L303-L385】
+- Extended orientation tests to lock the transmission conversion for catalog spectra while preserving manual WebBook units, then refreshed release metadata, patch notes, and patch log for v1.2.1u. 【F:tests/server/test_nist_quant_ir.py†L110-L170】【F:app/version.json†L1-L5】【F:docs/patch_notes/v1.2.1u.md†L1-L11】【F:PATCHLOG.txt†L42-L43】
+
+## Quant IR wavenumber axis reversal — 2025-10-28
+- Reverse the workspace wavenumber axis whenever `cm⁻¹` units are active so high-wavenumber features render on the left in line with IR plotting conventions. 【F:app/ui/main.py†L2296-L2326】
+- Swap explicit viewport ranges for cm⁻¹ displays and expand the overlay regression to confirm descending wavenumber samples remain monotonic. 【F:app/ui/main.py†L2308-L2326】【F:tests/ui/test_overlay_mixed_axes.py†L22-L46】
+
 ## Curated CALSPEC library via astroquery — 2025-10-02
 - Swap the MAST CALSPEC downloader to `astroquery.mast.Observations.download_file`, capturing the download agent and cache metadata in the returned provenance. 【F:app/server/fetchers/mast.py†L1-L210】
 - Replace the sample shim with a curated-library materialiser that walks the vetted CALSPEC roster and persists per-target provenance summaries. 【F:app/server/fetch_archives.py†L1-L74】【F:scripts/fetch_samples.py†L1-L15】
 - Rebuilt `data_registry` and `catalog.csv` so UI metrics and manifests surface only the curated CALSPEC spectra. 【F:data_registry/catalog.csv†L1-L10】【F:data_registry/Vega/manifest.json†L1-L44】
+## Quant IR percent transmittance calibration — 2025-10-28
+- Converted Quant IR absorption coefficients into percent transmittance by applying Beer–Lambert defaults (1 µmol/mol over 1 m), recording the calibration so downstream tools can re-scale.
+- Normalised manual WebBook spectra onto the same percent scale and stored a friendly flux label for the UI axis selector.
+- Updated the workspace plotter to derive y-axis titles from overlay flux metadata so Quant IR traces render with "Transmittance (%)" labels alongside existing spectra.

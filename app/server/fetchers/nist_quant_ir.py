@@ -10,6 +10,7 @@ from urllib.parse import urljoin
 
 import requests
 import numpy as np
+from astropy import units as u
 
 from ..ingest_jcamp import parse_jcamp
 
@@ -17,6 +18,7 @@ __all__ = [
     "DEFAULT_RESOLUTION_CM_1",
     "QuantIRFetchError",
     "available_species",
+    "manual_species_catalog",
     "fetch",
 ]
 
@@ -155,6 +157,12 @@ def _cached_catalog() -> Dict[str, QuantIRSpecies]:
 
 
 def _manual_species_catalog() -> Dict[str, QuantIRSpecies]:
+    return manual_species_catalog()
+
+
+def manual_species_catalog() -> Dict[str, QuantIRSpecies]:
+    """Return manually curated Quant IR species records."""
+
     return dict(_MANUAL_SPECIES_CATALOG)
 
 
@@ -306,6 +314,145 @@ def _resample_manual_payload(
     return median_step
 
 
+def _percent_transmittance(
+    samples: np.ndarray,
+    *,
+    coefficient_units: bool,
+    mixing_ratio: u.Quantity,
+    path_length: u.Quantity,
+) -> np.ndarray:
+    if coefficient_units:
+        coefficient = np.asarray(samples, dtype=float)
+        coefficient = np.nan_to_num(coefficient, nan=0.0, posinf=0.0, neginf=0.0)
+        coefficient_quantity = coefficient * (u.mol / (u.umol * u.m))
+        absorbance = coefficient_quantity * mixing_ratio * path_length
+        absorbance_values = np.asarray(
+            absorbance.to_value(u.dimensionless_unscaled), dtype=float
+        )
+        safe_absorbance = np.clip(absorbance_values, a_min=0.0, a_max=None)
+        transmittance_fraction = np.power(10.0, -safe_absorbance)
+    else:
+        transmittance_fraction = np.asarray(samples, dtype=float)
+        transmittance_fraction = np.nan_to_num(
+            transmittance_fraction, nan=0.0, posinf=0.0, neginf=0.0
+        )
+        transmittance_fraction = np.clip(transmittance_fraction, a_min=0.0, a_max=None)
+    return transmittance_fraction * 100.0
+
+
+def _prepare_flux(payload: Dict[str, object], *, manual_entry: bool) -> None:
+    flux = payload.get("flux")
+    if not isinstance(flux, (list, tuple)):
+        return
+
+    try:
+        flux_array = np.asarray(flux, dtype=float)
+    except Exception:
+        return
+
+    if flux_array.ndim != 1 or flux_array.size == 0:
+        return
+
+    metadata = payload.get("metadata")
+    provenance = payload.get("provenance")
+
+    reported_unit = None
+    if isinstance(metadata, Mapping):
+        reported_unit = metadata.get("reported_flux_unit")
+
+    coefficient_units = False
+    if not manual_entry and isinstance(reported_unit, str):
+        if "(micromol/mol)-1m-1" in reported_unit.replace(" ", ""):
+            coefficient_units = True
+
+    default_mixing_ratio = 1.0 * (u.umol / u.mol)
+    default_path_length = 1.0 * u.m
+    converted = _percent_transmittance(
+        flux_array,
+        coefficient_units=coefficient_units,
+        mixing_ratio=default_mixing_ratio,
+        path_length=default_path_length,
+    )
+
+    payload["flux"] = converted.tolist()
+    payload["flux_unit"] = "percent transmittance"
+    payload["flux_kind"] = "transmission"
+    payload["axis"] = "transmission"
+
+    downsample = payload.get("downsample")
+    if isinstance(downsample, Mapping):
+        for tier in downsample.values():
+            if not isinstance(tier, Mapping):
+                continue
+            samples = tier.get("flux")
+            if not isinstance(samples, (list, tuple)):
+                continue
+            try:
+                tier_array = np.asarray(samples, dtype=float)
+            except Exception:
+                continue
+            tier_converted = _percent_transmittance(
+                tier_array,
+                coefficient_units=coefficient_units,
+                mixing_ratio=default_mixing_ratio,
+                path_length=default_path_length,
+            )
+            tier["flux"] = tier_converted.tolist()
+
+    calibration = {
+        "mixing_ratio_umol_per_mol": float(
+            default_mixing_ratio.to_value(u.umol / u.mol)
+        ),
+        "path_length_m": float(default_path_length.to_value(u.m)),
+        "reference": "Beer–Lambert conversion of NIST Quant IR absorption coefficients",
+    }
+
+    if isinstance(metadata, Mapping):
+        metadata.setdefault("axis", "transmission")
+        metadata.setdefault("axis_kind", "wavelength")
+        original_unit = metadata.get("flux_unit_original")
+        if original_unit is None and reported_unit is not None:
+            metadata["flux_unit_original"] = reported_unit
+        metadata["reported_flux_unit"] = "percent transmittance"
+        metadata["flux_unit"] = "percent transmittance"
+        metadata["flux_unit_display"] = "Transmittance (%)"
+        metadata["transmittance_basis"] = "percent"
+        if coefficient_units:
+            metadata["absorption_coefficient_unit"] = str(reported_unit)
+            metadata["quant_ir_calibration"] = calibration
+            metadata[
+                "transmittance_conversion"
+            ] = (
+                "Converted from Quant IR absorption coefficients using "
+                "T=10^(-α·χ·L) with χ=1 µmol/mol and L=1 m, expressed as percent transmittance."
+            )
+        else:
+            metadata[
+                "transmittance_conversion"
+            ] = "Scaled manual WebBook transmittance samples to percent."
+
+    if isinstance(provenance, Mapping):
+        provenance.setdefault("axis", "transmission")
+        provenance["flux_unit"] = "percent transmittance"
+        provenance["flux_unit_display"] = "Transmittance (%)"
+        if isinstance(metadata, Mapping):
+            original_unit = metadata.get("flux_unit_original")
+            if original_unit is not None:
+                provenance["flux_unit_original"] = original_unit
+        if coefficient_units:
+            provenance["quant_ir_calibration"] = calibration
+            provenance[
+                "transmittance_conversion"
+            ] = (
+                "Converted from Quant IR absorption coefficients using "
+                "T=10^(-α·χ·L) with χ=1 µmol/mol and L=1 m, expressed as percent transmittance."
+            )
+        else:
+            provenance[
+                "transmittance_conversion"
+            ] = "Scaled manual WebBook transmittance samples to percent."
+
+
 def _parse_relative_uncertainty(value: str) -> Optional[float]:
     match = _RELATIVE_UNCERTAINTY_PATTERN.search(value)
     if not match:
@@ -406,6 +553,8 @@ def fetch(
         f" ({record.relative_uncertainty})"
     )
     payload.setdefault("kind", "spectrum")
+
+    _prepare_flux(payload, manual_entry=manual_entry)
 
     return payload
 @dataclass(frozen=True)
