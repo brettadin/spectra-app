@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.1x",
+  "version": "v1.2.1y",
   "date_utc": "2025-10-28T00:00:00Z",
-  "summary": "Rebuild the Quant IR manual catalog, apply pressure-aware percent transmittance, and surface cm⁻¹ axis hints."
+  "summary": "Preserve native NIST WebBook transmittance samples while tagging cm⁻¹ axes and providing offline manual fallbacks."
 }

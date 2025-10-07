@@ -1,4 +1,3 @@
-import numpy as np
 import pytest
 from astropy import units as u
 
@@ -131,114 +130,28 @@ def test_extract_delta_x_parses_numeric_value():
     assert nist_quant_ir._extract_delta_x(b"##TITLE=Test") is None
 
 
-def test_resample_manual_payload_interpolates_to_target_resolution():
-    wavenumbers = np.arange(450.0, 462.0, 4.0)
-    wavelengths_nm = (1e7 / wavenumbers).tolist()
-    flux = np.linspace(0.0, 1.0, len(wavelengths_nm)).tolist()
-
-    class DummyQuantity:
-        def __init__(self, unit: float):
-            self.unit = unit
-
+def test_finalise_payload_preserves_samples_and_tags_units():
+    wavelengths = [500.0, 510.0, 520.0]
+    flux = [0.1, 0.2, 0.3]
     payload = {
-        "wavelength_nm": list(wavelengths_nm),
+        "wavelength_nm": list(wavelengths),
         "flux": list(flux),
-        "wavelength": {"values": list(wavelengths_nm)},
-        "wavelength_quantity": DummyQuantity(1.0),
-    }
-
-    original_step = nist_quant_ir._resample_manual_payload(
-        payload, target_resolution=0.5
-    )
-    assert original_step == pytest.approx(4.0)
-    resampled_wavenumbers = np.sort(1e7 / np.asarray(payload["wavelength_nm"]))
-    diffs = np.diff(resampled_wavenumbers)
-    assert np.allclose(diffs, 0.5, rtol=1e-3, atol=1e-6)
-
-
-def test_prepare_flux_converts_coefficients_to_percent_transmittance():
-    payload = {
-        "flux": [0.0, 0.5, 1.0],
-        "downsample": {
-            64: {"wavelength_nm": [1.0, 2.0, 3.0], "flux": [0.0, 0.5, 1.0]}
-        },
-        "metadata": {
-            "reported_flux_unit": "(micromol/mol)-1m-1 (base 10)",
-            "pressure": "101.3 Pa",
-        },
+        "metadata": {"reported_flux_unit": "Transmittance"},
         "provenance": {},
-        "axis": "emission",
-        "flux_unit": "(micromol/mol)-1m-1 (base 10)",
+        "axis": "transmission",
     }
 
-    nist_quant_ir._prepare_flux(payload, manual_entry=False)
+    nist_quant_ir._finalise_payload(payload)
 
-    mixing_ratio = nist_quant_ir._infer_mixing_ratio({"pressure": "101.3 Pa"})
-    expected_fraction = (
-        np.power(
-            10.0,
-            -np.array([0.0, 0.5, 1.0]) * mixing_ratio.to_value(u.umol / u.mol),
-        )
-        * 100.0
-    )
-    assert payload["flux"] == pytest.approx(expected_fraction.tolist())
-    assert payload["downsample"][64]["flux"] == pytest.approx(
-        expected_fraction.tolist()
-    )
-    assert payload["axis"] == "transmission"
-    assert payload["flux_unit"] == "percent transmittance"
-    assert payload["flux_kind"] == "transmission"
+    assert payload["flux"] == flux
     metadata = payload["metadata"]
+    provenance = payload["provenance"]
     assert metadata["axis"] == "transmission"
     assert metadata["axis_kind"] == "wavelength"
-    assert metadata["flux_unit"] == "percent transmittance"
-    assert metadata["flux_unit_original"] == "(micromol/mol)-1m-1 (base 10)"
-    assert metadata["flux_unit_display"] == "Transmittance (%)"
     assert metadata["wavelength_unit"] == "cm^-1"
     assert metadata["preferred_wavelength_unit"] == "cm^-1"
     assert metadata["wavelength_display_unit"] == "cm^-1"
-    calibration = metadata["quant_ir_calibration"]
-    assert calibration["mixing_ratio_umol_per_mol"] == pytest.approx(
-        mixing_ratio.to_value(u.umol / u.mol)
-    )
-    assert calibration["path_length_m"] == pytest.approx(1.0)
-    provenance = payload["provenance"]
     assert provenance["axis"] == "transmission"
-    assert provenance["flux_unit"] == "percent transmittance"
-    assert (
-        provenance["flux_unit_original"]
-        == "(micromol/mol)-1m-1 (base 10)"
-    )
-    assert provenance["flux_unit_display"] == "Transmittance (%)"
-    assert "χ derived from sample pressure" in provenance["transmittance_conversion"]
-    units_meta = provenance.get("units", {})
-    assert units_meta.get("preferred_wavelength") == "cm^-1"
-
-
-def test_prepare_flux_preserves_manual_transmission_payload():
-    payload = {
-        "flux": [0.95, 0.75],
-        "downsample": {64: {"wavelength_nm": [1.0, 2.0], "flux": [0.95, 0.75]}},
-        "metadata": {"reported_flux_unit": "TRANSMITTANCE"},
-        "provenance": {},
-        "axis": "",
-    }
-
-    nist_quant_ir._prepare_flux(payload, manual_entry=True)
-
-    assert payload["flux"] == pytest.approx([95.0, 75.0])
-    assert payload["downsample"][64]["flux"] == pytest.approx([95.0, 75.0])
-    assert payload["axis"] == "transmission"
-    metadata = payload["metadata"]
-    assert metadata["axis"] == "transmission"
-    assert metadata["axis_kind"] == "wavelength"
-    assert metadata["flux_unit"] == "percent transmittance"
-    assert metadata["flux_unit_original"] == "TRANSMITTANCE"
-    assert metadata["flux_unit_display"] == "Transmittance (%)"
-    assert metadata["wavelength_unit"] == "cm^-1"
-    assert metadata["preferred_wavelength_unit"] == "cm^-1"
-    provenance = payload["provenance"]
-    assert provenance["axis"] == "transmission"
-    assert provenance["flux_unit"] == "percent transmittance"
-    assert provenance["flux_unit_original"] == "TRANSMITTANCE"
-    assert provenance["flux_unit_display"] == "Transmittance (%)"
+    units_meta = provenance.get("units")
+    assert units_meta["preferred_wavelength"] == "cm^-1"
+    assert "wavenumber_cm_1" in payload

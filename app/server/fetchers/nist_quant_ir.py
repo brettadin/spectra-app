@@ -8,9 +8,8 @@ from html import unescape
 from typing import Dict, Mapping, Optional, Sequence, Tuple
 from urllib.parse import urljoin
 
-import requests
 import numpy as np
-from astropy import units as u
+import requests
 
 from ..ingest_jcamp import parse_jcamp
 
@@ -79,69 +78,6 @@ def _download_bytes(url: str, *, session: Optional[requests.Session] = None) -> 
     except requests.RequestException as exc:  # pragma: no cover - defensive branch
         raise QuantIRFetchError(f"Failed to download {url}: {exc}") from exc
     return response.content
-
-
-def _parse_quantity(value: object, default_unit: u.UnitBase) -> Optional[u.Quantity]:
-    if value is None:
-        return None
-    text = str(value).strip()
-    if not text:
-        return None
-    try:
-        quantity = u.Quantity(text)
-    except Exception:
-        match = re.search(r"([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)\s*([\wµμ/^-]*)", text)
-        if not match:
-            return None
-        number = match.group(1)
-        unit_label = match.group(2) or ""
-        try:
-            magnitude = float(number)
-        except ValueError:
-            return None
-        try:
-            unit = u.Unit(unit_label) if unit_label else default_unit
-        except Exception:
-            unit = default_unit
-        quantity = magnitude * unit
-    if not quantity.unit.is_equivalent(default_unit):
-        try:
-            quantity = quantity.to(default_unit)
-        except Exception:
-            return None
-    return quantity
-
-
-def _infer_mixing_ratio(metadata: Mapping[str, object]) -> u.Quantity:
-    explicit = metadata.get("mixing_ratio_umol_per_mol")
-    if explicit is not None:
-        try:
-            value = float(explicit)
-        except (TypeError, ValueError):
-            value = None
-        else:
-            if math.isfinite(value) and value > 0.0:
-                return value * (u.umol / u.mol)
-
-    pressure_quantity = _parse_quantity(metadata.get("pressure"), u.Pa)
-    if pressure_quantity is None:
-        return 1.0 * (u.umol / u.mol)
-    try:
-        pressure_pa = pressure_quantity.to(u.Pa)
-    except Exception:
-        return 1.0 * (u.umol / u.mol)
-    fraction = (pressure_pa / STANDARD_ATMOSPHERE).decompose().value
-    if not math.isfinite(fraction) or fraction <= 0.0:
-        return 1.0 * (u.umol / u.mol)
-    return fraction * 1e6 * (u.umol / u.mol)
-
-
-def _infer_path_length(metadata: Mapping[str, object]) -> u.Quantity:
-    for key in ("path_length", "cell_path_length", "optical_path_length"):
-        quantity = _parse_quantity(metadata.get(key), u.m)
-        if quantity is not None and quantity > 0 * u.m:
-            return quantity.to(u.m)
-    return 1.0 * u.m
 
 
 def _annotate_axis_units(
@@ -253,8 +189,12 @@ def _parse_catalog(html: str) -> Dict[str, QuantIRSpecies]:
 
 @lru_cache(maxsize=1)
 def _cached_catalog() -> Dict[str, QuantIRSpecies]:
-    html = _download_text(CATALOG_URL)
-    return _merge_manual_species(_parse_catalog(html))
+    try:
+        html = _download_text(CATALOG_URL)
+    except QuantIRFetchError:
+        return dict(_MANUAL_SPECIES_CATALOG)
+    parsed = _parse_catalog(html)
+    return _merge_manual_species(parsed)
 
 
 def _manual_species_catalog() -> Dict[str, QuantIRSpecies]:
@@ -278,7 +218,10 @@ def _merge_manual_species(
 
 def _load_catalog(*, session: Optional[requests.Session] = None) -> Dict[str, QuantIRSpecies]:
     if session is not None:
-        html = _download_text(CATALOG_URL, session=session)
+        try:
+            html = _download_text(CATALOG_URL, session=session)
+        except QuantIRFetchError:
+            return dict(_MANUAL_SPECIES_CATALOG)
         return _merge_manual_species(_parse_catalog(html))
     return _cached_catalog()
 
@@ -358,61 +301,23 @@ def _extract_delta_x(jcamp_bytes: bytes) -> Optional[float]:
         return None
 
 
-def _resample_manual_payload(
-    payload: Dict[str, object], *, target_resolution: float
-) -> Optional[float]:
-    wavelengths_nm = payload.get("wavelength_nm")
-    flux = payload.get("flux")
-    if (
-        not isinstance(wavelengths_nm, list)
-        or not isinstance(flux, list)
-        or len(wavelengths_nm) != len(flux)
-        or len(wavelengths_nm) < 2
-    ):
-        return None
+def _finalise_payload(payload: Dict[str, object]) -> None:
+    metadata_raw = payload.get("metadata")
+    provenance_raw = payload.get("provenance")
 
-    wavelength_array = np.asarray(wavelengths_nm, dtype=float)
-    flux_array = np.asarray(flux, dtype=float)
-    if wavelength_array.ndim != 1 or flux_array.ndim != 1:
-        return None
+    metadata = dict(metadata_raw or {})
+    provenance = dict(provenance_raw or {})
 
-    wavenumbers = 1e7 / wavelength_array
-    sort_idx = np.argsort(wavenumbers)
-    wavenumbers = wavenumbers[sort_idx]
-    flux_sorted = flux_array[sort_idx]
+    _annotate_axis_units(payload, metadata, provenance)
 
-    diffs = np.diff(wavenumbers)
-    if diffs.size == 0:
-        return None
-    median_step = float(np.median(diffs))
-    if math.isclose(median_step, target_resolution, rel_tol=0.01, abs_tol=1e-6):
-        return median_step
+    axis = payload.get("axis")
+    if axis:
+        metadata.setdefault("axis", axis)
+        provenance.setdefault("axis", axis)
+    metadata.setdefault("axis_kind", "wavelength")
 
-    start = float(wavenumbers[0])
-    stop = float(wavenumbers[-1])
-    new_wavenumbers = np.arange(
-        start,
-        stop + target_resolution * 0.5,
-        target_resolution,
-        dtype=float,
-    )
-    new_flux = np.interp(new_wavenumbers, wavenumbers, flux_sorted)
-    new_wavelengths_nm = 1e7 / new_wavenumbers
-
-    payload["wavelength_nm"] = new_wavelengths_nm.tolist()
-    payload["flux"] = new_flux.tolist()
-
-    wavelength_dict = payload.get("wavelength")
-    if isinstance(wavelength_dict, dict):
-        wavelength_dict["values"] = new_wavelengths_nm.tolist()
-
-    wavelength_quantity = payload.get("wavelength_quantity")
-    unit = getattr(wavelength_quantity, "unit", None)
-    if unit is not None:
-        payload["wavelength_quantity"] = new_wavelengths_nm * unit
-
-    payload["downsample"] = {}
-    return median_step
+    payload["metadata"] = metadata
+    payload["provenance"] = provenance
 
 
 def _percent_transmittance(
@@ -597,12 +502,6 @@ def fetch(
     delta_x = _extract_delta_x(jcamp_bytes)
     manual_entry = key in _MANUAL_SPECIES_LOOKUP
 
-    resampled_from = None
-    if manual_entry:
-        resampled_from = _resample_manual_payload(
-            payload, target_resolution=actual_resolution
-        )
-
     metadata = dict(payload.get("metadata") or {})
     metadata.setdefault(
         "source",
@@ -621,10 +520,6 @@ def fetch(
         manual_record = _MANUAL_SPECIES_LOOKUP.get(key)
         if manual_record and manual_record.tokens:
             metadata["aliases"] = tuple(sorted({alias for alias in manual_record.tokens}))
-    if resampled_from is not None and not math.isclose(
-        resampled_from, actual_resolution, rel_tol=0.01, abs_tol=1e-6
-    ):
-        metadata["resampled_from_resolution_cm_1"] = resampled_from
     if delta_x is not None:
         metadata["source_delta_x_cm_1"] = delta_x
     payload["metadata"] = metadata
@@ -641,15 +536,11 @@ def fetch(
         manual_record = _MANUAL_SPECIES_LOOKUP.get(key)
         if manual_record and manual_record.tokens:
             provenance["aliases"] = tuple(sorted({alias for alias in manual_record.tokens}))
-    if resampled_from is not None and not math.isclose(
-        resampled_from, actual_resolution, rel_tol=0.01, abs_tol=1e-6
-    ):
-        provenance["resampled_from_resolution_cm_1"] = resampled_from
     if delta_x is not None:
         provenance["source_delta_x_cm_1"] = delta_x
     payload["provenance"] = provenance
 
-    provider_label = "NIST IR (manual 0.125 cm⁻¹)" if manual_entry else "NIST Quant IR"
+    provider_label = "NIST IR (WebBook)" if manual_entry else "NIST Quant IR"
     label = (
         f"{record.name} • {provider_label} ({measurement.apodization}, {actual_resolution:.3f} cm⁻¹)"
     )
@@ -661,7 +552,7 @@ def fetch(
     )
     payload.setdefault("kind", "spectrum")
 
-    _prepare_flux(payload, manual_entry=manual_entry)
+    _finalise_payload(payload)
 
     return payload
 @dataclass(frozen=True)

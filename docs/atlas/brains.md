@@ -191,3 +191,8 @@
 - Expanded the manual Quant IR catalog to cover the supplied NIST WebBook JCAMP spectra and kept alias tokens in sync with the new presets. 【F:app/server/fetchers/nist_quant_ir.py†L603-L781】
 - Derived percent transmittance with a pressure-aware Beer–Lambert calibration while surfacing cm⁻¹ axis metadata and wavenumber ranges in payloads and provenance. 【F:app/server/fetchers/nist_quant_ir.py†L259-L547】
 - Refreshed the Quant IR sidebar presets and regression coverage to track the updated catalog and axis defaults. 【F:app/ui/main.py†L60-L95】【F:tests/server/test_nist_quant_ir.py†L12-L181】
+
+## Quant IR raw WebBook preservation — 2025-10-28
+- Dropped Beer–Lambert rescaling so JCAMP payloads retain their native flux samples while still annotating cm⁻¹ axis hints. 【F:app/server/fetchers/nist_quant_ir.py†L140-L205】【F:app/server/fetchers/nist_quant_ir.py†L519-L662】
+- Added catalog fallbacks to serve manual WebBook entries when the live Quant IR table cannot be fetched, keeping Water/CO₂/CH₄ available offline. 【F:app/server/fetchers/nist_quant_ir.py†L236-L305】【F:app/server/fetchers/nist_quant_ir.py†L308-L337】
+- Reworked the regression to confirm `_finalise_payload` leaves flux arrays untouched while labelling cm⁻¹ metadata. 【F:tests/server/test_nist_quant_ir.py†L1-L120】
