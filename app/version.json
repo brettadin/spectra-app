@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.1q",
-  "date_utc": "2025-10-27T00:00:00Z",
-  "summary": "Map WebBook IR fallbacks for H2O/CO2/methane, resample them to 0.125 cm⁻¹, and flag provenance in the Quant IR selector."
+  "version": "v1.2.1x",
+  "date_utc": "2025-10-28T00:00:00Z",
+  "summary": "Rebuild the Quant IR manual catalog, apply pressure-aware percent transmittance, and surface cm⁻¹ axis hints."
 }
