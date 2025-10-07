@@ -94,7 +94,7 @@ def test_choose_measurement_prefers_priority_apodization():
 
 
 def test_manual_species_catalog_includes_requested_entries():
-    manual_catalog = nist_quant_ir._manual_species_catalog()
+    manual_catalog = nist_quant_ir.manual_species_catalog()
     assert "h2o" in manual_catalog
     water = manual_catalog["h2o"]
     measurement = water.measurements[0]
@@ -132,3 +132,62 @@ def test_resample_manual_payload_interpolates_to_target_resolution():
     resampled_wavenumbers = np.sort(1e7 / np.asarray(payload["wavelength_nm"]))
     diffs = np.diff(resampled_wavenumbers)
     assert np.allclose(diffs, 0.5, rtol=1e-3, atol=1e-6)
+
+
+def test_orient_flux_converts_absorbance_to_transmittance():
+    payload = {
+        "flux": [0.0, 0.5, 1.0],
+        "downsample": {
+            64: {"wavelength_nm": [1.0, 2.0, 3.0], "flux": [0.0, 0.5, 1.0]}
+        },
+        "metadata": {"reported_flux_unit": "(micromol/mol)-1m-1 (base 10)"},
+        "provenance": {},
+        "axis": "emission",
+        "flux_unit": "(micromol/mol)-1m-1 (base 10)",
+    }
+
+    nist_quant_ir._orient_flux(payload, manual_entry=False)
+
+    expected = [1.0, 10 ** (-0.5), 10 ** (-1.0)]
+    assert payload["flux"] == pytest.approx(expected)
+    assert payload["downsample"][64]["flux"] == pytest.approx(expected)
+    assert payload["axis"] == "transmission"
+    assert payload["flux_unit"] == "transmittance"
+    assert payload["flux_kind"] == "transmission"
+    assert payload["metadata"]["axis"] == "transmission"
+    assert payload["metadata"]["axis_kind"] == "wavelength"
+    assert payload["metadata"]["flux_unit"] == "transmittance"
+    assert payload["metadata"]["flux_unit_original"] == "(micromol/mol)-1m-1 (base 10)"
+    assert payload["provenance"]["axis"] == "transmission"
+    assert payload["provenance"]["flux_unit"] == "transmittance"
+    assert (
+        payload["provenance"]["flux_unit_original"]
+        == "(micromol/mol)-1m-1 (base 10)"
+    )
+    assert (
+        payload["provenance"]["transmittance_conversion"]
+        == "Converted from Quant IR absorbance using T=10^(-absorbance)."
+    )
+
+
+def test_orient_flux_preserves_manual_transmission_payload():
+    payload = {
+        "flux": [0.95, 0.75],
+        "downsample": {64: {"wavelength_nm": [1.0, 2.0], "flux": [0.95, 0.75]}},
+        "metadata": {"reported_flux_unit": "TRANSMITTANCE"},
+        "provenance": {},
+        "axis": "",
+    }
+
+    nist_quant_ir._orient_flux(payload, manual_entry=True)
+
+    assert payload["flux"] == pytest.approx([0.95, 0.75])
+    assert payload["downsample"][64]["flux"] == pytest.approx([0.95, 0.75])
+    assert payload["axis"] == "transmission"
+    assert payload["metadata"]["axis"] == "transmission"
+    assert payload["metadata"]["axis_kind"] == "wavelength"
+    assert payload["metadata"]["flux_unit"] == "TRANSMITTANCE"
+    assert payload["metadata"]["flux_unit_original"] == "TRANSMITTANCE"
+    assert payload["provenance"]["axis"] == "transmission"
+    assert payload["provenance"]["flux_unit"] == "TRANSMITTANCE"
+    assert payload["provenance"]["flux_unit_original"] == "TRANSMITTANCE"
