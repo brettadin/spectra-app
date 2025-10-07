@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.1n",
+  "version": "v1.2.1o",
   "date_utc": "2025-10-27T00:00:00Z",
-  "summary": "Add a NIST Quantitative IR fetcher with preset molecules at 0.125 cm⁻¹ resolution."
+  "summary": "Fix the overlay vectoriser fallback when sampling Quant IR traces with viewports."
 }

@@ -217,14 +217,15 @@ class OverlayTrace:
             raise ValueError("Image overlays cannot be vectorised.")
         if max_points is None and viewport is None:
             df = self.to_dataframe()
-        return TraceVectors(
-            trace_id=self.trace_id,
-            label=self.label,
-            wavelengths_nm=df["wavelength_nm"].to_numpy(dtype=float),
-            flux=df["flux"].to_numpy(dtype=float),
-            kind=self.kind,
-            fingerprint=self.fingerprint,
-        )
+            return TraceVectors(
+                trace_id=self.trace_id,
+                label=self.label,
+                wavelengths_nm=df["wavelength_nm"].to_numpy(dtype=float),
+                flux=df["flux"].to_numpy(dtype=float),
+                kind=self.kind,
+                fingerprint=self.fingerprint,
+            )
+
         selected_w, selected_f, _, _ = self.sample(
             viewport or (None, None),
             max_points=max_points,
