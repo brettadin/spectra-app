@@ -2153,7 +2153,6 @@ def _build_overlay_figure(
     overlays: Sequence[OverlayTrace],
     display_units: str,
     display_mode: str,
-    normalization_mode: str,
     viewport_by_kind: Mapping[str, Tuple[float | None, float | None]],
     reference: Optional[OverlayTrace],
     differential_mode: str,
@@ -2171,6 +2170,7 @@ def _build_overlay_figure(
         _normalize_axis_kind(kind): _normalize_viewport_tuple(viewport)
         for kind, viewport in (viewport_by_kind or {}).items()
     }
+    viewport_kinds = set(viewport_lookup.keys())
     axis_lookup = (
         {
             _normalize_axis_kind(kind): _normalize_viewport_tuple(viewport)
@@ -2195,7 +2195,9 @@ def _build_overlay_figure(
             continue
 
         axis_kind = _axis_kind_for_trace(trace)
-        if axis_kind in {"image", "time"}:
+        if axis_kind == "image":
+            continue
+        if axis_kind == "time" and axis_kind not in viewport_kinds:
             continue
         viewport = viewport_lookup.get(axis_kind, (None, None))
         visible_axis_kinds.append(axis_kind)
@@ -2254,8 +2256,6 @@ def _build_overlay_figure(
 
         if display_mode != "Flux (raw)":
             flux_array = apply_normalization(flux_array, "max")
-        elif normalization_mode and normalization_mode != "none":
-            flux_array = apply_normalization(flux_array, normalization_mode)
 
         hover_values = (
             _normalize_hover_values(sample_hover) if sample_hover is not None else None
@@ -3058,7 +3058,6 @@ def _render_overlay_tab(version_info: Dict[str, str]) -> None:
 
     display_units = st.session_state.get("display_units", "nm")
     display_mode = st.session_state.get("display_mode", "Flux (raw)")
-    normalization = st.session_state.get("normalization_mode", "unit")
     differential_mode = st.session_state.get("differential_mode", "Off")
     target_overlays = [trace for trace in overlays if trace.visible] or overlays
     axis_groups = _group_overlays_by_axis_kind(target_overlays)
@@ -3106,7 +3105,6 @@ def _render_overlay_tab(version_info: Dict[str, str]) -> None:
         overlays,
         display_units,
         display_mode,
-        normalization,
         filter_viewports,
         reference,
         differential_mode,
