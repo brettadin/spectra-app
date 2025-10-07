@@ -53,7 +53,6 @@ def test_grouping_and_rendering_ignore_time_traces(reset_session_state):
         [spectral_trace, time_trace],
         "nm",
         "Flux (raw)",
-        "unit",
         viewport,
         reference=spectral_trace,
         differential_mode="Off",
