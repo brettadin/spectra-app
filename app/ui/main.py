@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import re
 import time
 import uuid
@@ -43,6 +44,7 @@ from ..export_manifest import build_manifest
 from ..server.differential import ratio, resample_to_common_grid, subtract
 from ..server.fetch_archives import FetchError, fetch_spectrum
 from ..server.fetchers import nist_quant_ir
+from ..server.ir_units import IRMeta, to_A10
 from ..similarity import (
     SimilarityCache,
     SimilarityOptions,
@@ -60,6 +62,12 @@ from ..utils.local_ingest import (
     LocalIngestError,
     ingest_local_file,
 )
+
+APP_VERSION = "v1.2.1aa"
+
+if "health" in st.query_params or os.environ.get("SPECTRA_APP_HEALTH") == "1":
+    st.write(f"SPECTRA_APP_OK {APP_VERSION}")
+    st.stop()
 
 st.set_page_config(page_title="Spectra App", layout="wide")
 
@@ -119,6 +127,7 @@ class OverlayTrace:
         default_factory=dict
     )
     cache_dataset_id: Optional[str] = None
+    extras: Dict[str, object] = field(default_factory=dict)
 
     @property
     def points(self) -> int:
@@ -253,6 +262,209 @@ class OverlayTrace:
         )
 
 
+def _get_ir_context(trace: OverlayTrace) -> Optional[Dict[str, object]]:
+    extras = trace.extras if isinstance(trace.extras, Mapping) else {}
+    context = extras.get("ir_context") if isinstance(extras, Mapping) else None
+    if isinstance(context, Mapping):
+        return dict(context)
+    return None
+
+
+def _set_ir_context(trace: OverlayTrace, context: Mapping[str, object]) -> None:
+    if not isinstance(trace.extras, dict):
+        trace.extras = {}
+    trace.extras["ir_context"] = dict(context)
+
+
+def _apply_ir_parameters_to_trace(
+    trace: OverlayTrace, path_m: float, mole_fraction: float
+) -> Tuple[bool, str]:
+    context = _get_ir_context(trace)
+    if context is None:
+        return False, "IR conversion context unavailable."
+    raw_values = context.get("raw_y")
+    if raw_values is None:
+        return False, "Raw IR samples unavailable for conversion."
+    raw_array = np.asarray(raw_values, dtype=float)
+    if raw_array.size == 0:
+        return False, "Raw IR samples unavailable for conversion."
+
+    try:
+        y_factor = float(context.get("y_factor", 1.0))
+    except Exception:
+        y_factor = 1.0
+    y_units = context.get("y_units")
+    if not y_units:
+        meta = trace.metadata if isinstance(trace.metadata, Mapping) else {}
+        y_units = meta.get("flux_unit_input") or meta.get("reported_flux_unit")
+
+    ir_meta = IRMeta(
+        yunits=str(y_units or ""),
+        yfactor=y_factor,
+        path_m=float(path_m),
+        mole_fraction=float(mole_fraction),
+    )
+
+    try:
+        converted, provenance = to_A10(raw_array, ir_meta)
+    except ValueError as exc:
+        return False, str(exc)
+
+    flux_values = tuple(float(value) for value in np.asarray(converted, dtype=float))
+    trace.flux = flux_values
+    trace.flux_unit = "Absorbance (A10)"
+    trace.flux_kind = "relative"
+    trace.axis = "absorption"
+
+    metadata = trace.metadata if isinstance(trace.metadata, Mapping) else {}
+    metadata = dict(metadata)
+    metadata["ir_requires_parameters"] = False
+    metadata["ir_conversion_state"] = "converted"
+    metadata["ir_path_m"] = float(path_m)
+    metadata["ir_mole_fraction"] = float(mole_fraction)
+    metadata["flux_unit"] = "Absorbance (A10)"
+    metadata["flux_unit_output"] = "Absorbance (A10)"
+    metadata["flux_unit_display"] = "Absorbance (A10)"
+    metadata.pop("ir_conversion_error", None)
+    sanity = metadata.get("ir_sanity") if isinstance(metadata.get("ir_sanity"), Mapping) else None
+    if sanity is not None:
+        sanity_payload = dict(sanity)
+        sanity_payload["conversion_from"] = provenance.get("from")
+        sanity_payload["path_m"] = float(path_m)
+        sanity_payload["mole_fraction"] = float(mole_fraction)
+        metadata["ir_sanity"] = sanity_payload
+    trace.metadata = metadata
+
+    provenance_map = trace.provenance if isinstance(trace.provenance, Mapping) else {}
+    provenance_map = dict(provenance_map)
+    units_meta = provenance_map.get("units") if isinstance(provenance_map.get("units"), Mapping) else {}
+    units_meta = dict(units_meta)
+    units_meta["flux_output"] = "Absorbance (A10)"
+    provenance_map["units"] = units_meta
+    provenance_record = {
+        "status": "converted",
+        "yunits_in": y_units,
+        "yfactor": y_factor,
+        "path_m": float(path_m),
+        "mole_fraction": float(mole_fraction),
+        "details": provenance,
+    }
+    provenance_map["ir_conversion"] = provenance_record
+    trace.provenance = provenance_map
+
+    new_context = dict(context)
+    new_context.update(
+        {
+            "path_m": float(path_m),
+            "mole_fraction": float(mole_fraction),
+            "conversion_state": "converted",
+            "needs_parameters": False,
+            "conversion_details": provenance,
+            "conversion_error": None,
+        }
+    )
+    _set_ir_context(trace, new_context)
+    trace.extras["ir_sanity"] = metadata.get("ir_sanity")
+
+    tiers = build_downsample_tiers(
+        list(trace.wavelength_nm), list(flux_values), strategy="lttb"
+    )
+    trace.downsample = {
+        int(level): (tuple(result.wavelength_nm), tuple(result.flux))
+        for level, result in tiers.items()
+    }
+    trace.fingerprint = _compute_fingerprint(trace.wavelength_nm, trace.flux)
+    return True, "Converted to decadic absorbance (A10)."
+
+
+def _render_ir_warnings(overlays: Sequence[OverlayTrace]) -> None:
+    for trace in overlays:
+        metadata = trace.metadata if isinstance(trace.metadata, Mapping) else {}
+        if metadata.get("ir_verified") is False:
+            message = str(metadata.get("ir_warning") or "IR header verification failed.")
+            st.warning(f"{trace.label}: {message}")
+
+
+def _render_ir_parameter_prompts(overlays: Sequence[OverlayTrace]) -> None:
+    pending = [
+        trace
+        for trace in overlays
+        if isinstance(trace.metadata, Mapping)
+        and bool(trace.metadata.get("ir_requires_parameters"))
+    ]
+    if not pending:
+        return
+    st.warning(
+        "IR absorption coefficients detected. Provide path length and mole fraction "
+        "to convert to decadic absorbance (A10)."
+    )
+    for trace in pending:
+        context = _get_ir_context(trace) or {}
+        try:
+            default_path = float(context.get("path_m") or 1.0)
+        except Exception:
+            default_path = 1.0
+        try:
+            default_mole = float(context.get("mole_fraction") or 1e-6)
+        except Exception:
+            default_mole = 1e-6
+        units_label = context.get("y_units")
+        if not units_label:
+            metadata = trace.metadata if isinstance(trace.metadata, Mapping) else {}
+            units_label = metadata.get("flux_unit_input") or metadata.get("flux_unit_display")
+        panel = st.container()
+        panel.caption(f"{trace.label} units: {units_label or 'unknown'}")
+        form_key = f"ir_params_form_{trace.trace_id}"
+        with panel.form(form_key):
+            path_value = st.number_input(
+                "Path length (m)",
+                min_value=0.0,
+                value=float(default_path),
+                step=max(float(default_path) / 10.0, 0.1),
+                format="%0.4f",
+                key=f"{form_key}_path",
+            )
+            mole_value = st.number_input(
+                "Mole fraction (χ)",
+                min_value=0.0,
+                max_value=1.0,
+                value=float(default_mole),
+                step=max(float(default_mole) / 10.0, 1e-6),
+                format="%0.6f",
+                key=f"{form_key}_mole",
+                help="Enter as a fraction (e.g. 50 ppm = 5e-5).",
+            )
+            submitted = st.form_submit_button("Convert to A10", use_container_width=True)
+        if submitted:
+            success, message = _apply_ir_parameters_to_trace(
+                trace, float(path_value), float(mole_value)
+            )
+            if success:
+                _set_overlays(overlays)
+                panel.success(message)
+            else:
+                panel.error(message)
+
+
+def _render_ir_sanity_panel(overlays: Sequence[OverlayTrace]) -> None:
+    entries: List[OverlayTrace] = []
+    for trace in overlays:
+        metadata = trace.metadata if isinstance(trace.metadata, Mapping) else {}
+        if metadata.get("ir_sanity"):
+            entries.append(trace)
+    if not entries:
+        return
+    st.markdown("#### IR ingest diagnostics")
+    for trace in entries:
+        metadata = trace.metadata if isinstance(trace.metadata, Mapping) else {}
+        details = metadata.get("ir_sanity")
+        with st.expander(f"{trace.label} — IR ingest details", expanded=False):
+            st.json(details)
+            provenance = trace.provenance if isinstance(trace.provenance, Mapping) else {}
+            conversion = provenance.get("ir_conversion") if isinstance(provenance, Mapping) else None
+            if conversion:
+                st.caption("Conversion provenance")
+                st.json(conversion)
 @dataclass(frozen=True)
 class QuantIROption:
     label: str
@@ -1108,6 +1320,7 @@ def _add_overlay(
     downsample: Optional[Mapping[int, Mapping[str, Sequence[float]]]] = None,
     cache_dataset_id: Optional[str] = None,
     image: Optional[Mapping[str, object]] = None,
+    extras: Optional[Mapping[str, object]] = None,
 ) -> Tuple[bool, str]:
     normalized_axis_kind = _normalize_axis_kind(
         axis_kind or (metadata or {}).get("axis_kind") if metadata else axis_kind
@@ -1272,6 +1485,7 @@ def _add_overlay(
         image=None,
         downsample=downsample_map,
         cache_dataset_id=cache_dataset_id,
+        extras=dict(extras or {}),
     )
     overlays.append(trace)
     _set_overlays(overlays)
@@ -1327,6 +1541,7 @@ def _add_overlay_payload(payload: Dict[str, object]) -> Tuple[bool, str]:
         downsample=payload.get("downsample"),
         cache_dataset_id=payload.get("cache_dataset_id"),
         image=payload.get("image") if isinstance(payload.get("image"), Mapping) else None,
+        extras=payload.get("extras"),
     )
     additional = payload.get("additional_traces")
     extra_success = 0
@@ -1367,6 +1582,7 @@ def _add_overlay_payload(payload: Dict[str, object]) -> Tuple[bool, str]:
                 image=entry.get("image")
                 if isinstance(entry.get("image"), Mapping)
                 else (payload.get("image") if isinstance(payload.get("image"), Mapping) else None),
+                extras=entry.get("extras"),
             )
             if success:
                 extra_success += 1
@@ -2254,6 +2470,14 @@ def _build_overlay_figure(
     for trace in target_overlays:
         category_lookup[trace.trace_id] = _flux_axis_category(trace)
 
+    should_reverse_axis = False
+    if display_units == "cm^-1":
+        should_reverse_axis = any(
+            isinstance(trace.metadata, Mapping)
+            and bool(trace.metadata.get("ir_x_descending"))
+            for trace in target_overlays
+        )
+
     has_transmittance = any(
         category == "transmittance" for category in category_lookup.values()
     )
@@ -2422,9 +2646,11 @@ def _build_overlay_figure(
     )
 
     fig.update_layout(**layout_kwargs)
+    fig.update_yaxes(tickformat=".3e", exponentformat="power", showexponent="all")
+    fig.update_xaxes(tickformat=".0f", separatethousands=False)
     fig.update_xaxes(title_text=axis_title)
 
-    if display_units == "cm^-1":
+    if should_reverse_axis:
         fig.update_xaxes(autorange="reversed")
 
     if use_secondary_y and secondary_overlays:
@@ -2447,13 +2673,21 @@ def _build_overlay_figure(
                 and math.isfinite(axis_high)
                 and axis_high > axis_low
             ):
-                if display_units == "cm^-1":
+                if should_reverse_axis:
                     fig.update_xaxes(
                         range=[float(axis_high), float(axis_low)],
                         autorange="reversed",
                     )
                 else:
                     fig.update_xaxes(range=[float(axis_low), float(axis_high)])
+    hover_unit = display_units
+    if hover_unit == "cm^-1":
+        hover_unit = "cm⁻¹"
+    fig.update_traces(
+        hovertemplate=(
+            f"(%{{x:.2f}} {hover_unit}, %{{y:.3e}})<extra>%{{fullData.name}}</extra>"
+        )
+    )
     fig.update_layout(
         annotations=[
             dict(
@@ -2903,6 +3137,7 @@ def _export_current_view(
     viewport: Mapping[str, Tuple[float | None, float | None]],
 ) -> None:
     rows: List[Dict[str, object]] = []
+    series_details: Dict[str, Dict[str, object]] = {}
     for trace in overlays:
         if not trace.visible:
             continue
@@ -2938,6 +3173,16 @@ def _export_current_view(
                     "display_mode": display_mode,
                 }
             )
+        metadata = trace.metadata if isinstance(trace.metadata, Mapping) else {}
+        provenance = trace.provenance if isinstance(trace.provenance, Mapping) else {}
+        detail_payload: Dict[str, object] = {}
+        if metadata.get("ir_sanity"):
+            detail_payload["ir_sanity"] = metadata.get("ir_sanity")
+        conversion = provenance.get("ir_conversion") if isinstance(provenance, Mapping) else None
+        if conversion:
+            detail_payload["ir_conversion"] = conversion
+        if detail_payload:
+            series_details.setdefault(trace.label, {}).update(detail_payload)
     if not rows:
         st.warning("Nothing to export in the current viewport.")
         return
@@ -2961,6 +3206,7 @@ def _export_current_view(
         display_mode=display_mode,
         exported_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         viewport=viewport_payload,
+        series_details=series_details,
     )
     manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     st.success(f"Exported: {csv_path.name}, {png_path.name}, {manifest_path.name}")
@@ -3210,6 +3456,9 @@ def _render_overlay_tab(version_info: Dict[str, str]) -> None:
         return
     st.divider()
 
+    _render_ir_warnings(overlays)
+    _render_ir_parameter_prompts(overlays)
+
     display_units = st.session_state.get("display_units", "nm")
     display_mode = st.session_state.get("display_mode", "Flux (raw)")
     differential_mode = st.session_state.get("differential_mode", "Off")
@@ -3289,6 +3538,7 @@ def _render_overlay_tab(version_info: Dict[str, str]) -> None:
         st.caption(f"Axis: {axis_title}")
 
     _render_metadata_summary(overlays)
+    _render_ir_sanity_panel(overlays)
     _render_line_tables(overlays)
 
 

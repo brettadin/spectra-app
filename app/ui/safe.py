@@ -25,4 +25,4 @@ def read_version_caption(version_json_path: Path):
         v = json.loads(version_json_path.read_text(encoding="utf-8")).get("version", "v?")
     except Exception:
         v = "v?"
-    return f"Build: {v} â€” Idempotent unit toggling; CSV ingest hardening; duplicate scope+override; version badge; provenance drawer."
+    return f"Build: {v} â€” IR absorbance normalization; JCAMP sanity guard; health endpoint."

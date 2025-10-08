@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.2.1aa — 2025-10-28
+- IR: normalize all inputs to decadic absorbance (A10) with provenance; require path length + mole fraction for coefficients.
+- JCAMP: infer X direction from data; verify FIRSTY vs scaled first Y.
+- UI: scientific tick/hover formatting; no SI-prefix letters.
+- Streamlit: first-load redirect guarded; health endpoint added at ?health=1.
+
 ## v1.1.9 — 2025-09-28
 - Fix: unique keys for Overlay buttons in Target catalog (no more StreamlitDuplicateElementKey).
 - Fix: stop mutating widget session_state key `duplicate_ledger_lock_checkbox`; use model var `duplicate_ledger_lock`.
