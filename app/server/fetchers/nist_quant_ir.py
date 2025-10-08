@@ -10,6 +10,7 @@ from urllib.parse import urljoin
 
 import numpy as np
 import requests
+from astropy import units as u
 
 from ..ingest_jcamp import parse_jcamp
 
@@ -80,42 +81,61 @@ def _download_bytes(url: str, *, session: Optional[requests.Session] = None) -> 
     return response.content
 
 
+def _first_unit(*candidates: object) -> Optional[str]:
+    for candidate in candidates:
+        if isinstance(candidate, str):
+            text = candidate.strip()
+            if text:
+                return text
+    return None
+
+
 def _annotate_axis_units(
     payload: Dict[str, object],
     metadata: Mapping[str, object],
     provenance: Mapping[str, object],
-) -> None:
-    wavelengths = payload.get("wavelength_nm")
-    wavenumbers: Optional[np.ndarray] = None
-    if isinstance(wavelengths, (list, tuple)) and wavelengths:
-        try:
-            wavelength_array = np.asarray(wavelengths, dtype=float)
-        except Exception:
-            wavelength_array = None
-        if wavelength_array is not None and wavelength_array.size:
-            valid = np.isfinite(wavelength_array) & (wavelength_array != 0.0)
-            if np.any(valid):
-                wavenumbers = np.full_like(wavelength_array, np.nan)
-                wavenumbers[valid] = 1e7 / wavelength_array[valid]
-                payload["wavenumber_cm_1"] = wavenumbers.tolist()
-                finite = wavenumbers[np.isfinite(wavenumbers)]
-                if finite.size:
-                    low = float(np.min(finite))
-                    high = float(np.max(finite))
-                    metadata["wavenumber_range_cm_1"] = [min(low, high), max(low, high)]
+) -> Tuple[Dict[str, object], Dict[str, object]]:
+    if not isinstance(metadata, dict):
+        working_metadata: Dict[str, object] = dict(metadata)
+    else:
+        working_metadata = metadata
 
-    metadata.setdefault("axis_kind", "wavelength")
-    metadata["axis_unit"] = "cm^-1"
-    metadata["wavelength_unit"] = "cm^-1"
-    metadata["preferred_wavelength_unit"] = "cm^-1"
-    metadata["wavelength_display_unit"] = "cm^-1"
+    if not isinstance(provenance, dict):
+        working_provenance: Dict[str, object] = dict(provenance)
+    else:
+        working_provenance = provenance
 
-    if isinstance(provenance, Mapping):
-        units_meta = provenance.get("units") if isinstance(provenance.get("units"), Mapping) else None
-        units_data: Dict[str, object] = dict(units_meta or {})
-        units_data.setdefault("wavelength_display", "cm^-1")
-        units_data.setdefault("preferred_wavelength", "cm^-1")
-        provenance["units"] = units_data
+    units_meta_raw = working_provenance.get("units") if isinstance(working_provenance.get("units"), Mapping) else None
+    units_meta: Dict[str, object] = dict(units_meta_raw or {})
+
+    reported_unit = _first_unit(
+        working_metadata.get("wavelength_display_unit"),
+        working_metadata.get("preferred_wavelength_unit"),
+        working_metadata.get("original_wavelength_unit"),
+        working_metadata.get("reported_wavelength_unit"),
+        working_metadata.get("wavelength_unit"),
+        units_meta.get("wavelength_display"),
+        units_meta.get("preferred_wavelength"),
+        units_meta.get("wavelength_reported"),
+        units_meta.get("wavelength_original"),
+        units_meta.get("wavelength_input"),
+    )
+
+    if reported_unit:
+        working_metadata.setdefault("wavelength_unit", reported_unit)
+        working_metadata.setdefault("wavelength_display_unit", reported_unit)
+        working_metadata.setdefault("preferred_wavelength_unit", reported_unit)
+        working_metadata.setdefault("axis_unit", reported_unit)
+        units_meta.setdefault("wavelength_display", reported_unit)
+        units_meta.setdefault("preferred_wavelength", reported_unit)
+    working_metadata.setdefault("axis_kind", "wavelength")
+
+    working_provenance["units"] = units_meta
+
+    payload["metadata"] = working_metadata
+    payload["provenance"] = working_provenance
+
+    return working_metadata, working_provenance
 
 def _parse_catalog(html: str) -> Dict[str, QuantIRSpecies]:
     try:
@@ -308,7 +328,7 @@ def _finalise_payload(payload: Dict[str, object]) -> None:
     metadata = dict(metadata_raw or {})
     provenance = dict(provenance_raw or {})
 
-    _annotate_axis_units(payload, metadata, provenance)
+    metadata, provenance = _annotate_axis_units(payload, metadata, provenance)
 
     axis = payload.get("axis")
     if axis:

@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.1y",
+  "version": "v1.2.1aa",
   "date_utc": "2025-10-28T00:00:00Z",
-  "summary": "Preserve native NIST WebBook transmittance samples while tagging cm⁻¹ axes and providing offline manual fallbacks."
+  "summary": "Preserve Quant IR raw wavelength/flux metadata without forcing cm⁻¹ conversions."
 }

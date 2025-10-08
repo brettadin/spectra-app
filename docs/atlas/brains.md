@@ -12,6 +12,10 @@
 - Updated the Quant IR manual caption lookup to catch missing `_manual_species_catalog` attributes so older deployments keep rendering the sidebar without raising AttributeError. 【F:app/ui/main.py†L1583-L1597】
 - Recorded the release metadata bump for the resilience fix. 【F:app/version.json†L1-L5】
 
+# Dual-axis flux rendering — 2025-10-28
+- Introduced `_flux_axis_category` plus secondary-axis routing in `_build_overlay_figure` so absorbance traces land on a dedicated y-axis while transmittance and mixed flux data stay on the primary scale. 【F:app/ui/main.py†L2116-L2437】
+- Updated `_add_line_trace` to support Plotly secondary axes, keeping per-point hover markers aligned with whichever flux axis the overlay targets. 【F:app/ui/main.py†L2189-L2235】
+
 # JCAMP-DX overlay ingestion — 2025-10-27
 - Implemented a JCAMP parser that tokenises XYDATA blocks, converts X units to nanometres with spectral equivalencies, drops uncertainty-labelled segments, and records provenance for caching tiers. 【F:app/server/ingest_jcamp.py†L20-L383】
 - Updated `_detect_format` and ingest routing so `.jdx` extensions or JCAMP headers trigger the new parser before falling back to ASCII handling. 【F:app/utils/local_ingest.py†L11-L75】【F:app/utils/local_ingest.py†L305-L404】
@@ -196,3 +200,7 @@
 - Dropped Beer–Lambert rescaling so JCAMP payloads retain their native flux samples while still annotating cm⁻¹ axis hints. 【F:app/server/fetchers/nist_quant_ir.py†L140-L205】【F:app/server/fetchers/nist_quant_ir.py†L519-L662】
 - Added catalog fallbacks to serve manual WebBook entries when the live Quant IR table cannot be fetched, keeping Water/CO₂/CH₄ available offline. 【F:app/server/fetchers/nist_quant_ir.py†L236-L305】【F:app/server/fetchers/nist_quant_ir.py†L308-L337】
 - Reworked the regression to confirm `_finalise_payload` leaves flux arrays untouched while labelling cm⁻¹ metadata. 【F:tests/server/test_nist_quant_ir.py†L1-L120】
+
+# Quant IR unit fidelity guard — 2025-10-28
+- Removed the injected `wavenumber_cm_1` arrays so Quant IR payloads carry only the raw wavelength samples reported by NIST, while keeping metadata/provenance hints aligned with the advertised unit. 【F:app/server/fetchers/nist_quant_ir.py†L1-L220】【F:app/server/fetchers/nist_quant_ir.py†L220-L360】
+- Updated release metadata and patch notes to document the raw-axis preservation. 【F:app/version.json†L1-L5】【F:docs/patch_notes/v1.2.1aa.md†L1-L5】
