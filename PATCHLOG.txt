@@ -50,5 +50,7 @@ Spectra App — Patch Log (append-only)
 - v1.2.1x: Rebuild the Quant IR manual catalog around authoritative WebBook JCAMP links, convert catalog spectra using pressure-derived Beer–Lambert scaling, and promote cm⁻¹ axis metadata across server and UI layers.
 - v1.2.1y: Stop renormalising NIST IR spectra, keep manual WebBook samples intact with cm⁻¹ tagging, and fall back to the offline catalog when the Quant IR table is unavailable.
 - v1.2.1aa: Preserve Quant IR raw wavelength/flux metadata without forcing cm⁻¹ conversions so overlays display the archived units verbatim.
+- v1.2.1ab: Attach WebBook IR-SPEC source URLs to the manual H2O/CH4/CO2 Quant IR presets and surface the provenance links in metadata.
+- v1.2.1ac: Restore manual Quant IR presets by accepting direct JCAMP payloads when the WebBook page omits display_jcamp hooks and update regression coverage.
 
 - v1.2.1aa (IR health hotfix): convert IR JCAMP Y-units to A10 with provenance, verify FIRSTY vs scaled samples, flip cm⁻¹ axes only when descending, and expose a ?health=1 Streamlit endpoint.

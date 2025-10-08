@@ -68,6 +68,15 @@ def test_extract_jcamp_url_returns_absolute_path():
     )
 
 
+def test_extract_jcamp_url_handles_direct_jcamp_pages():
+    page_html = "##TITLE=Water\n##JCAMP-DX=4.24\n##DATA TYPE=INFRARED SPECTRUM\n"
+    page_url = "https://webbook.nist.gov/cgi/cbook.cgi?JCAMP=C7732185&Index=1&Type=IR"
+
+    result = nist_quant_ir._extract_jcamp_url(page_html, page_url)
+
+    assert result == page_url
+
+
 def test_choose_measurement_prefers_priority_apodization():
     species = nist_quant_ir.QuantIRSpecies(
         name="Benzene",
@@ -123,6 +132,24 @@ def test_manual_species_catalog_includes_requested_entries():
     measurement = water.measurements[0]
     link = measurement.resolution_links[nist_quant_ir.DEFAULT_RESOLUTION_CM_1]
     assert link.startswith("https://webbook.nist.gov/cgi/cbook.cgi?JCAMP=C7732185")
+
+    manual_lookup = getattr(nist_quant_ir, "_MANUAL_SPECIES_LOOKUP")
+    water_record = manual_lookup[nist_quant_ir._normalise_token("Water")]
+    methane_record = manual_lookup[nist_quant_ir._normalise_token("Methane")]
+    carbon_dioxide_record = manual_lookup[nist_quant_ir._normalise_token("Carbon Dioxide")]
+
+    assert (
+        "https://webbook.nist.gov/cgi/cbook.cgi?ID=C7732185&Type=IR-SPEC&Index=1"
+        in water_record.sources
+    )
+    assert (
+        "https://webbook.nist.gov/cgi/cbook.cgi?ID=C74828&Type=IR-SPEC&Index=1"
+        in methane_record.sources
+    )
+    assert (
+        "https://webbook.nist.gov/cgi/cbook.cgi?ID=C124389&Type=IR-SPEC&Index=1"
+        in carbon_dioxide_record.sources
+    )
 
 
 def test_extract_delta_x_parses_numeric_value():
