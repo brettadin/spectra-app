@@ -562,6 +562,8 @@ def fetch(
         manual_record = _MANUAL_SPECIES_LOOKUP.get(key)
         if manual_record and manual_record.tokens:
             metadata["aliases"] = tuple(sorted({alias for alias in manual_record.tokens}))
+        if manual_record and manual_record.sources:
+            metadata["source_urls"] = tuple(manual_record.sources)
     if delta_x is not None:
         metadata["source_delta_x_cm_1"] = delta_x
     payload["metadata"] = metadata
@@ -578,6 +580,8 @@ def fetch(
         manual_record = _MANUAL_SPECIES_LOOKUP.get(key)
         if manual_record and manual_record.tokens:
             provenance["aliases"] = tuple(sorted({alias for alias in manual_record.tokens}))
+        if manual_record and manual_record.sources:
+            provenance["source_urls"] = tuple(manual_record.sources)
     if delta_x is not None:
         provenance["source_delta_x_cm_1"] = delta_x
     payload["provenance"] = provenance
@@ -604,6 +608,7 @@ class ManualSpeciesRecord:
     tokens: Tuple[str, ...]
     relative_uncertainty: str = "—"
     apodization: str = "Manual (best available)"
+    sources: Tuple[str, ...] = ()
 
     def species(self) -> QuantIRSpecies:
         return QuantIRSpecies(
@@ -626,16 +631,25 @@ _MANUAL_SPECIES_RECORDS: Tuple[ManualSpeciesRecord, ...] = (
         name="Water",
         page_url="https://webbook.nist.gov/cgi/cbook.cgi?JCAMP=C7732185&Index=1&Type=IR",
         tokens=("H2O", "7732-18-5"),
+        sources=(
+            "https://webbook.nist.gov/cgi/cbook.cgi?ID=C7732185&Type=IR-SPEC&Index=1",
+        ),
     ),
     ManualSpeciesRecord(
         name="Methane",
         page_url="https://webbook.nist.gov/cgi/cbook.cgi?JCAMP=C74828&Index=1&Type=IR",
         tokens=("CH4", "74-82-8"),
+        sources=(
+            "https://webbook.nist.gov/cgi/cbook.cgi?ID=C74828&Type=IR-SPEC&Index=1",
+        ),
     ),
     ManualSpeciesRecord(
         name="Carbon Dioxide",
         page_url="https://webbook.nist.gov/cgi/cbook.cgi?JCAMP=C124389&Index=1&Type=IR",
         tokens=("CO2", "124-38-9"),
+        sources=(
+            "https://webbook.nist.gov/cgi/cbook.cgi?ID=C124389&Type=IR-SPEC&Index=1",
+        ),
     ),
     ManualSpeciesRecord(
         name="Benzene",

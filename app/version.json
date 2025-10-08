@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.1aa",
-  "date_utc": "2025-10-28T00:00:00Z",
-  "summary": "Normalize IR JCAMP units to A10, add ?health=1 endpoint, and guard initial routing."
+  "version": "v1.2.1ab",
+  "date_utc": "2025-10-29T00:00:00Z",
+  "summary": "Attach WebBook IR-SPEC provenance to manual H2O/CH4/CO2 Quant IR presets."
 }
