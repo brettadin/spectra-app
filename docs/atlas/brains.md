@@ -204,3 +204,4 @@
 # Quant IR unit fidelity guard — 2025-10-28
 - Removed the injected `wavenumber_cm_1` arrays so Quant IR payloads carry only the raw wavelength samples reported by NIST, while keeping metadata/provenance hints aligned with the advertised unit. 【F:app/server/fetchers/nist_quant_ir.py†L1-L220】【F:app/server/fetchers/nist_quant_ir.py†L220-L360】
 - Updated release metadata and patch notes to document the raw-axis preservation. 【F:app/version.json†L1-L5】【F:docs/patch_notes/v1.2.1aa.md†L1-L5】
+- Logged the v1.2.1aa patch entry so the UI header pulls the raw-unit preservation summary. 【F:PATCHLOG.txt†L52-L52】

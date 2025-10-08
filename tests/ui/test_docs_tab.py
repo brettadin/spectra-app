@@ -94,12 +94,12 @@ def test_resolve_patch_metadata_returns_current_patch_line():
     version_info = _version.get_version_info()
     patch_version, patch_summary, patch_line = main_module._resolve_patch_metadata(version_info)
 
-    assert patch_version == "v1.2.1f"
+    assert patch_version == "v1.2.1aa"
     assert (
         patch_summary
-        == "Bootstrap package imports for Streamlit file entry points so the UI loads without ModuleNotFound errors during cloud deployments."
+        == "Preserve Quant IR raw wavelength/flux metadata without forcing cm⁻¹ conversions so overlays display the archived units verbatim."
     )
     assert (
         patch_line
-        == "v1.2.1f: Bootstrap package imports for Streamlit file entry points so the UI loads without ModuleNotFound errors during cloud deployments."
+        == "v1.2.1aa: Preserve Quant IR raw wavelength/flux metadata without forcing cm⁻¹ conversions so overlays display the archived units verbatim."
     )
