@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.1y",
+  "version": "v1.2.1z",
   "date_utc": "2025-10-28T00:00:00Z",
-  "summary": "Preserve native NIST WebBook transmittance samples while tagging cm⁻¹ axes and providing offline manual fallbacks."
+  "summary": "Add dual-axis absorbance/transmittance plotting so raw intensity scales stay intact by default."
 }
