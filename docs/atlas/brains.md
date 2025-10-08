@@ -200,3 +200,7 @@
 - Dropped Beer–Lambert rescaling so JCAMP payloads retain their native flux samples while still annotating cm⁻¹ axis hints. 【F:app/server/fetchers/nist_quant_ir.py†L140-L205】【F:app/server/fetchers/nist_quant_ir.py†L519-L662】
 - Added catalog fallbacks to serve manual WebBook entries when the live Quant IR table cannot be fetched, keeping Water/CO₂/CH₄ available offline. 【F:app/server/fetchers/nist_quant_ir.py†L236-L305】【F:app/server/fetchers/nist_quant_ir.py†L308-L337】
 - Reworked the regression to confirm `_finalise_payload` leaves flux arrays untouched while labelling cm⁻¹ metadata. 【F:tests/server/test_nist_quant_ir.py†L1-L120】
+
+# Quant IR unit fidelity guard — 2025-10-28
+- Removed the injected `wavenumber_cm_1` arrays so Quant IR payloads carry only the raw wavelength samples reported by NIST, while keeping metadata/provenance hints aligned with the advertised unit. 【F:app/server/fetchers/nist_quant_ir.py†L1-L220】【F:app/server/fetchers/nist_quant_ir.py†L220-L360】
+- Updated release metadata and patch notes to document the raw-axis preservation. 【F:app/version.json†L1-L5】【F:docs/patch_notes/v1.2.1aa.md†L1-L5】
