@@ -390,7 +390,7 @@ def test_ingest_local_jcamp_xydata_skips_uncertainty():
     assert payload["label"] == "Example JCAMP"
     assert payload["wavelength_nm"] == pytest.approx(expected_nm.tolist())
     assert payload["flux"] == [0.5, 0.6, 0.7, 0.8]
-    assert payload["flux_unit"] == "Absorbance"
+    assert payload["flux_unit"] == "Absorbance (A10)"
     assert payload["metadata"]["reported_flux_unit"] == "Absorbance"
     assert payload["metadata"]["reported_wavelength_unit"] == "1/CM"
     assert payload["metadata"]["original_wavelength_unit"] == "cm-1"

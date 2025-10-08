@@ -336,6 +336,28 @@ def _finalise_payload(payload: Dict[str, object]) -> None:
         provenance.setdefault("axis", axis)
     metadata.setdefault("axis_kind", "wavelength")
 
+    default_wavenumber = "cm^-1"
+    units_meta = provenance.setdefault("units", {}) if isinstance(provenance, dict) else {}
+    if default_wavenumber:
+        if "wavelength_unit" not in metadata:
+            metadata["wavelength_unit"] = default_wavenumber
+        metadata.setdefault("preferred_wavelength_unit", metadata["wavelength_unit"])
+        metadata.setdefault("wavelength_display_unit", metadata["wavelength_unit"])
+        units_meta.setdefault("preferred_wavelength", metadata["wavelength_unit"])
+        units_meta.setdefault("wavelength_display", metadata["wavelength_unit"])
+        units_meta.setdefault("wavelength_original", metadata["wavelength_unit"])
+
+    wavelengths_nm = payload.get("wavelength_nm")
+    if isinstance(wavelengths_nm, (list, tuple)) and wavelengths_nm:
+        try:
+            array = np.asarray(wavelengths_nm, dtype=float)
+        except Exception:
+            array = None
+        if array is not None and array.size:
+            with np.errstate(divide="ignore", invalid="ignore"):
+                converted = np.where(array != 0.0, 1e7 / array, np.nan)
+            payload.setdefault("wavenumber_cm_1", converted.tolist())
+
     payload["metadata"] = metadata
     payload["provenance"] = provenance
 

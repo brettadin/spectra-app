@@ -41,6 +41,7 @@ def test_wavenumber_display_reverses_axis():
         label="Quant IR",
         wavelength_nm=wavelengths_nm,
         flux=tuple(np.linspace(0.2, 0.8, len(wavelengths_nm))),
+        metadata={"ir_x_descending": True},
     )
 
     fig, axis_title = _build_overlay_figure(

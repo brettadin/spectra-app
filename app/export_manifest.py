@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-from typing import Iterable, List, Mapping, MutableMapping
+from typing import Iterable, List, Mapping, MutableMapping, Optional
 
 from app._version import get_version_info
 from app.continuity import get_continuity_links
@@ -26,6 +26,7 @@ def build_manifest(
     display_mode: str,
     exported_at: str | None = None,
     viewport: MutableMapping[str, object] | None = None,
+    series_details: Optional[Mapping[str, object]] = None,
 ) -> dict:
     """Build the export manifest used by the UI."""
 
@@ -51,6 +52,12 @@ def build_manifest(
     for label in _unique_series(rows_list):
         count = sum(1 for row in rows_list if str(row.get('series', '')) == label)
         manifest['series'].append({'label': label, 'points': count})
+
+    if series_details:
+        manifest['series_details'] = {
+            str(label): series_details[label]
+            for label in sorted(series_details)
+        }
 
     return manifest
 

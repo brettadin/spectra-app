@@ -1,0 +1,3 @@
+Spectra App — v1.2.1aa (IR health hotfix)
+- Convert IR JCAMP Y-units to decadic absorbance, add a ?health=1 endpoint, and guard the initial Streamlit routing.
+- Continuity docs: docs/brains/brains_v1.2.1aa.md

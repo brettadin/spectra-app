@@ -1,3 +1,8 @@
+# IR JCAMP health hotfix — 2025-10-28
+- Channelled JCAMP ingestion through the new `IRMeta`/`to_A10` helper, scaling samples by `YFACTOR`, validating `FIRSTY`, and logging IR diagnostics plus conversion provenance for overlays and manifest exports.【F:app/server/ingest_jcamp.py†L357-L571】【F:app/server/ir_units.py†L7-L64】【F:app/export_manifest.py†L23-L74】
+- Updated the overlay workspace to solicit coefficient parameters, rebuild downsample tiers after conversion, surface IR sanity expanders, and render scientific tick/hover formatting with conditional cm⁻¹ reversal in Plotly.【F:app/ui/main.py†L279-L467】【F:app/ui/main.py†L2452-L2687】
+- Added a ?health=1 Streamlit gate with bootstrapping guard and refreshed docs/patch notes so uptime probes and release collateral track the hotfix scope.【F:app/ui/main.py†L66-L92】【F:app/app_patched.py†L1-L48】【F:docs/patch_notes/v1.2.1aa_hotfix.md†L1-L9】【F:docs/PATCH_NOTES/v1.2.1aa.txt†L1-L1】
+
 # NIST Quantitative IR fetcher — 2025-10-27
 - Built a dedicated `nist_quant_ir` fetcher that scrapes the Quant IR catalog, selects the preferred 0.125 cm⁻¹ apodization window, resolves JCAMP links, and normalises metadata/provenance for overlays. 【F:app/server/fetchers/nist_quant_ir.py†L1-L220】
 - Exposed the new archive through the line catalog panel with a cached molecule selector that flags unavailable entries while funnelling successful picks through the overlay ingestion flow. 【F:app/ui/main.py†L53-L122】【F:app/ui/main.py†L1372-L1455】
@@ -205,3 +210,9 @@
 - Removed the injected `wavenumber_cm_1` arrays so Quant IR payloads carry only the raw wavelength samples reported by NIST, while keeping metadata/provenance hints aligned with the advertised unit. 【F:app/server/fetchers/nist_quant_ir.py†L1-L220】【F:app/server/fetchers/nist_quant_ir.py†L220-L360】
 - Updated release metadata and patch notes to document the raw-axis preservation. 【F:app/version.json†L1-L5】【F:docs/patch_notes/v1.2.1aa.md†L1-L5】
 - Logged the v1.2.1aa patch entry so the UI header pulls the raw-unit preservation summary. 【F:PATCHLOG.txt†L52-L52】
+
+## IR JCAMP absorbance normalization — 2025-10-28
+- Route JCAMP Y data through the `IRMeta`/`to_A10` pipeline, record FIRSTY verification, and retain coefficient samples + provenance when path length and mole fraction are missing.【F:app/server/ingest_jcamp.py†L357-L571】
+- Surface Streamlit prompts for path length/mole fraction, apply conversions in-session, and expose IR sanity expanders with scientific tick/hover formatting on cm⁻¹ axes.【F:app/ui/main.py†L279-L467】【F:app/ui/main.py†L2452-L2687】
+- Extend export manifests and documentation with IR diagnostics and refresh release metadata/notes for the hotfix.【F:app/export_manifest.py†L23-L62】【F:docs/app/ir_import_units.md†L1-L5】【F:docs/patch_notes/v1.2.1aa_hotfix.md†L1-L5】
+- Add a `?health=1` endpoint and first-load routing guard so automated checks hit a stable page without redirect loops.【F:app/ui/main.py†L66-L72】【F:app/app_patched.py†L1-L48】

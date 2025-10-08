@@ -51,7 +51,10 @@ def test_targets_panel_groups_products_by_collection():
     assert any("Curated MAST spectra" in body for body in subheaders)
 
     markdown_blocks = [block.body for block in app.markdown]
-    assert any(body.startswith("**Curated selection") for body in markdown_blocks)
+    assert any(
+        body.startswith("**Curated selection") or body.startswith("**CALSPEC")
+        for body in markdown_blocks
+    )
 
 
 def test_targets_panel_catalog_table_is_optional():

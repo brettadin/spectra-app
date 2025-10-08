@@ -97,9 +97,9 @@ def test_resolve_patch_metadata_returns_current_patch_line():
     assert patch_version == "v1.2.1aa"
     assert (
         patch_summary
-        == "Preserve Quant IR raw wavelength/flux metadata without forcing cm⁻¹ conversions so overlays display the archived units verbatim."
+        == "(IR health hotfix): convert IR JCAMP Y-units to A10 with provenance, verify FIRSTY vs scaled samples, flip cm⁻¹ axes only when descending, and expose a ?health=1 Streamlit endpoint."
     )
     assert (
         patch_line
-        == "v1.2.1aa: Preserve Quant IR raw wavelength/flux metadata without forcing cm⁻¹ conversions so overlays display the archived units verbatim."
+        == "v1.2.1aa (IR health hotfix): convert IR JCAMP Y-units to A10 with provenance, verify FIRSTY vs scaled samples, flip cm⁻¹ axes only when descending, and expose a ?health=1 Streamlit endpoint."
     )
