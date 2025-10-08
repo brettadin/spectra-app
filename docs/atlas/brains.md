@@ -12,6 +12,10 @@
 - Updated the Quant IR manual caption lookup to catch missing `_manual_species_catalog` attributes so older deployments keep rendering the sidebar without raising AttributeError. 【F:app/ui/main.py†L1583-L1597】
 - Recorded the release metadata bump for the resilience fix. 【F:app/version.json†L1-L5】
 
+# Dual-axis flux rendering — 2025-10-28
+- Introduced `_flux_axis_category` plus secondary-axis routing in `_build_overlay_figure` so absorbance traces land on a dedicated y-axis while transmittance and mixed flux data stay on the primary scale. 【F:app/ui/main.py†L2116-L2437】
+- Updated `_add_line_trace` to support Plotly secondary axes, keeping per-point hover markers aligned with whichever flux axis the overlay targets. 【F:app/ui/main.py†L2189-L2235】
+
 # JCAMP-DX overlay ingestion — 2025-10-27
 - Implemented a JCAMP parser that tokenises XYDATA blocks, converts X units to nanometres with spectral equivalencies, drops uncertainty-labelled segments, and records provenance for caching tiers. 【F:app/server/ingest_jcamp.py†L20-L383】
 - Updated `_detect_format` and ingest routing so `.jdx` extensions or JCAMP headers trigger the new parser before falling back to ASCII handling. 【F:app/utils/local_ingest.py†L11-L75】【F:app/utils/local_ingest.py†L305-L404】
