@@ -2113,6 +2113,24 @@ def _trace_flux_unit_label(trace: OverlayTrace) -> Optional[str]:
     return None
 
 
+def _flux_axis_category(trace: OverlayTrace) -> str:
+    label = _trace_flux_unit_label(trace)
+    if label:
+        lowered = label.lower()
+    else:
+        lowered = ""
+    axis = (trace.axis or "").strip().lower()
+    flux_kind = (trace.flux_kind or "").strip().lower()
+
+    if any(token in lowered for token in ("transmittance", "transmission")) or (
+        "transmission" in axis or "transmittance" in axis
+    ):
+        return "transmittance"
+    if "absorb" in lowered or "absorb" in axis or "absorb" in flux_kind:
+        return "absorbance"
+    return "other"
+
+
 def _resolve_flux_axis_title(
     overlays: Sequence[OverlayTrace], display_mode: str
 ) -> str:
@@ -2173,6 +2191,8 @@ def _add_line_trace(
     df: pd.DataFrame,
     label: str,
     hover_values: Optional[Sequence[Optional[str]]] = None,
+    *,
+    secondary_y: bool = False,
 ) -> None:
     xs: List[float | None] = []
     ys: List[float | None] = []
@@ -2198,7 +2218,8 @@ def _add_line_trace(
             name=label,
             hovertext=hover if hover is not None else None,
             hoverinfo="text" if hover is not None else None,
-        )
+        ),
+        secondary_y=secondary_y,
     )
     fig.add_trace(
         go.Scatter(
@@ -2210,7 +2231,8 @@ def _add_line_trace(
             hovertext=resolved_hover,
             hoverinfo="text" if resolved_hover is not None else None,
             showlegend=False,
-        )
+        ),
+        secondary_y=secondary_y,
     )
 
 
@@ -2227,7 +2249,20 @@ def _build_overlay_figure(
         Mapping[str, Tuple[float | None, float | None]]
     ] = None,
 ) -> Tuple[go.Figure, str]:
-    fig = go.Figure()
+    category_lookup: Dict[str, str] = {}
+    target_overlays = [trace for trace in overlays if trace.visible] or list(overlays)
+    for trace in target_overlays:
+        category_lookup[trace.trace_id] = _flux_axis_category(trace)
+
+    has_transmittance = any(
+        category == "transmittance" for category in category_lookup.values()
+    )
+    has_absorbance = any(
+        category == "absorbance" for category in category_lookup.values()
+    )
+    use_secondary_y = has_transmittance and has_absorbance
+
+    fig = make_subplots(specs=[[{"secondary_y": use_secondary_y}]])
     axis_title = "Wavelength (nm)"
     full_resolution = _is_full_resolution_enabled()
     max_points = 3000000 if full_resolution else 1500000
@@ -2252,7 +2287,6 @@ def _build_overlay_figure(
             viewport=viewport_lookup.get(ref_kind, (None, None)),
         )
 
-    target_overlays = [trace for trace in overlays if trace.visible] or list(overlays)
     visible_axis_kinds: List[str] = []
     axis_titles: Dict[str, str] = {}
 
@@ -2268,6 +2302,9 @@ def _build_overlay_figure(
         viewport = viewport_lookup.get(axis_kind, (None, None))
         visible_axis_kinds.append(axis_kind)
 
+        category = category_lookup.get(trace.trace_id, "other")
+        secondary_axis = use_secondary_y and category == "absorbance"
+
         if trace.kind == "lines":
             df = trace.to_dataframe()
             df = _filter_viewport(df, viewport)
@@ -2278,7 +2315,13 @@ def _build_overlay_figure(
             )
             df = df.assign(wavelength=converted, flux=df["flux"].astype(float))
             hover_values = _normalize_hover_values(df.get("hover"))
-            _add_line_trace(fig, df, trace.label, hover_values)
+            _add_line_trace(
+                fig,
+                df,
+                trace.label,
+                hover_values,
+                secondary_y=secondary_axis,
+            )
             axis_titles.setdefault(axis_kind, candidate_title)
             continue
 
@@ -2335,7 +2378,8 @@ def _build_overlay_figure(
                 name=trace.label,
                 hovertext=hover_values if hover_values is not None else None,
                 hoverinfo="text" if hover_values is not None else None,
-            )
+            ),
+            secondary_y=secondary_axis,
         )
 
     if axis_titles:
@@ -2346,20 +2390,51 @@ def _build_overlay_figure(
             friendly = " + ".join(kind.replace("_", " ") for kind in unique_kinds)
             axis_title = f"Mixed axes ({friendly})"
 
-    flux_axis_title = _resolve_flux_axis_title(target_overlays, display_mode)
+    if use_secondary_y:
+        primary_overlays = [
+            trace
+            for trace in target_overlays
+            if category_lookup.get(trace.trace_id) != "absorbance"
+        ]
+        secondary_overlays = [
+            trace
+            for trace in target_overlays
+            if category_lookup.get(trace.trace_id) == "absorbance"
+        ]
+        if not primary_overlays:
+            primary_overlays = secondary_overlays
+            secondary_overlays = []
+    else:
+        primary_overlays = list(target_overlays)
+        secondary_overlays: List[OverlayTrace] = []
+
+    primary_flux_title = _resolve_flux_axis_title(primary_overlays, display_mode)
+    secondary_flux_title = (
+        _resolve_flux_axis_title(secondary_overlays, display_mode)
+        if secondary_overlays
+        else None
+    )
 
     layout_kwargs = dict(
-        xaxis_title=axis_title,
-        yaxis_title=flux_axis_title,
         legend=dict(itemclick="toggleothers"),
         margin=dict(t=50, b=40, l=60, r=20),
         height=520,
     )
 
-    if display_units == "cm^-1":
-        layout_kwargs["xaxis"] = dict(autorange="reversed")
-
     fig.update_layout(**layout_kwargs)
+    fig.update_xaxes(title_text=axis_title)
+
+    if display_units == "cm^-1":
+        fig.update_xaxes(autorange="reversed")
+
+    if use_secondary_y and secondary_overlays:
+        fig.update_yaxes(title_text=primary_flux_title, secondary_y=False)
+        fig.update_yaxes(
+            title_text=secondary_flux_title or "Absorbance",
+            secondary_y=True,
+        )
+    else:
+        fig.update_yaxes(title_text=primary_flux_title, secondary_y=False)
     unique_kinds = sorted({kind for kind in visible_axis_kinds})
     if len(unique_kinds) == 1 and axis_lookup:
         axis_range = axis_lookup.get(unique_kinds[0])
