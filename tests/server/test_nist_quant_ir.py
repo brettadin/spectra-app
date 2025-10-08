@@ -68,6 +68,15 @@ def test_extract_jcamp_url_returns_absolute_path():
     )
 
 
+def test_extract_jcamp_url_handles_direct_jcamp_pages():
+    page_html = "##TITLE=Water\n##JCAMP-DX=4.24\n##DATA TYPE=INFRARED SPECTRUM\n"
+    page_url = "https://webbook.nist.gov/cgi/cbook.cgi?JCAMP=C7732185&Index=1&Type=IR"
+
+    result = nist_quant_ir._extract_jcamp_url(page_html, page_url)
+
+    assert result == page_url
+
+
 def test_choose_measurement_prefers_priority_apodization():
     species = nist_quant_ir.QuantIRSpecies(
         name="Benzene",

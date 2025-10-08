@@ -301,10 +301,15 @@ def _choose_measurement(
 
 def _extract_jcamp_url(page_html: str, page_url: str) -> str:
     match = _JCAMP_PATTERN.search(page_html)
-    if not match:
-        raise QuantIRFetchError("Could not locate JCAMP link on Quant IR spectrum page")
-    relative = unescape(match.group(1))
-    return urljoin(page_url, relative)
+    if match:
+        relative = unescape(match.group(1))
+        return urljoin(page_url, relative)
+
+    stripped = page_html.lstrip()
+    if ("JCAMP=" in page_url and stripped.startswith("##")) or "##JCAMP-DX" in stripped[:200]:
+        return page_url
+
+    raise QuantIRFetchError("Could not locate JCAMP link on Quant IR spectrum page")
 
 
 def _extract_delta_x(jcamp_bytes: bytes) -> Optional[float]:

@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.1ab",
+  "version": "v1.2.1ac",
   "date_utc": "2025-10-29T00:00:00Z",
-  "summary": "Attach WebBook IR-SPEC provenance to manual H2O/CH4/CO2 Quant IR presets."
+  "summary": "Restore Quant IR manual fetches when WebBook pages return raw JCAMP data."
 }
