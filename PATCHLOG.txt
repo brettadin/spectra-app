@@ -52,5 +52,8 @@ Spectra App — Patch Log (append-only)
 - v1.2.1aa: Preserve Quant IR raw wavelength/flux metadata without forcing cm⁻¹ conversions so overlays display the archived units verbatim.
 - v1.2.1ab: Attach WebBook IR-SPEC source URLs to the manual H2O/CH4/CO2 Quant IR presets and surface the provenance links in metadata.
 - v1.2.1ac: Restore manual Quant IR presets by accepting direct JCAMP payloads when the WebBook page omits display_jcamp hooks and update regression coverage.
+- v1.2.1ad: Add FTIR functional-group classification with IR model integration, shaded band overlays, unit coverage, and release collateral updates.
+
+- v1.2.1ae: Ship heuristic fallbacks for the IR classifier, share correlation-band metadata, surface backend state in the UI/API, and expand unit coverage/documentation around the missing-model workflow.
 
 - v1.2.1aa (IR health hotfix): convert IR JCAMP Y-units to A10 with provenance, verify FIRSTY vs scaled samples, flip cm⁻¹ axes only when descending, and expose a ?health=1 Streamlit endpoint.

@@ -92,3 +92,42 @@ oh fuck this is gonna display on the front page isnt it lol. whatever.
 If I forget to edit this before showing my teachers.. _Whoops_.
 
 I'll clean it up. 🤣
+
+---
+
+## Functional-group classifier integration
+
+Spectra App now bundles an IR functional-group classifier that projects the
+[`gj475/irchracterizationcnn`](https://github.com/gj475/irchracterizationcnn)
+model into the overlay workspace. Upload an FTIR spectrum, switch the axis to
+cm⁻¹, and use the **Identify functional groups** button on the overlay tab to
+run the classifier. The UI shades the corresponding NIST correlation bands and
+records the model confidences in a dedicated results table. Predictions are
+cached for the current reference overlay so you can continue inspecting the
+same spectrum without rerunning the network each time.
+
+### Assets & setup
+
+- Install the new dependencies from `requirements.txt` (`tensorflow`,
+  `scipy`, `rdkit-pypi`, `fastapi`, `uvicorn`, etc.).
+- Download the pretrained weights and optimal thresholds via
+  `python scripts/fetch_ir_model.py --model-url <model_url> --threshold-url <threshold_url>`
+  which saves the assets under `ml_models/ir_groups/`.
+- If the weights are absent the app now falls back to a heuristic classifier so
+  users are not blocked, but accuracy is substantially better once the TensorFlow
+  model and thresholds are available.
+- (Optional) Launch the FastAPI microservice by pointing `uvicorn` at
+  `app.server.ir_groups_api:app` and set `SPECTRA_IR_GROUP_API_URL` if you want
+  the UI to call the REST endpoint instead of running the classifier in-process.
+
+### Attribution
+
+- Functional-group taxonomy, preprocessing guidance, and pretrained weights are
+  courtesy of the open-source
+  [`irchracterizationcnn`](https://github.com/gj475/irchracterizationcnn)
+  project.
+- Correlation ranges and ground-truth FTIR spectra are sourced from the NIST
+  Chemistry WebBook and related documentation.
+- Supplementary spectral references come from the Spectral Database for Organic
+  Compounds (SDBS). Please cite these resources when publishing work based on
+  the classifier.
