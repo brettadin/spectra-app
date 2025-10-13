@@ -1,4 +1,9 @@
-"""Download the IR functional-group classifier assets."""
+"""Download the IR functional-group classifier assets.
+
+The application ships with a heuristic fallback so the UI still works without
+the TensorFlow model, but fetching the real weights markedly improves
+predictions.
+"""
 from __future__ import annotations
 
 import argparse

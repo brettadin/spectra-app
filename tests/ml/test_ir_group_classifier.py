@@ -65,3 +65,21 @@ def test_coerce_from_wavelength_mapping():
     wavenumbers, intensities = classifier._coerce_spectrum(spectrum)
     assert wavenumbers.shape == intensities.shape
     assert np.all(wavenumbers > 0)
+
+
+def test_fallback_model_detects_carbonyl_peak(tmp_path):
+    model_path = tmp_path / "missing_model.h5"
+    thresholds_path = tmp_path / "missing_thresholds.pkl"
+    classifier = IRGroupClassifier(
+        model_path=model_path,
+        thresholds_path=thresholds_path,
+        normalise=True,
+    )
+    wavenumbers = np.linspace(4000, 400, 600)
+    intensities = np.zeros_like(wavenumbers)
+    mask = (wavenumbers <= 1750) & (wavenumbers >= 1680)
+    intensities[mask] = 1.0
+    results = classifier.predict_groups((wavenumbers, intensities))
+    lookup = {item.name: item for item in results}
+    assert lookup["Ketone"].present is True
+    assert classifier.backend_name == "heuristic"

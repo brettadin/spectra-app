@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.1ad",
-  "date_utc": "2025-10-30T00:00:00Z",
-  "summary": "Add FTIR functional-group classification with IR model integration."
+  "version": "v1.2.1ae",
+  "date_utc": "2025-10-31T00:00:00Z",
+  "summary": "Provide heuristic IR classifier fallback and backend visibility."
 }

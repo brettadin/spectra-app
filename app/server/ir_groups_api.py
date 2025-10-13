@@ -46,6 +46,7 @@ class FunctionalGroupResponse(BaseModel):
 
 
 class IRGroupResponse(BaseModel):
+    backend: str
     predictions: List[FunctionalGroupResponse]
 
 
@@ -72,6 +73,7 @@ def identify_ir_groups(payload: SpectrumPayload) -> IRGroupResponse:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return IRGroupResponse(
+        backend=classifier.backend_name,
         predictions=[
             FunctionalGroupResponse(
                 name=item.name,

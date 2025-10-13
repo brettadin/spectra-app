@@ -11,6 +11,7 @@ from ml import FunctionalGroupPrediction, IRGroupClassifier
 
 _API_URL_ENV = "SPECTRA_IR_GROUP_API_URL"
 _ENDPOINT = "/api/ir-groups"
+_LAST_BACKEND = "uninitialised"
 
 
 @lru_cache(maxsize=4)
@@ -53,6 +54,8 @@ def _call_remote(
             )
         except Exception:
             continue
+    global _LAST_BACKEND
+    _LAST_BACKEND = str(data.get("backend", "remote"))
     return predictions
 
 
@@ -69,6 +72,7 @@ def identify_functional_groups(
     if len(wn) != len(it):
         raise ValueError("Wavenumber and intensity arrays must match in length")
 
+    global _LAST_BACKEND
     base_url = os.environ.get(_API_URL_ENV)
     if base_url:
         remote = _call_remote(base_url, wn, it, normalise=normalise)
@@ -77,7 +81,14 @@ def identify_functional_groups(
 
     classifier = _classifier(normalise)
     predictions = classifier.predict_groups({"wavenumber": wn, "intensity": it})
+    _LAST_BACKEND = getattr(classifier, "backend_name", "local")
     return predictions
 
 
-__all__ = ["identify_functional_groups"]
+def ir_group_backend() -> str:
+    """Return the backend used for the most recent IR classification."""
+
+    return _LAST_BACKEND
+
+
+__all__ = ["identify_functional_groups", "ir_group_backend"]

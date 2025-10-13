@@ -113,6 +113,9 @@ same spectrum without rerunning the network each time.
 - Download the pretrained weights and optimal thresholds via
   `python scripts/fetch_ir_model.py --model-url <model_url> --threshold-url <threshold_url>`
   which saves the assets under `ml_models/ir_groups/`.
+- If the weights are absent the app now falls back to a heuristic classifier so
+  users are not blocked, but accuracy is substantially better once the TensorFlow
+  model and thresholds are available.
 - (Optional) Launch the FastAPI microservice by pointing `uvicorn` at
   `app.server.ir_groups_api:app` and set `SPECTRA_IR_GROUP_API_URL` if you want
   the UI to call the REST endpoint instead of running the classifier in-process.

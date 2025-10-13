@@ -51,7 +51,7 @@ from ..server.differential import ratio, resample_to_common_grid, subtract
 from ..server.fetch_archives import FetchError, fetch_spectrum
 from ..server.fetchers import nist_quant_ir
 from ..server.ir_units import IRMeta, to_A10
-from ..utils.ir_group_client import identify_functional_groups
+from ..utils.ir_group_client import identify_functional_groups, ir_group_backend
 from ..similarity import (
     SimilarityCache,
     SimilarityOptions,
@@ -3634,6 +3634,16 @@ def _render_overlay_tab(version_info: Dict[str, str]) -> None:
                             st.success(
                                 f"Classifier updated {detected} functional-group flags."
                             )
+                            backend = ir_group_backend()
+                            if backend == "heuristic":
+                                st.info(
+                                    "Using heuristic fallbacks because the TensorFlow "
+                                    "model weights were not found. Download them via "
+                                    "`python scripts/fetch_ir_model.py --model-url <url> --threshold-url <url>` "
+                                    "for higher-fidelity predictions."
+                                )
+                            elif backend == "remote":
+                                st.caption("IR groups resolved via configured API service.")
         st.caption(f"Axis: {axis_title}")
 
     _render_metadata_summary(overlays)

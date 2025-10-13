@@ -15,6 +15,12 @@ except Exception:  # pragma: no cover - SciPy unavailable in constrained envs
     savgol_filter = None  # type: ignore
 
 
+from .ir_group_data import (
+    LABEL_NAMES_EXTENDED,
+    CORRELATION_BANDS,
+    FALLBACK_THRESHOLDS,
+)
+
 Number = Union[int, float, np.floating]
 VectorLike = Union[Sequence[Number], np.ndarray]
 SpectrumInput = Union[
@@ -23,47 +29,6 @@ SpectrumInput = Union[
     List[Tuple[Number, Number]],
     np.ndarray,
 ]
-
-
-_LABEL_NAMES_EXTENDED: Tuple[str, ...] = (
-    "Alkane",
-    "Alkene",
-    "Alkyne",
-    "Arene",
-    "Haloalkane",
-    "Alcohol",
-    "Aldehyde",
-    "Ketone",
-    "Carboxylic acid",
-    "Acid anhydride",
-    "Acyl halide",
-    "Ester",
-    "Ether",
-    "Amine",
-    "Amide",
-    "Nitrile",
-    "Imide",
-    "Imine",
-    "Azo compound",
-    "Thiol",
-    "Thial",
-    "Sulfone",
-    "Sulfonic acid",
-    "Enol",
-    "Phenol",
-    "Hydrazine",
-    "Enamine",
-    "Isocyanate",
-    "Isothiocyanate",
-    "Phosphine",
-    "Sulfonamide",
-    "Sulfonate",
-    "Sulfoxide",
-    "Thioamide",
-    "Hydrazone",
-    "Carbamate",
-    "Sulfide",
-)
 
 
 @dataclass(frozen=True)
@@ -84,6 +49,48 @@ class FunctionalGroupPrediction:
             "threshold": float(self.threshold),
             "present": bool(self.present),
         }
+
+
+class _FallbackIRModel:
+    """Rule-based approximation when the TensorFlow model is unavailable."""
+
+    def __init__(self, label_names: Sequence[str]) -> None:
+        self._label_names: Tuple[str, ...] = tuple(label_names)
+        self._grid = np.linspace(4000.0, 400.0, 600)
+
+    def predict(self, data: np.ndarray, verbose: int = 0) -> np.ndarray:  # pragma: no cover - simple wrapper
+        batch = np.asarray(data, dtype=float)
+        if batch.ndim == 1:
+            batch = batch.reshape(1, batch.size)
+        elif batch.ndim == 3:
+            batch = batch.reshape(batch.shape[0], batch.shape[1])
+        scores = np.zeros((batch.shape[0], len(self._label_names)), dtype=np.float32)
+        for row_index, row in enumerate(batch):
+            finite = row[np.isfinite(row)]
+            if finite.size == 0:
+                continue
+            minimum = float(np.min(finite))
+            maximum = float(np.max(finite))
+            if math.isclose(maximum, minimum):
+                normalised = np.zeros_like(row, dtype=float)
+            else:
+                normalised = (row - minimum) / (maximum - minimum)
+            for label_index, name in enumerate(self._label_names):
+                bands = CORRELATION_BANDS.get(name)
+                if not bands:
+                    continue
+                responses: List[float] = []
+                for high, low, _band_name, _notes in bands:
+                    mask = (self._grid <= float(high)) & (self._grid >= float(low))
+                    if not mask.any():
+                        continue
+                    band_values = normalised[mask]
+                    if band_values.size == 0:
+                        continue
+                    responses.append(float(np.nanmax(band_values)))
+                if responses:
+                    scores[row_index, label_index] = min(1.0, max(responses))
+        return scores
 
 
 class IRGroupClassifier:
@@ -111,11 +118,12 @@ class IRGroupClassifier:
             Path(thresholds_path) if thresholds_path else self.DEFAULT_THRESHOLDS_PATH
         )
         self._label_names: Tuple[str, ...] = (
-            tuple(label_names) if label_names else _LABEL_NAMES_EXTENDED
+            tuple(label_names) if label_names else LABEL_NAMES_EXTENDED
         )
         self._baseline_window = max(3, int(baseline_window))
         self._baseline_poly = max(1, int(baseline_poly_order))
         self._normalise = bool(normalise)
+        self._backend_name = "provided" if model is not None else "uninitialised"
 
     # ------------------------------------------------------------------
     # Public API
@@ -150,6 +158,12 @@ class IRGroupClassifier:
         results.sort(key=lambda item: item.probability, reverse=True)
         return results
 
+    @property
+    def backend_name(self) -> str:
+        """Return the backend used for inference (tensorflow/heuristic/provided)."""
+
+        return self._backend_name
+
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
@@ -159,16 +173,22 @@ class IRGroupClassifier:
             return self._model
         try:
             from tensorflow import keras  # type: ignore
-        except Exception as exc:  # pragma: no cover - TensorFlow missing in tests
-            raise ImportError(
-                "TensorFlow is required to load the IR functional-group model"
-            ) from exc
+        except Exception:  # pragma: no cover - TensorFlow missing in constrained envs
+            self._model = _FallbackIRModel(self._label_names)
+            self._backend_name = "heuristic"
+            return self._model
         model_path = self._model_path.expanduser()
         if not model_path.exists():
-            raise FileNotFoundError(
-                f"IR functional-group model not found: {model_path}"
-            )
-        self._model = keras.models.load_model(model_path)
+            self._model = _FallbackIRModel(self._label_names)
+            self._backend_name = "heuristic"
+            return self._model
+        try:
+            self._model = keras.models.load_model(model_path)
+        except Exception:  # pragma: no cover - propagate fallback when load fails
+            self._model = _FallbackIRModel(self._label_names)
+            self._backend_name = "heuristic"
+        else:
+            self._backend_name = "tensorflow"
         return self._model
 
     def _ensure_thresholds(self) -> Mapping[int, float]:
@@ -176,16 +196,35 @@ class IRGroupClassifier:
             return self._thresholds
         path = self._thresholds_path.expanduser()
         if not path.exists():
-            raise FileNotFoundError(
-                f"IR functional-group thresholds not found: {path}"
-            )
-        with path.open("rb") as handle:
-            loaded = pickle.load(handle)
+            self._thresholds = self._fallback_thresholds()
+            return self._thresholds
+        try:
+            with path.open("rb") as handle:
+                loaded = pickle.load(handle)
+        except Exception:
+            self._thresholds = self._fallback_thresholds()
+            return self._thresholds
         if isinstance(loaded, Mapping):
-            self._thresholds = {int(k): float(v) for k, v in loaded.items()}
+            thresholds = {int(k): float(v) for k, v in loaded.items()}
+        elif isinstance(loaded, Sequence):
+            thresholds = {index: float(value) for index, value in enumerate(loaded)}
         else:
-            raise ValueError("Threshold file does not contain a mapping")
+            thresholds = {}
+        if not thresholds:
+            thresholds = self._fallback_thresholds()
+        else:
+            for index, name in enumerate(self._label_names):
+                thresholds.setdefault(index, float(FALLBACK_THRESHOLDS.get(name, 0.35)))
+        self._thresholds = thresholds
         return self._thresholds
+
+    def _fallback_thresholds(self) -> MutableMapping[int, float]:
+        """Return heuristic probability thresholds for each functional group."""
+
+        return {
+            index: float(FALLBACK_THRESHOLDS.get(name, 0.35))
+            for index, name in enumerate(self._label_names)
+        }
 
     @staticmethod
     def _as_array(values: VectorLike) -> np.ndarray:
