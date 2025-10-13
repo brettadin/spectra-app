@@ -9,3 +9,8 @@ beautifulsoup4>=4.12
 pyvo
 pyyaml
 rich
+scipy>=1.11
+tensorflow>=2.16
+rdkit-pypi>=2022.9.5
+fastapi>=0.111
+uvicorn>=0.30
