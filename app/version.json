@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.5",
-  "date_utc": "2025-11-05T00:00:00Z",
-  "summary": "Align FTIR differentials with cm⁻¹ displays, invert absorption traces for readability, and cluster functional-group overlays around dominant peaks."
+  "version": "v1.2.6",
+  "date_utc": "2025-11-06T00:00:00Z",
+  "summary": "Stabilise IR parameter prompts by instantiating overlay forms outside context managers so conversion controls render reliably with the new width API."
 }
