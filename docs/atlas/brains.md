@@ -1,3 +1,13 @@
+# FTIR differential cm⁻¹ alignment — 2025-11-05
+- Reversed differential axis handling for wavenumber spectra so subtraction plots render on a cm⁻¹ scale with high-to-low order, updated captions, and export metadata reflecting both nm and cm⁻¹ ranges.【F:app/ui/main.py†L3688-L3784】【F:tests/ui/test_differential_form.py†L1-L155】
+- Normalised FTIR classifier vectors by turning transmittance dips into absorbance peaks, flipping negative absorbance baselines, and clustering overlay ranges so only the dominant peak-backed groups render.【F:app/ui/main.py†L1159-L1189】【F:app/ui/ir_group_overlays.py†L86-L142】【F:tests/ui/test_ir_trace_vectors.py†L1-L46】
+- Collapsed the A10 conversion prompt into per-trace expanders to keep the FTIR workspace clear while preserving unit context beside the conversion controls.【F:app/ui/main.py†L318-L357】
+
+# FTIR overlay peak focus — 2025-11-04
+- Weighted classifier shading by observed peak intensity, trimming ranges to the measured bandwidth and blending colour by confidence plus peak fraction to declutter FTIR plots.【F:app/ui/ir_group_overlays.py†L1-L198】
+- Passed the active spectrum vectors into the shading helper so only prominent functional-group detections render overlays for the reference trace.【F:app/ui/main.py†L3639-L3664】
+- Logged regression coverage to hold the peak-aware ordering and fallback trimming in place for future changes.【F:tests/ui/test_ir_group_overlays.py†L1-L54】
+
 # IR JCAMP health hotfix — 2025-10-28
 - Channelled JCAMP ingestion through the new `IRMeta`/`to_A10` helper, scaling samples by `YFACTOR`, validating `FIRSTY`, and logging IR diagnostics plus conversion provenance for overlays and manifest exports.【F:app/server/ingest_jcamp.py†L357-L571】【F:app/server/ir_units.py†L7-L64】【F:app/export_manifest.py†L23-L74】
 - Updated the overlay workspace to solicit coefficient parameters, rebuild downsample tiers after conversion, surface IR sanity expanders, and render scientific tick/hover formatting with conditional cm⁻¹ reversal in Plotly.【F:app/ui/main.py†L279-L467】【F:app/ui/main.py†L2452-L2687】
@@ -205,6 +215,11 @@
 - Dropped Beer–Lambert rescaling so JCAMP payloads retain their native flux samples while still annotating cm⁻¹ axis hints. 【F:app/server/fetchers/nist_quant_ir.py†L140-L205】【F:app/server/fetchers/nist_quant_ir.py†L519-L662】
 - Added catalog fallbacks to serve manual WebBook entries when the live Quant IR table cannot be fetched, keeping Water/CO₂/CH₄ available offline. 【F:app/server/fetchers/nist_quant_ir.py†L236-L305】【F:app/server/fetchers/nist_quant_ir.py†L308-L337】
 - Reworked the regression to confirm `_finalise_payload` leaves flux arrays untouched while labelling cm⁻¹ metadata. 【F:tests/server/test_nist_quant_ir.py†L1-L120】
+
+## FTIR overlay readability — 2025-11-03
+- Shrink IR correlation bands and scale their tint by classifier confidence so shaded regions stay focused on likely wavenumbers while keeping the palette muted. 【F:app/ui/ir_group_overlays.py†L72-L143】
+- Limit overlay annotations to the most confident detections and tilt their labels to avoid overlap, improving on-plot legibility. 【F:app/ui/ir_group_overlays.py†L118-L143】
+- Wrap the functional-group results table in a collapsed expander so the FTIR plot retains vertical space until analysts need the tabular details. 【F:app/ui/main.py†L3606-L3614】
 
 # Quant IR manual provenance links — 2025-10-29
 - Recorded the authoritative NIST WebBook IR-SPEC catalog pages for the manual Water/CH₄/CO₂ presets and surfaced them through the metadata/provenance `source_urls` fields so overlays keep clickable provenance. 【F:app/server/fetchers/nist_quant_ir.py†L225-L580】

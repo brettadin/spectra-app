@@ -1,7 +1,9 @@
+import numpy as np
+import streamlit as st
 from streamlit.testing.v1 import AppTest
 
 from app.similarity import SimilarityCache
-from app.ui.main import OverlayTrace
+from app.ui.main import OverlayTrace, _compute_differential_result
 
 
 def _render_differential_tab_entrypoint() -> None:
@@ -149,3 +151,49 @@ def test_differential_tab_handles_image_overlays():
     app.run()
 
     assert not app.exception
+
+
+def test_compute_differential_result_prefers_wavenumber_display():
+    st.session_state.clear()
+    st.session_state["display_units"] = "cm^-1"
+
+    wn_points = np.array([2400.0, 2320.0, 2240.0])
+    wavelengths_nm = tuple(float(1e7 / value) for value in wn_points)
+    trans_flux_a = (0.92, 0.35, 0.88)
+    trans_flux_b = (0.94, 0.40, 0.90)
+
+    metadata = {
+        "original_wavelength_unit": "cm^-1",
+        "flux_unit_input": "Transmittance",
+    }
+
+    trace_a = OverlayTrace(
+        trace_id="a",
+        label="Trace A",
+        wavelength_nm=wavelengths_nm,
+        flux=trans_flux_a,
+        metadata=dict(metadata),
+        flux_unit="Transmittance",
+    )
+    trace_b = OverlayTrace(
+        trace_id="b",
+        label="Trace B",
+        wavelength_nm=wavelengths_nm,
+        flux=trans_flux_b,
+        metadata=dict(metadata),
+        flux_unit="Transmittance",
+    )
+
+    result = _compute_differential_result(
+        trace_a,
+        trace_b,
+        "Subtract (A − B)",
+        sample_points=3,
+        normalization="unit",
+    )
+
+    assert result.display_unit == "cm^-1"
+    assert result.display_axis_reversed is True
+    assert result.grid_cm_1 and len(result.grid_cm_1) == 3
+    assert len(result.values_a_display) == len(result.values_a)
+    assert max(result.values_a_display) <= 0.0

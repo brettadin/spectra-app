@@ -1,0 +1,4 @@
+# FTIR differential axis alignment — 2025-11-05
+- Differential comparisons now detect wavenumber-heavy IR traces, convert the resampled grid to cm⁻¹, reverse the Plotly axis, and expose the cm⁻¹ range in captions/metadata so overlays and exports mirror lab-style spectra.【F:app/ui/main.py†L3688-L3784】【F:tests/ui/test_differential_form.py†L1-L155】
+- FTIR classifier inputs transform transmittance into absorbance peaks, flip negative absorbance traces upright, and collapse overlapping correlation bands so the overlay palette focuses on the strongest observed peaks.【F:app/ui/main.py†L1159-L1189】【F:app/ui/ir_group_overlays.py†L86-L142】【F:tests/ui/test_ir_group_overlays.py†L1-L91】
+- The decadic absorbance conversion controls now live inside per-trace expanders, trimming the workspace clutter while keeping unit context adjacent to the conversion form.【F:app/ui/main.py†L318-L357】
