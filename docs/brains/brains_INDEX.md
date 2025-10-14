@@ -14,6 +14,7 @@ It tracks the latest continuity documents and the required cross-links between t
 ## Continuity Table
 | Version | Brains Log | Patch Notes | AI Handoff |
 | --- | --- | --- | --- |
+| v1.2.2 | [docs/brains/brains_v1.2.2.md](brains_v1.2.2.md) | [docs/patch_notes/v1.2.2.md](../patch_notes/v1.2.2.md) | — |
 | v1.2.1aa | [docs/brains/brains_v1.2.1aa.md](brains_v1.2.1aa.md) | [docs/patch_notes/v1.2.1aa_hotfix.md](../patch_notes/v1.2.1aa_hotfix.md) | — |
 | v1.2.0x | [docs/brains/brains_v1.2.0x.md](brains_v1.2.0x.md) | [docs/patch_notes/v1.2.0x.md](../patch_notes/v1.2.0x.md) | — |
 | v1.2.0v | [docs/brains/brains_v1.2.0v.md](brains_v1.2.0v.md) | [docs/patch_notes/v1.2.0v.md](../patch_notes/v1.2.0v.md) | — |
