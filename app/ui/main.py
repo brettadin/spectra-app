@@ -283,6 +283,38 @@ def _set_ir_context(trace: OverlayTrace, context: Mapping[str, object]) -> None:
     trace.extras["ir_context"] = dict(context)
 
 
+def _trace_prefers_wavenumber(trace: OverlayTrace) -> bool:
+    metadata = trace.metadata if isinstance(trace.metadata, Mapping) else {}
+    candidates: List[str] = []
+    if isinstance(metadata, Mapping):
+        for key in (
+            "preferred_wavelength_unit",
+            "wavelength_display_unit",
+            "original_wavelength_unit",
+            "reported_wavelength_unit",
+            "wavelength_unit_input",
+            "axis_unit",
+        ):
+            value = metadata.get(key)
+            if isinstance(value, str):
+                candidates.append(value)
+    extras = trace.extras if isinstance(trace.extras, Mapping) else {}
+    context = extras.get("ir_context") if isinstance(extras, Mapping) else None
+    if isinstance(context, Mapping):
+        unit = context.get("wavelength_unit")
+        if isinstance(unit, str):
+            candidates.append(unit)
+    for candidate in candidates:
+        text = candidate.strip().lower()
+        if not text:
+            continue
+        if "cm" in text and "-1" in text:
+            return True
+        if text in {"cm^-1", "cm-1", "wavenumber"}:
+            return True
+    return False
+
+
 def _apply_ir_parameters_to_trace(
     trace: OverlayTrace, path_m: float, mole_fraction: float
 ) -> Tuple[bool, str]:
@@ -419,11 +451,13 @@ def _render_ir_parameter_prompts(overlays: Sequence[OverlayTrace]) -> None:
         if not units_label:
             metadata = trace.metadata if isinstance(trace.metadata, Mapping) else {}
             units_label = metadata.get("flux_unit_input") or metadata.get("flux_unit_display")
-        panel = st.container()
-        panel.caption(f"{trace.label} units: {units_label or 'unknown'}")
+        expander = st.expander(
+            f"{trace.label} — Convert to A10", expanded=False
+        )
+        expander.caption(f"Input units: {units_label or 'unknown'}")
         form_key = f"ir_params_form_{trace.trace_id}"
-        with panel.form(form_key):
-            path_value = st.number_input(
+        with expander.form(form_key) as form:
+            path_value = form.number_input(
                 "Path length (m)",
                 min_value=0.0,
                 value=float(default_path),
@@ -431,7 +465,7 @@ def _render_ir_parameter_prompts(overlays: Sequence[OverlayTrace]) -> None:
                 format="%0.4f",
                 key=f"{form_key}_path",
             )
-            mole_value = st.number_input(
+            mole_value = form.number_input(
                 "Mole fraction (χ)",
                 min_value=0.0,
                 max_value=1.0,
@@ -441,16 +475,18 @@ def _render_ir_parameter_prompts(overlays: Sequence[OverlayTrace]) -> None:
                 key=f"{form_key}_mole",
                 help="Enter as a fraction (e.g. 50 ppm = 5e-5).",
             )
-            submitted = st.form_submit_button("Convert to A10", use_container_width=True)
+            submitted = form.form_submit_button(
+                "Convert to A10", use_container_width=True
+            )
         if submitted:
             success, message = _apply_ir_parameters_to_trace(
                 trace, float(path_value), float(mole_value)
             )
             if success:
                 _set_overlays(overlays)
-                panel.success(message)
+                expander.success(message)
             else:
-                panel.error(message)
+                expander.error(message)
 
 
 def _render_ir_sanity_panel(overlays: Sequence[OverlayTrace]) -> None:
@@ -518,6 +554,13 @@ class DifferentialResult:
     sample_points: int
     computed_at: float
     label: str
+    display_unit: str = "nm"
+    display_axis_label: str = "Wavelength (nm)"
+    display_axis_reversed: bool = False
+    grid_cm_1: Tuple[float, ...] = field(default_factory=tuple)
+    values_a_display: Tuple[float, ...] = field(default_factory=tuple)
+    values_b_display: Tuple[float, ...] = field(default_factory=tuple)
+    result_display: Tuple[float, ...] = field(default_factory=tuple)
 
 
 @dataclass(frozen=True)
@@ -1183,6 +1226,21 @@ def _trace_ir_vectors(trace: OverlayTrace) -> Tuple[np.ndarray, np.ndarray]:
     intensities = intensities[mask]
     if wavelengths.size == 0:
         raise ValueError("No finite wavelengths available for IR classification.")
+    finite = intensities[np.isfinite(intensities)]
+    category = _flux_axis_category(trace)
+    if finite.size:
+        if category == "transmittance":
+            if float(np.nanmax(finite)) > 1.5:
+                safe = np.clip(intensities / 100.0, 1e-6, None)
+            else:
+                safe = np.clip(intensities, 1e-6, None)
+            intensities = -np.log10(safe)
+        elif category == "absorbance":
+            if float(np.nanmean(finite)) < 0.0:
+                intensities = -intensities
+        else:
+            if float(np.nanmax(finite)) <= 0.0 and float(np.nanmin(finite)) < 0.0:
+                intensities = -intensities
     wavenumbers = 1e7 / wavelengths
     return wavenumbers, intensities
 
@@ -3697,14 +3755,45 @@ def _compute_differential_result(
         trace_b.flux,
         n=int(sample_points),
     )
+    grid = np.asarray(grid, dtype=float)
     arr_a = np.asarray(values_a, dtype=float)
     arr_b = np.asarray(values_b, dtype=float)
     norm_a = apply_normalization(arr_a, normalization)
     norm_b = apply_normalization(arr_b, normalization)
+    category_a = _flux_axis_category(trace_a)
+    category_b = _flux_axis_category(trace_b)
+    invert_a = category_a in {"absorbance", "transmittance"}
+    invert_b = category_b in {"absorbance", "transmittance"}
+    display_a = -norm_a if invert_a else norm_a
+    display_b = -norm_b if invert_b else norm_b
     func = meta["func"]
-    result_values = func(norm_a, norm_b)
+    result_values = np.asarray(func(norm_a, norm_b), dtype=float)
+    invert_result = invert_a or invert_b
+    display_result = -result_values if invert_result else result_values
     symbol = meta["symbol"]
     label = f"{trace_a.label} {symbol} {trace_b.label}"
+    display_unit = st.session_state.get("display_units", "nm")
+    prefer_cm_1 = (
+        display_unit == "cm^-1"
+        or _trace_prefers_wavenumber(trace_a)
+        or _trace_prefers_wavenumber(trace_b)
+    )
+    if prefer_cm_1:
+        safe_grid = np.where(grid > 0, grid, np.nan)
+        converted = np.divide(
+            1e7,
+            safe_grid,
+            out=np.full_like(safe_grid, np.nan, dtype=float),
+            where=~np.isnan(safe_grid),
+        )
+        grid_cm_1 = tuple(float(value) for value in converted)
+        axis_label = "Wavenumber (cm⁻¹)"
+        display_unit = "cm^-1"
+        axis_reversed = True
+    else:
+        grid_cm_1 = tuple()
+        axis_label = "Wavelength (nm)"
+        axis_reversed = False
     return DifferentialResult(
         grid_nm=tuple(float(v) for v in grid),
         values_a=tuple(float(v) for v in norm_a),
@@ -3720,14 +3809,24 @@ def _compute_differential_result(
         sample_points=int(sample_points),
         computed_at=time.time(),
         label=label,
+        display_unit=display_unit,
+        display_axis_label=axis_label,
+        display_axis_reversed=axis_reversed,
+        grid_cm_1=grid_cm_1,
+        values_a_display=tuple(float(v) for v in display_a),
+        values_b_display=tuple(float(v) for v in display_b),
+        result_display=tuple(float(v) for v in display_result),
     )
 
 
 def _build_differential_figure(result: DifferentialResult) -> go.Figure:
-    grid = np.asarray(result.grid_nm, dtype=float)
-    values_a = np.asarray(result.values_a, dtype=float)
-    values_b = np.asarray(result.values_b, dtype=float)
-    result_values = np.asarray(result.result, dtype=float)
+    if result.display_unit == "cm^-1" and result.grid_cm_1:
+        grid = np.asarray(result.grid_cm_1, dtype=float)
+    else:
+        grid = np.asarray(result.grid_nm, dtype=float)
+    values_a = np.asarray(result.values_a_display or result.values_a, dtype=float)
+    values_b = np.asarray(result.values_b_display or result.values_b, dtype=float)
+    result_values = np.asarray(result.result_display or result.result, dtype=float)
     fig = make_subplots(
         rows=2,
         cols=1,
@@ -3770,7 +3869,10 @@ def _build_differential_figure(result: DifferentialResult) -> go.Figure:
         margin=dict(t=30, b=36, l=32, r=16),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1.0),
     )
-    fig.update_xaxes(title_text="Wavelength (nm)", row=2, col=1)
+    if result.display_axis_reversed:
+        fig.update_xaxes(autorange="reversed", row=1, col=1)
+        fig.update_xaxes(autorange="reversed", row=2, col=1)
+    fig.update_xaxes(title_text=result.display_axis_label, row=2, col=1)
     fig.update_yaxes(
         title_text=f"Flux ({_normalization_display(result.normalization)})",
         row=1,
@@ -3781,9 +3883,20 @@ def _build_differential_figure(result: DifferentialResult) -> go.Figure:
 
 
 def _build_differential_summary(result: DifferentialResult) -> pd.DataFrame:
-    grid = np.asarray(result.grid_nm, dtype=float)
-    if grid.size:
-        range_text = f"{grid.min():.2f} – {grid.max():.2f}"
+    if result.display_unit == "cm^-1" and result.grid_cm_1:
+        grid = np.asarray(result.grid_cm_1, dtype=float)
+        range_label = "Range (cm⁻¹)"
+    else:
+        grid = np.asarray(result.grid_nm, dtype=float)
+        range_label = "Range (nm)"
+    finite_grid = grid[np.isfinite(grid)]
+    if finite_grid.size:
+        low = float(finite_grid.min())
+        high = float(finite_grid.max())
+        if result.display_axis_reversed:
+            range_text = f"{high:.2f} – {low:.2f}"
+        else:
+            range_text = f"{low:.2f} – {high:.2f}"
     else:
         range_text = "—"
 
@@ -3804,7 +3917,7 @@ def _build_differential_summary(result: DifferentialResult) -> pd.DataFrame:
             "Mean": mean_val,
             "Std": std_val,
             "Samples": int(arr.size),
-            "Range (nm)": range_text,
+            range_label: range_text,
         }
 
     rows = [
@@ -3836,6 +3949,13 @@ def _add_differential_overlay(result: DifferentialResult) -> Tuple[bool, str]:
             float(min(result.grid_nm)),
             float(max(result.grid_nm)),
         ]
+    if result.grid_cm_1:
+        finite = [value for value in result.grid_cm_1 if math.isfinite(value)]
+        if finite:
+            metadata["wavenumber_range_cm_1"] = [
+                float(max(finite)),
+                float(min(finite)),
+            ]
     summary = f"{result.operation_label} on {result.sample_points} samples"
     return _add_overlay(
         result.label,
@@ -3854,11 +3974,23 @@ def _render_differential_result(result: Optional[DifferentialResult]) -> None:
         return
     fig = _build_differential_figure(result)
     st.plotly_chart(fig, use_container_width=True)
-    grid = np.asarray(result.grid_nm, dtype=float)
-    if grid.size:
+    if result.display_unit == "cm^-1" and result.grid_cm_1:
+        grid = np.asarray(result.grid_cm_1, dtype=float)
+        unit_label = "cm⁻¹"
+    else:
+        grid = np.asarray(result.grid_nm, dtype=float)
+        unit_label = "nm"
+    finite = grid[np.isfinite(grid)]
+    if finite.size:
+        low = float(finite.min())
+        high = float(finite.max())
+        if result.display_axis_reversed:
+            range_text = f"{high:.2f} – {low:.2f} {unit_label}"
+        else:
+            range_text = f"{low:.2f} – {high:.2f} {unit_label}"
         st.caption(
-            f"Overlap {grid.min():.2f} – {grid.max():.2f} nm • "
-            f"{result.sample_points} samples • Normalization: {_normalization_display(result.normalization)}"
+            f"Overlap {range_text} • {result.sample_points} samples • "
+            f"Normalization: {_normalization_display(result.normalization)}"
         )
     summary = _build_differential_summary(result)
     st.dataframe(summary, hide_index=True, width="stretch")

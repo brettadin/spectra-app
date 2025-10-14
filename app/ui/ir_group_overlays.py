@@ -154,6 +154,7 @@ def shaded_ranges_for_predictions(
     intensities: Sequence[float] | None = None,
     min_peak_fraction: float = 0.18,
     top_ranges: int = 10,
+    cluster_window: float = 28.0,
 ) -> List[FunctionalGroupRange]:
     """Return the correlation ranges to visualise for the predicted groups."""
 
@@ -200,8 +201,9 @@ def shaded_ranges_for_predictions(
         probability = entry.probability or 0.0
         if updated is None:
             continue
-        if peak_fraction < min_peak_fraction and probability < 0.85:
-            continue
+        if peak_fraction < min_peak_fraction:
+            if probability < 0.9:
+                continue
         refined.append(updated)
 
     if not refined:
@@ -218,6 +220,19 @@ def shaded_ranges_for_predictions(
         ),
         reverse=True,
     )
+
+    if cluster_window and cluster_window > 0:
+        clustered: List[FunctionalGroupRange] = []
+        seen: Dict[int, FunctionalGroupRange] = {}
+        width = max(float(cluster_window), 1.0)
+        for entry in refined:
+            peak = entry.peak_cm_1 or (entry.high_cm_1 + entry.low_cm_1) / 2.0
+            bucket = int(round(peak / width))
+            if bucket in seen:
+                continue
+            seen[bucket] = entry
+            clustered.append(entry)
+        refined = clustered
 
     if top_ranges:
         refined = refined[:top_ranges]

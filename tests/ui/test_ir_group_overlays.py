@@ -63,3 +63,34 @@ def test_shaded_ranges_trim_when_spectrum_absent() -> None:
 
     probabilities = [entry.probability for entry in ranges]
     assert probabilities == sorted(probabilities, reverse=True)
+
+
+def test_shaded_ranges_cluster_similar_peaks() -> None:
+    wavenumbers = np.linspace(4000.0, 400.0, 1600)
+    intensities = (
+        _gaussian(2250.0, 18.0, wavenumbers, 0.85)
+        + _gaussian(1100.0, 32.0, wavenumbers, 0.75)
+    )
+
+    predictions = [
+        FunctionalGroupPrediction("Nitrile", 0.91, 0.32, True),
+        FunctionalGroupPrediction("Isocyanate", 0.88, 0.30, True),
+        FunctionalGroupPrediction("Isothiocyanate", 0.86, 0.30, True),
+        FunctionalGroupPrediction("Phosphine", 0.72, 0.28, True),
+        FunctionalGroupPrediction("Alcohol", 0.65, 0.28, True),
+    ]
+
+    ranges = shaded_ranges_for_predictions(
+        predictions,
+        wavenumbers=wavenumbers,
+        intensities=intensities,
+        top_ranges=4,
+    )
+
+    assert any(entry.group == "Nitrile" for entry in ranges)
+    overlapping_groups = {
+        entry.group
+        for entry in ranges
+        if entry.group in {"Nitrile", "Isocyanate", "Isothiocyanate", "Phosphine"}
+    }
+    assert len(overlapping_groups) == 1

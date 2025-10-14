@@ -1,3 +1,8 @@
+# FTIR differential cm⁻¹ alignment — 2025-11-05
+- Reversed differential axis handling for wavenumber spectra so subtraction plots render on a cm⁻¹ scale with high-to-low order, updated captions, and export metadata reflecting both nm and cm⁻¹ ranges.【F:app/ui/main.py†L3688-L3784】【F:tests/ui/test_differential_form.py†L1-L155】
+- Normalised FTIR classifier vectors by turning transmittance dips into absorbance peaks, flipping negative absorbance baselines, and clustering overlay ranges so only the dominant peak-backed groups render.【F:app/ui/main.py†L1159-L1189】【F:app/ui/ir_group_overlays.py†L86-L142】【F:tests/ui/test_ir_trace_vectors.py†L1-L46】
+- Collapsed the A10 conversion prompt into per-trace expanders to keep the FTIR workspace clear while preserving unit context beside the conversion controls.【F:app/ui/main.py†L318-L357】
+
 # FTIR overlay peak focus — 2025-11-04
 - Weighted classifier shading by observed peak intensity, trimming ranges to the measured bandwidth and blending colour by confidence plus peak fraction to declutter FTIR plots.【F:app/ui/ir_group_overlays.py†L1-L198】
 - Passed the active spectrum vectors into the shading helper so only prominent functional-group detections render overlays for the reference trace.【F:app/ui/main.py†L3639-L3664】

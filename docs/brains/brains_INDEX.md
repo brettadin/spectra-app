@@ -1,6 +1,6 @@
 # MAKE NEW BRAINS EACH TIME YOU MAKE A CHANGE. DO NOT OVER WRITE PREVIOUS BRAINS * unless needed
 # Spectra App — Brains Index
-_Last updated: 2025-11-04T00:00:00Z_
+_Last updated: 2025-11-05T00:00:00Z_
 
 This index is the mandated entry point before touching the codebase.
 It tracks the latest continuity documents and the required cross-links between them.
@@ -14,6 +14,7 @@ It tracks the latest continuity documents and the required cross-links between t
 ## Continuity Table
 | Version | Brains Log | Patch Notes | AI Handoff |
 | --- | --- | --- | --- |
+| v1.2.5 | [docs/brains/brains_v1.2.5.md](brains_v1.2.5.md) | [docs/patch_notes/v1.2.5.md](../patch_notes/v1.2.5.md) | — |
 | v1.2.4 | [docs/brains/brains_v1.2.4.md](brains_v1.2.4.md) | [docs/patch_notes/v1.2.4.md](../patch_notes/v1.2.4.md) | — |
 | v1.2.3 | [docs/brains/brains_v1.2.3.md](brains_v1.2.3.md) | [docs/patch_notes/v1.2.3.md](../patch_notes/v1.2.3.md) | — |
 | v1.2.2 | [docs/brains/brains_v1.2.2.md](brains_v1.2.2.md) | [docs/patch_notes/v1.2.2.md](../patch_notes/v1.2.2.md) | — |

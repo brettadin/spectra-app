@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.4",
-  "date_utc": "2025-11-04T00:00:00Z",
-  "summary": "Focus FTIR overlays on high-intensity peaks with refined shading and refreshed regression coverage."
+  "version": "v1.2.5",
+  "date_utc": "2025-11-05T00:00:00Z",
+  "summary": "Align FTIR differentials with cm⁻¹ displays, invert absorption traces for readability, and cluster functional-group overlays around dominant peaks."
 }
