@@ -56,4 +56,8 @@ Spectra App — Patch Log (append-only)
 
 - v1.2.1ae: Ship heuristic fallbacks for the IR classifier, share correlation-band metadata, surface backend state in the UI/API, and expand unit coverage/documentation around the missing-model workflow.
 
+- v1.2.1af: Bundle a linear IR surrogate so FTIR classification works offline, prefer TensorFlow weights when present, refresh UI messaging/docs, and cover the new path with unit tests.
+
 - v1.2.1aa (IR health hotfix): convert IR JCAMP Y-units to A10 with provenance, verify FIRSTY vs scaled samples, flip cm⁻¹ axes only when descending, and expose a ?health=1 Streamlit endpoint.
+
+- v1.2.2: Repackage the bundled IR surrogate as a gzipped/base64 JSON asset with matching JSON thresholds, teach the classifier/tests to load the textual bundle, and refresh docs so PR tooling can apply the patch without binary blobs.

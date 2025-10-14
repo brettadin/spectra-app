@@ -1,12 +1,13 @@
 """Download the IR functional-group classifier assets.
 
-The application ships with a heuristic fallback so the UI still works without
-the TensorFlow model, but fetching the real weights markedly improves
-predictions.
+Spectra ships with a lightweight linear surrogate so the UI works offline, but
+fetching the published TensorFlow weights markedly improves predictions.
 """
 from __future__ import annotations
 
 import argparse
+import json
+import pickle
 from pathlib import Path
 import sys
 
@@ -54,6 +55,16 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"Downloading thresholds from {args.threshold_url} → {thresholds_path}")
     _download(args.threshold_url, thresholds_path)
+
+    try:
+        with thresholds_path.open("rb") as handle:
+            loaded = pickle.load(handle)
+        json_path = thresholds_path.with_suffix(".json")
+        with json_path.open("w", encoding="utf-8") as handle:
+            json.dump(loaded, handle, indent=2, sort_keys=True)
+        print(f"Exported thresholds JSON → {json_path}")
+    except Exception as exc:  # pragma: no cover - network or pickle failure
+        print(f"Warning: unable to convert thresholds to JSON ({exc})")
 
     print("Download complete.")
     return 0

@@ -109,13 +109,19 @@ same spectrum without rerunning the network each time.
 ### Assets & setup
 
 - Install the new dependencies from `requirements.txt` (`tensorflow`,
-  `scipy`, `rdkit-pypi`, `fastapi`, `uvicorn`, etc.).
-- Download the pretrained weights and optimal thresholds via
+  `scipy`, `rdkit-pypi`, `fastapi`, `uvicorn`, `h5py`, etc.).
+- Spectra now ships with a bundled linear surrogate stored as a gzipped/base64
+  JSON payload at `ml_models/ir_groups/linear_surrogate.json.gz.b64`, so the UI
+  works out of the box on machines without TensorFlow.
+- Per-label probability thresholds ship in
+  `ml_models/ir_groups/optimal_thresholds.json` and are loaded automatically if
+  the pickle exported by the upstream project is absent.
+- Download the published TensorFlow weights and optimal thresholds via
   `python scripts/fetch_ir_model.py --model-url <model_url> --threshold-url <threshold_url>`
-  which saves the assets under `ml_models/ir_groups/`.
-- If the weights are absent the app now falls back to a heuristic classifier so
-  users are not blocked, but accuracy is substantially better once the TensorFlow
-  model and thresholds are available.
+  to replace the surrogate with the higher-fidelity network used by
+  [`irchracterizationcnn`](https://github.com/gj475/irchracterizationcnn).
+- A rule-based heuristic remains as a safety net if neither the surrogate nor
+  TensorFlow bundle can be loaded.
 - (Optional) Launch the FastAPI microservice by pointing `uvicorn` at
   `app.server.ir_groups_api:app` and set `SPECTRA_IR_GROUP_API_URL` if you want
   the UI to call the REST endpoint instead of running the classifier in-process.

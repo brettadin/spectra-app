@@ -1,0 +1,5 @@
+# IR surrogate text bundle — 2025-11-02
+- Repacked the offline IR classifier assets into textual bundles so PR tooling can merge them: the loader now prefers TensorFlow weights, falls back to decoding the gzipped/base64 surrogate, and reads JSON thresholds before heuristics.【F:ml/ir_group_classifier.py†L130-L336】【F:ml_models/ir_groups/linear_surrogate.json.gz.b64†L1-L90】【F:ml_models/ir_groups/optimal_thresholds.json†L1-L38】
+- Updated asset documentation and download automation to describe the new bundle layout and auto-export JSON thresholds for downloaded pickles.【F:ml_models/ir_groups/README.md†L1-L14】【F:scripts/fetch_ir_model.py†L1-L70】【F:README.md†L100-L127】
+- Extended classifier regression coverage to exercise the textual surrogate and ensure the heuristic path still reports its backend when bundles are absent.【F:tests/ml/test_ir_group_classifier.py†L1-L132】
+- Bumped release collateral for v1.2.2, including version metadata, patch log entry, brains index registration, and dedicated patch notes.【F:app/version.json†L1-L5】【F:PATCHLOG.txt†L63-L63】【F:docs/brains/brains_INDEX.md†L9-L10】【F:docs/patch_notes/v1.2.2.md†L1-L9】

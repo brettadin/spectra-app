@@ -3637,10 +3637,15 @@ def _render_overlay_tab(version_info: Dict[str, str]) -> None:
                             backend = ir_group_backend()
                             if backend == "heuristic":
                                 st.info(
-                                    "Using heuristic fallbacks because the TensorFlow "
-                                    "model weights were not found. Download them via "
-                                    "`python scripts/fetch_ir_model.py --model-url <url> --threshold-url <url>` "
+                                    "Using heuristic fallbacks because no IR model "
+                                    "weights were available. Download the pretrained "
+                                    "TensorFlow bundle via `python scripts/fetch_ir_model.py --model-url <url> --threshold-url <url>` "
                                     "for higher-fidelity predictions."
+                                )
+                            elif backend == "linear":
+                                st.caption(
+                                    "IR groups resolved with the bundled linear surrogate. "
+                                    "Fetch the published TensorFlow weights for best accuracy."
                                 )
                             elif backend == "remote":
                                 st.caption("IR groups resolved via configured API service.")

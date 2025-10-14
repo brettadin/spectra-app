@@ -18,3 +18,8 @@
 - Added a rule-based fallback model, shared correlation-band metadata, backend reporting, and heuristic thresholds so missing TensorFlow weights no longer block the workflow.【F:ml/ir_group_classifier.py†L1-L247】【F:ml/ir_group_data.py†L1-L161】【F:app/utils/ir_group_client.py†L1-L103】【F:app/ui/main.py†L3601-L3638】【F:app/ui/ir_group_overlays.py†L1-L81】【F:app/server/ir_groups_api.py†L1-L63】
 - Documented the fallback behaviour, refreshed the download helper guidance, and recorded release metadata for v1.2.1ae.【F:README.md†L98-L110】【F:scripts/fetch_ir_model.py†L1-L43】【F:app/version.json†L1-L5】【F:PATCHLOG.txt†L56-L58】【F:docs/patch_notes/v1.2.1ae.md†L1-L9】
 - Extended classifier unit coverage to assert the heuristic path raises carbonyl detections and reports the fallback backend state.【F:tests/ml/test_ir_group_classifier.py†L1-L78】
+
+## Decision log — IR classifier linear surrogate (v1.2.1af)
+- Bundled an HDF5 linear surrogate for the FTIR classifier, preferring TensorFlow weights when available and falling back to heuristics only if both assets fail.【F:ml/ir_group_classifier.py†L1-L236】【F:ml_models/ir_groups/README.md†L1-L9】
+- Updated client messaging, README/setup docs, and the download helper to call out the bundled surrogate and added h5py to the dependency set.【F:app/ui/main.py†L3601-L3643】【F:README.md†L98-L116】【F:scripts/fetch_ir_model.py†L1-L44】【F:requirements.txt†L1-L16】
+- Extended regression coverage for the new surrogate path and refreshed release metadata (version bump, patch log, patch notes).【F:tests/ml/test_ir_group_classifier.py†L1-L110】【F:app/version.json†L1-L5】【F:PATCHLOG.txt†L46-L60】【F:docs/patch_notes/v1.2.1af.md†L1-L9】

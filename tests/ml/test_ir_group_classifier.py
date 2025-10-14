@@ -1,7 +1,9 @@
 import numpy as np
 import pytest
+from pathlib import Path
 
 from ml.ir_group_classifier import IRGroupClassifier
+from ml.ir_group_data import LABEL_NAMES_EXTENDED
 
 
 class DummyModel:
@@ -73,6 +75,7 @@ def test_fallback_model_detects_carbonyl_peak(tmp_path):
     classifier = IRGroupClassifier(
         model_path=model_path,
         thresholds_path=thresholds_path,
+        surrogate_bundle_path=tmp_path / "missing_bundle.b64",
         normalise=True,
     )
     wavenumbers = np.linspace(4000, 400, 600)
@@ -83,3 +86,47 @@ def test_fallback_model_detects_carbonyl_peak(tmp_path):
     lookup = {item.name: item for item in results}
     assert lookup["Ketone"].present is True
     assert classifier.backend_name == "heuristic"
+
+
+def test_linear_model_loaded_from_hdf5(tmp_path):
+    try:
+        import h5py  # type: ignore
+    except Exception:  # pragma: no cover - h5py missing
+        pytest.skip("h5py not available")
+
+    model_path = tmp_path / "linear_model.h5"
+    with h5py.File(model_path, "w") as handle:
+        handle.attrs["model_type"] = "linear"
+        group = handle.create_group("linear")
+        weights = np.zeros((len(LABEL_NAMES_EXTENDED), 600), dtype=np.float32)
+        weights[:, :10] = 0.5
+        bias = np.full(len(LABEL_NAMES_EXTENDED), -0.75, dtype=np.float32)
+        group.create_dataset("weights", data=weights)
+        group.create_dataset("bias", data=bias)
+
+    classifier = IRGroupClassifier(model_path=model_path)
+    wn = np.linspace(4000, 400, 600)
+    intensities = np.ones_like(wn)
+    results = classifier.predict_groups((wn, intensities))
+    assert classifier.backend_name == "linear"
+    assert len(results) == len(LABEL_NAMES_EXTENDED)
+    assert all(0.0 <= item.probability <= 1.0 for item in results)
+
+
+def test_linear_model_loaded_from_bundle(tmp_path):
+    bundle_path = tmp_path / "linear_surrogate.json.gz.b64"
+    thresholds_path = tmp_path / "optimal_thresholds.json"
+    bundle_path.write_text(Path("ml_models/ir_groups/linear_surrogate.json.gz.b64").read_text())
+    thresholds_path.write_text(Path("ml_models/ir_groups/optimal_thresholds.json").read_text())
+
+    classifier = IRGroupClassifier(
+        model_path=tmp_path / "missing_model.h5",
+        thresholds_path=thresholds_path,
+        surrogate_bundle_path=bundle_path,
+    )
+    wn = np.linspace(4000, 400, 600)
+    intensities = np.ones_like(wn)
+    results = classifier.predict_groups((wn, intensities))
+
+    assert classifier.backend_name == "linear"
+    assert len(results) == len(LABEL_NAMES_EXTENDED)

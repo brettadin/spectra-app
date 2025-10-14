@@ -1,7 +1,10 @@
 """IR functional-group classifier integration."""
 from __future__ import annotations
 
+import base64
 from dataclasses import dataclass
+import gzip
+import json
 import math
 import pickle
 from pathlib import Path
@@ -93,11 +96,43 @@ class _FallbackIRModel:
         return scores
 
 
+class _LinearIRModel:
+    """Lightweight linear model stored in HDF5 when TensorFlow weights are unavailable."""
+
+    def __init__(self, weights: np.ndarray, bias: np.ndarray) -> None:
+        self._weights = np.asarray(weights, dtype=np.float32)
+        self._bias = np.asarray(bias, dtype=np.float32)
+
+    def predict(self, data: np.ndarray, verbose: int = 0) -> np.ndarray:  # pragma: no cover - simple wrapper
+        batch = np.asarray(data, dtype=np.float32)
+        if batch.ndim == 1:
+            batch = batch.reshape(1, batch.size)
+        elif batch.ndim == 3:
+            batch = batch.reshape(batch.shape[0], batch.shape[1])
+        normalised = np.zeros_like(batch)
+        for index, row in enumerate(batch):
+            finite = row[np.isfinite(row)]
+            if finite.size == 0:
+                continue
+            minimum = float(np.min(finite))
+            maximum = float(np.max(finite))
+            if math.isclose(maximum, minimum):
+                continue
+            normalised[index] = (row - minimum) / (maximum - minimum)
+        logits = normalised @ self._weights.T + self._bias
+        probabilities = 1.0 / (1.0 + np.exp(-logits))
+        return probabilities
+
+
 class IRGroupClassifier:
     """Interface to the IR functional-group classifier."""
 
     DEFAULT_MODEL_PATH = Path("ml_models/ir_groups/0_model_extended.h5")
     DEFAULT_THRESHOLDS_PATH = Path("ml_models/ir_groups/optimal_thresholds.pkl")
+    DEFAULT_THRESHOLDS_JSON_PATH = Path("ml_models/ir_groups/optimal_thresholds.json")
+    DEFAULT_LINEAR_BUNDLE_PATH = Path(
+        "ml_models/ir_groups/linear_surrogate.json.gz.b64"
+    )
 
     def __init__(
         self,
@@ -106,6 +141,7 @@ class IRGroupClassifier:
         model_path: Optional[Union[str, Path]] = None,
         thresholds: Optional[Mapping[int, float]] = None,
         thresholds_path: Optional[Union[str, Path]] = None,
+        surrogate_bundle_path: Optional[Union[str, Path]] = None,
         label_names: Optional[Sequence[str]] = None,
         baseline_window: int = 51,
         baseline_poly_order: int = 3,
@@ -116,6 +152,16 @@ class IRGroupClassifier:
         self._thresholds: MutableMapping[int, float] = dict(thresholds or {})
         self._thresholds_path = (
             Path(thresholds_path) if thresholds_path else self.DEFAULT_THRESHOLDS_PATH
+        )
+        self._thresholds_json_path = (
+            Path(thresholds_path)
+            if thresholds_path and str(thresholds_path).endswith(".json")
+            else self.DEFAULT_THRESHOLDS_JSON_PATH
+        )
+        self._surrogate_bundle_path = (
+            Path(surrogate_bundle_path)
+            if surrogate_bundle_path
+            else self.DEFAULT_LINEAR_BUNDLE_PATH
         )
         self._label_names: Tuple[str, ...] = (
             tuple(label_names) if label_names else LABEL_NAMES_EXTENDED
@@ -171,37 +217,108 @@ class IRGroupClassifier:
     def _ensure_model(self) -> object:
         if self._model is not None:
             return self._model
+        model_path = self._model_path.expanduser()
+        if not model_path.exists():
+            bundle_model = self._load_linear_bundle()
+            if bundle_model is not None:
+                self._model = bundle_model
+                self._backend_name = "linear"
+                return self._model
+            return self._fallback_model()
+
+        keras_model = self._load_keras_model(model_path)
+        if keras_model is not None:
+            self._model = keras_model
+            self._backend_name = "tensorflow"
+            return self._model
+
+        linear_model = self._load_linear_model(model_path)
+        if linear_model is not None:
+            self._model = linear_model
+            self._backend_name = "linear"
+            return self._model
+
+        bundle_model = self._load_linear_bundle()
+        if bundle_model is not None:
+            self._model = bundle_model
+            self._backend_name = "linear"
+            return self._model
+
+        return self._fallback_model()
+
+    def _fallback_model(self) -> object:
+        self._model = _FallbackIRModel(self._label_names)
+        self._backend_name = "heuristic"
+        return self._model
+
+    @staticmethod
+    def _load_keras_model(path: Path) -> Optional[object]:
         try:
             from tensorflow import keras  # type: ignore
         except Exception:  # pragma: no cover - TensorFlow missing in constrained envs
-            self._model = _FallbackIRModel(self._label_names)
-            self._backend_name = "heuristic"
-            return self._model
-        model_path = self._model_path.expanduser()
-        if not model_path.exists():
-            self._model = _FallbackIRModel(self._label_names)
-            self._backend_name = "heuristic"
-            return self._model
+            return None
         try:
-            self._model = keras.models.load_model(model_path)
+            return keras.models.load_model(path)
         except Exception:  # pragma: no cover - propagate fallback when load fails
-            self._model = _FallbackIRModel(self._label_names)
-            self._backend_name = "heuristic"
-        else:
-            self._backend_name = "tensorflow"
-        return self._model
+            return None
+
+    def _load_linear_model(self, path: Path) -> Optional[_LinearIRModel]:
+        try:
+            import h5py  # type: ignore
+        except Exception:  # pragma: no cover - h5py unavailable in constrained envs
+            return None
+        try:
+            with h5py.File(path, "r") as handle:
+                if "linear" not in handle:
+                    return None
+                group = handle["linear"]
+                if "weights" not in group or "bias" not in group:
+                    return None
+                weights = np.asarray(group["weights"], dtype=np.float32)
+                bias = np.asarray(group["bias"], dtype=np.float32)
+        except Exception:
+            return None
+        if weights.shape[0] != len(self._label_names):
+            return None
+        return _LinearIRModel(weights, bias)
+
+    def _load_linear_bundle(self) -> Optional[_LinearIRModel]:
+        path = self._surrogate_bundle_path.expanduser()
+        if not path.exists():
+            return None
+        try:
+            encoded = path.read_text().encode("ascii")
+            payload = gzip.decompress(base64.b64decode(encoded))
+            data = json.loads(payload.decode("utf-8"))
+        except Exception:
+            return None
+        weights = np.asarray(data.get("weights"), dtype=np.float32)
+        bias = np.asarray(data.get("bias"), dtype=np.float32)
+        if weights.shape != (len(self._label_names), 600):
+            return None
+        if bias.shape != (len(self._label_names),):
+            return None
+        return _LinearIRModel(weights, bias)
 
     def _ensure_thresholds(self) -> Mapping[int, float]:
         if self._thresholds:
             return self._thresholds
+        loaded = None
         path = self._thresholds_path.expanduser()
-        if not path.exists():
-            self._thresholds = self._fallback_thresholds()
-            return self._thresholds
-        try:
-            with path.open("rb") as handle:
-                loaded = pickle.load(handle)
-        except Exception:
+        if path.exists():
+            try:
+                with path.open("rb") as handle:
+                    loaded = pickle.load(handle)
+            except Exception:
+                loaded = None
+        if loaded is None:
+            json_path = self._thresholds_json_path.expanduser()
+            if json_path.exists():
+                try:
+                    loaded = json.loads(json_path.read_text())
+                except Exception:
+                    loaded = None
+        if loaded is None:
             self._thresholds = self._fallback_thresholds()
             return self._thresholds
         if isinstance(loaded, Mapping):

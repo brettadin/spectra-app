@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.1ae",
-  "date_utc": "2025-10-31T00:00:00Z",
-  "summary": "Provide heuristic IR classifier fallback and backend visibility."
+  "version": "v1.2.2",
+  "date_utc": "2025-11-02T00:00:00Z",
+  "summary": "Ship textual IR surrogate assets and loader/test updates for binary-free patches."
 }
