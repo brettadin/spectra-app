@@ -3575,8 +3575,15 @@ def _render_overlay_tab(version_info: Dict[str, str]) -> None:
             list(ir_state.get("predictions")), probability_floor=0.05
         )
         if table_rows:
-            st.markdown("#### Functional group predictions")
-            st.dataframe(pd.DataFrame(table_rows), width="stretch", hide_index=True)
+            with st.expander(
+                f"Functional group predictions ({len(table_rows)} rows)",
+                expanded=False,
+            ):
+                st.dataframe(
+                    pd.DataFrame(table_rows),
+                    use_container_width=True,
+                    hide_index=True,
+                )
 
     _render_image_overlay_panels(overlays)
 

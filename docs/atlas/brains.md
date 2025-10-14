@@ -206,6 +206,11 @@
 - Added catalog fallbacks to serve manual WebBook entries when the live Quant IR table cannot be fetched, keeping Water/CO₂/CH₄ available offline. 【F:app/server/fetchers/nist_quant_ir.py†L236-L305】【F:app/server/fetchers/nist_quant_ir.py†L308-L337】
 - Reworked the regression to confirm `_finalise_payload` leaves flux arrays untouched while labelling cm⁻¹ metadata. 【F:tests/server/test_nist_quant_ir.py†L1-L120】
 
+## FTIR overlay readability — 2025-11-03
+- Shrink IR correlation bands and scale their tint by classifier confidence so shaded regions stay focused on likely wavenumbers while keeping the palette muted. 【F:app/ui/ir_group_overlays.py†L72-L143】
+- Limit overlay annotations to the most confident detections and tilt their labels to avoid overlap, improving on-plot legibility. 【F:app/ui/ir_group_overlays.py†L118-L143】
+- Wrap the functional-group results table in a collapsed expander so the FTIR plot retains vertical space until analysts need the tabular details. 【F:app/ui/main.py†L3606-L3614】
+
 # Quant IR manual provenance links — 2025-10-29
 - Recorded the authoritative NIST WebBook IR-SPEC catalog pages for the manual Water/CH₄/CO₂ presets and surfaced them through the metadata/provenance `source_urls` fields so overlays keep clickable provenance. 【F:app/server/fetchers/nist_quant_ir.py†L225-L580】
 - Extended the manual catalog regression to assert those IR-SPEC sources are wired into the manual lookup for Water, methane, and carbon dioxide. 【F:tests/server/test_nist_quant_ir.py†L99-L137】

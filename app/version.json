@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.2",
-  "date_utc": "2025-11-02T00:00:00Z",
-  "summary": "Ship textual IR surrogate assets and loader/test updates for binary-free patches."
+  "version": "v1.2.3",
+  "date_utc": "2025-11-03T00:00:00Z",
+  "summary": "Streamline FTIR overlays and UI by tuning classifier highlights and collapsing the results table."
 }
