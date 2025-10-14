@@ -476,7 +476,7 @@ def _render_ir_parameter_prompts(overlays: Sequence[OverlayTrace]) -> None:
                 help="Enter as a fraction (e.g. 50 ppm = 5e-5).",
             )
             submitted = form.form_submit_button(
-                "Convert to A10", use_container_width=True
+                "Convert to A10", width="stretch"
             )
         if submitted:
             success, message = _apply_ir_parameters_to_trace(
@@ -1748,7 +1748,7 @@ def _render_examples_group(container: DeltaGenerator) -> None:
     )
     if selection.description:
         quick_form.caption(selection.description)
-    submitted = quick_form.form_submit_button("Load example", use_container_width=True)
+    submitted = quick_form.form_submit_button("Load example", width="stretch")
     if submitted:
         added, message = _load_example(selection)
         (container.success if added else container.info)(message)
@@ -1918,7 +1918,7 @@ def _render_nist_quant_ir_form(
                 names=", ".join(manual_names)
             )
         )
-    submitted = form.form_submit_button("Fetch spectrum", use_container_width=True)
+    submitted = form.form_submit_button("Fetch spectrum", width="stretch")
     if not submitted:
         return
     if not selection.available:
@@ -2957,7 +2957,7 @@ def _render_image_overlay_panels(overlays: Sequence[OverlayTrace]) -> None:
             margin=dict(t=30, b=40, l=40, r=20),
             height=420,
         )
-        st.plotly_chart(fig, use_container_width=True, key=f"image_plot_{trace.trace_id}")
+        st.plotly_chart(fig, width="stretch", key=f"image_plot_{trace.trace_id}")
 
         shape = payload.get("shape") if isinstance(payload, Mapping) else None
         if isinstance(shape, (list, tuple)):
@@ -3622,7 +3622,7 @@ def _render_overlay_tab(version_info: Dict[str, str]) -> None:
         axis_viewport_by_kind=effective_viewports if single_axis else None,
         ir_ranges=active_ranges,
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
     if (
         reference is not None
@@ -3639,7 +3639,7 @@ def _render_overlay_tab(version_info: Dict[str, str]) -> None:
             ):
                 st.dataframe(
                     pd.DataFrame(table_rows),
-                    use_container_width=True,
+                    width="stretch",
                     hide_index=True,
                 )
 
@@ -3973,7 +3973,7 @@ def _render_differential_result(result: Optional[DifferentialResult]) -> None:
     if result is None:
         return
     fig = _build_differential_figure(result)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
     if result.display_unit == "cm^-1" and result.grid_cm_1:
         grid = np.asarray(result.grid_cm_1, dtype=float)
         unit_label = "cm⁻¹"
@@ -4181,7 +4181,7 @@ def _render_differential_tab() -> None:
         submitted = st.form_submit_button(
             "Compute differential",
             key="differential_compute_submit",
-            use_container_width=True,
+            width="stretch",
         )
 
 
