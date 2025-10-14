@@ -1,3 +1,8 @@
+# FTIR overlay peak focus — 2025-11-04
+- Weighted classifier shading by observed peak intensity, trimming ranges to the measured bandwidth and blending colour by confidence plus peak fraction to declutter FTIR plots.【F:app/ui/ir_group_overlays.py†L1-L198】
+- Passed the active spectrum vectors into the shading helper so only prominent functional-group detections render overlays for the reference trace.【F:app/ui/main.py†L3639-L3664】
+- Logged regression coverage to hold the peak-aware ordering and fallback trimming in place for future changes.【F:tests/ui/test_ir_group_overlays.py†L1-L54】
+
 # IR JCAMP health hotfix — 2025-10-28
 - Channelled JCAMP ingestion through the new `IRMeta`/`to_A10` helper, scaling samples by `YFACTOR`, validating `FIRSTY`, and logging IR diagnostics plus conversion provenance for overlays and manifest exports.【F:app/server/ingest_jcamp.py†L357-L571】【F:app/server/ir_units.py†L7-L64】【F:app/export_manifest.py†L23-L74】
 - Updated the overlay workspace to solicit coefficient parameters, rebuild downsample tiers after conversion, surface IR sanity expanders, and render scientific tick/hover formatting with conditional cm⁻¹ reversal in Plotly.【F:app/ui/main.py†L279-L467】【F:app/ui/main.py†L2452-L2687】

@@ -62,3 +62,4 @@ Spectra App — Patch Log (append-only)
 
 - v1.2.2: Repackage the bundled IR surrogate as a gzipped/base64 JSON asset with matching JSON thresholds, teach the classifier/tests to load the textual bundle, and refresh docs so PR tooling can apply the patch without binary blobs.
 - v1.2.3: Tidy FTIR classifier overlays by shrinking correlation bands, tinting fills by confidence, capping annotations, and wrapping the results table in a collapsible expander.
+- v1.2.4: Focus FTIR shading on peak-backed predictions, colour bands with intensity-aware confidence, and add UI regression coverage for the overlay helper.

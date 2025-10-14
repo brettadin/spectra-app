@@ -1,9 +1,11 @@
 """Helpers for rendering IR functional-group predictions in the UI."""
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, replace
 from typing import Dict, Iterable, List, Mapping, Sequence
 
+import numpy as np
 import plotly.graph_objects as go
 
 from ml import FunctionalGroupPrediction
@@ -18,6 +20,9 @@ class FunctionalGroupRange:
     low_cm_1: float
     notes: str = ""
     probability: float | None = None
+    peak_fraction: float | None = None
+    peak_cm_1: float | None = None
+    score: float | None = None
 
     @property
     def range_tuple(self) -> tuple[float, float]:
@@ -54,11 +59,101 @@ def _shrink_range(entry: FunctionalGroupRange, *, shrink_ratio: float) -> tuple[
     return high, low
 
 
+def _normalise_spectrum(
+    wavenumbers: Sequence[float], intensities: Sequence[float]
+) -> tuple[np.ndarray, np.ndarray]:
+    arr_w = np.asarray(wavenumbers, dtype=float)
+    arr_f = np.asarray(intensities, dtype=float)
+    mask = np.isfinite(arr_w) & np.isfinite(arr_f)
+    arr_w = arr_w[mask]
+    arr_f = arr_f[mask]
+    if arr_w.size == 0:
+        return arr_w, arr_f
+    return arr_w, arr_f
+
+
+def _refine_range_with_spectrum(
+    entry: FunctionalGroupRange,
+    wavenumbers: np.ndarray,
+    intensities: np.ndarray,
+    *,
+    max_intensity: float,
+) -> tuple[FunctionalGroupRange | None, float]:
+    if max_intensity <= 0 or wavenumbers.size == 0:
+        return None, 0.0
+
+    span_low = min(entry.low_cm_1, entry.high_cm_1)
+    span_high = max(entry.low_cm_1, entry.high_cm_1)
+    mask = (wavenumbers >= span_low) & (wavenumbers <= span_high)
+    if not np.any(mask):
+        return None, 0.0
+
+    local_w = wavenumbers[mask]
+    local_i = np.abs(intensities[mask])
+    if local_w.size == 0:
+        return None, 0.0
+
+    peak = float(np.max(local_i))
+    if peak <= 0:
+        return None, 0.0
+
+    peak_fraction = float(min(peak / max_intensity, 1.0)) if max_intensity > 0 else 0.0
+    peak_idx = int(np.argmax(local_i))
+    peak_cm_1 = float(local_w[peak_idx])
+
+    half_height = peak * 0.45
+    width_mask = local_i >= half_height
+    if not np.any(width_mask):
+        width_mask = local_i >= peak * 0.3
+
+    width_w = local_w[width_mask]
+    if width_w.size == 0:
+        width_w = np.array([peak_cm_1])
+
+    refined_low = float(np.min(width_w))
+    refined_high = float(np.max(width_w))
+
+    refined_low = max(refined_low, span_low)
+    refined_high = min(refined_high, span_high)
+
+    if refined_high <= refined_low:
+        refined_high = span_high
+        refined_low = span_low
+    else:
+        original_span = span_high - span_low
+        refined_span = refined_high - refined_low
+        min_span = max(original_span * 0.1, 6.0)
+        if refined_span < min_span:
+            pad = (min_span - refined_span) / 2
+            refined_high = min(refined_high + pad, span_high)
+            refined_low = max(refined_low - pad, span_low)
+
+    high_cm_1 = max(refined_high, refined_low)
+    low_cm_1 = min(refined_high, refined_low)
+
+    probability = entry.probability or 0.0
+    score = float(probability * math.sqrt(peak_fraction)) if probability > 0 else 0.0
+
+    refined = replace(
+        entry,
+        high_cm_1=high_cm_1,
+        low_cm_1=low_cm_1,
+        peak_fraction=peak_fraction,
+        peak_cm_1=peak_cm_1,
+        score=score,
+    )
+    return refined, peak_fraction
+
+
 def shaded_ranges_for_predictions(
     predictions: Sequence[FunctionalGroupPrediction],
     *,
     probability_floor: float = 0.25,
     shrink_ratio: float = 0.18,
+    wavenumbers: Sequence[float] | None = None,
+    intensities: Sequence[float] | None = None,
+    min_peak_fraction: float = 0.18,
+    top_ranges: int = 10,
 ) -> List[FunctionalGroupRange]:
     """Return the correlation ranges to visualise for the predicted groups."""
 
@@ -79,17 +174,67 @@ def shaded_ranges_for_predictions(
                     probability=item.probability,
                 )
             )
-    return shaded
+
+    if not shaded:
+        return []
+
+    if wavenumbers is None or intensities is None:
+        shaded.sort(key=lambda item: item.probability or 0.0, reverse=True)
+        if top_ranges:
+            shaded = shaded[:top_ranges]
+        return shaded
+
+    arr_w, arr_f = _normalise_spectrum(wavenumbers, intensities)
+    if arr_w.size == 0:
+        shaded.sort(key=lambda item: item.probability or 0.0, reverse=True)
+        if top_ranges:
+            shaded = shaded[:top_ranges]
+        return shaded
+
+    max_intensity = float(np.max(np.abs(arr_f))) if arr_f.size else 0.0
+    refined: List[FunctionalGroupRange] = []
+    for entry in shaded:
+        updated, peak_fraction = _refine_range_with_spectrum(
+            entry, arr_w, arr_f, max_intensity=max_intensity
+        )
+        probability = entry.probability or 0.0
+        if updated is None:
+            continue
+        if peak_fraction < min_peak_fraction and probability < 0.85:
+            continue
+        refined.append(updated)
+
+    if not refined:
+        shaded.sort(key=lambda item: item.probability or 0.0, reverse=True)
+        if top_ranges:
+            shaded = shaded[:top_ranges]
+        return shaded
+
+    refined.sort(
+        key=lambda item: (
+            item.score or 0.0,
+            item.peak_fraction or 0.0,
+            item.probability or 0.0,
+        ),
+        reverse=True,
+    )
+
+    if top_ranges:
+        refined = refined[:top_ranges]
+
+    return refined
 
 
-def _color_for_probability(probability: float | None) -> str:
-    base = 0.0 if probability is None else max(0.0, min(probability, 1.0)) ** 0.5
-    start = (120, 144, 156)  # blue grey for lower confidence
-    end = (30, 136, 229)  # rich blue for confident hits
-    red = int(start[0] + (end[0] - start[0]) * base)
-    green = int(start[1] + (end[1] - start[1]) * base)
-    blue = int(start[2] + (end[2] - start[2]) * base)
-    alpha = 0.08 + 0.22 * base
+def _color_for_entry(entry: FunctionalGroupRange) -> str:
+    probability = max(0.0, min(entry.probability or 0.0, 1.0))
+    intensity = max(0.0, min(entry.peak_fraction or probability, 1.0))
+    blend = min(1.0, 0.6 * math.sqrt(probability) + 0.4 * math.sqrt(intensity))
+    start = (120, 144, 156)
+    end = (21, 101, 192)
+    red = int(start[0] + (end[0] - start[0]) * blend)
+    green = int(start[1] + (end[1] - start[1]) * blend)
+    blue = int(start[2] + (end[2] - start[2]) * blend)
+    alpha = 0.06 + 0.24 * blend
     return f"rgba({red}, {green}, {blue}, {alpha:.3f})"
 
 
@@ -107,8 +252,9 @@ def apply_shaded_ranges(
         return
 
     sort_key = lambda idx: (
+        sequence[idx].score or 0.0,
+        sequence[idx].peak_fraction or 0.0,
         sequence[idx].probability or 0.0,
-        -(sequence[idx].high_cm_1 - sequence[idx].low_cm_1),
     )
     annotate_indices = {
         idx for idx in sorted(range(len(sequence)), key=sort_key, reverse=True)[:max_annotations]
@@ -118,7 +264,7 @@ def apply_shaded_ranges(
         x0, x1 = entry.high_cm_1, entry.low_cm_1
         if axis_reversed:
             x0, x1 = x1, x0
-        fillcolor = _color_for_probability(entry.probability)
+        fillcolor = _color_for_entry(entry)
         fig.add_shape(
             type="rect",
             x0=x0,

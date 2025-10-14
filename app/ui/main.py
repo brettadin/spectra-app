@@ -3630,7 +3630,11 @@ def _render_overlay_tab(version_info: Dict[str, str]) -> None:
                         except Exception as exc:
                             st.error(f"IR classification failed: {exc}")
                         else:
-                            ranges = shaded_ranges_for_predictions(predictions)
+                            ranges = shaded_ranges_for_predictions(
+                                predictions,
+                                wavenumbers=wavenumbers,
+                                intensities=intensities,
+                            )
                             st.session_state["ir_group_predictions_state"] = {
                                 "trace_id": reference.trace_id,
                                 "predictions": predictions,
