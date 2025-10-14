@@ -37,6 +37,12 @@ from .panel_registry import (
     register_workspace_panel,
 )
 from .targets import RegistryUnavailableError, render_targets_panel
+from .ir_group_overlays import (
+    apply_shaded_ranges,
+    build_prediction_table,
+    shaded_ranges_for_predictions,
+    FunctionalGroupRange,
+)
 
 from .._version import get_version_info
 from ..ingest import OverlayIngestResult
@@ -45,6 +51,7 @@ from ..server.differential import ratio, resample_to_common_grid, subtract
 from ..server.fetch_archives import FetchError, fetch_spectrum
 from ..server.fetchers import nist_quant_ir
 from ..server.ir_units import IRMeta, to_A10
+from ..utils.ir_group_client import identify_functional_groups, ir_group_backend
 from ..similarity import (
     SimilarityCache,
     SimilarityOptions,
@@ -1158,6 +1165,34 @@ def _get_overlays() -> List[OverlayTrace]:
 def _set_overlays(overlays: Sequence[OverlayTrace]) -> None:
     st.session_state["overlay_traces"] = list(overlays)
     _ensure_reference_consistency()
+    state = st.session_state.get("ir_group_predictions_state")
+    if isinstance(state, dict):
+        trace_id = state.get("trace_id")
+        if trace_id and not any(trace.trace_id == trace_id for trace in overlays):
+            st.session_state["ir_group_predictions_state"] = {}
+
+
+def _trace_ir_vectors(trace: OverlayTrace) -> Tuple[np.ndarray, np.ndarray]:
+    axis_kind = _axis_kind_for_trace(trace)
+    if axis_kind not in {"wavelength", "spectrum", "sed"}:
+        raise ValueError("IR classification requires a wavelength-based spectrum")
+    wavelengths = np.asarray(trace.wavelength_nm, dtype=float)
+    intensities = np.asarray(trace.flux, dtype=float)
+    mask = np.isfinite(wavelengths) & np.isfinite(intensities) & (wavelengths > 0)
+    wavelengths = wavelengths[mask]
+    intensities = intensities[mask]
+    if wavelengths.size == 0:
+        raise ValueError("No finite wavelengths available for IR classification.")
+    wavenumbers = 1e7 / wavelengths
+    return wavenumbers, intensities
+
+
+def _active_ir_prediction_state() -> Dict[str, object]:
+    state = st.session_state.setdefault("ir_group_predictions_state", {})
+    if not isinstance(state, dict):
+        state = {}
+        st.session_state["ir_group_predictions_state"] = state
+    return state
 
 
 def _get_example_spec(slug: str) -> Optional[ExampleSpec]:
@@ -2464,7 +2499,8 @@ def _build_overlay_figure(
     axis_viewport_by_kind: Optional[
         Mapping[str, Tuple[float | None, float | None]]
     ] = None,
-) -> Tuple[go.Figure, str]:
+    ir_ranges: Optional[Sequence[FunctionalGroupRange]] = None,
+) -> Tuple[go.Figure, str, bool]:
     category_lookup: Dict[str, str] = {}
     target_overlays = [trace for trace in overlays if trace.visible] or list(overlays)
     for trace in target_overlays:
@@ -2703,7 +2739,9 @@ def _build_overlay_figure(
             )
         ]
     )
-    return fig, axis_title
+    if ir_ranges and display_units == "cm^-1":
+        apply_shaded_ranges(fig, ir_ranges, axis_reversed=should_reverse_axis)
+    return fig, axis_title, should_reverse_axis
 
 
 def _render_overlay_table(overlays: Sequence[OverlayTrace]) -> None:
@@ -3504,7 +3542,18 @@ def _render_overlay_tab(version_info: Dict[str, str]) -> None:
     if reference is not None and _axis_kind_for_trace(reference) in {"image", "time"}:
         reference = None
 
-    fig, axis_title = _build_overlay_figure(
+    ir_state = _active_ir_prediction_state()
+    active_ranges: Optional[Sequence[FunctionalGroupRange]] = None
+    if (
+        display_units == "cm^-1"
+        and reference is not None
+        and ir_state.get("trace_id") == reference.trace_id
+    ):
+        ranges = ir_state.get("ranges")
+        if isinstance(ranges, Sequence):
+            active_ranges = list(ranges)
+
+    fig, axis_title, _axis_reversed = _build_overlay_figure(
         overlays,
         display_units,
         display_mode,
@@ -3513,8 +3562,29 @@ def _render_overlay_tab(version_info: Dict[str, str]) -> None:
         differential_mode,
         version_info.get("version", "v?"),
         axis_viewport_by_kind=effective_viewports if single_axis else None,
+        ir_ranges=active_ranges,
     )
     st.plotly_chart(fig, use_container_width=True)
+
+    if (
+        reference is not None
+        and ir_state.get("trace_id") == reference.trace_id
+        and isinstance(ir_state.get("predictions"), Sequence)
+    ):
+        table_rows = build_prediction_table(
+            list(ir_state.get("predictions")), probability_floor=0.05
+        )
+        if table_rows:
+            with st.expander(
+                f"Functional group predictions ({len(table_rows)} rows)",
+                expanded=False,
+            ):
+                st.dataframe(
+                    pd.DataFrame(table_rows),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
     _render_image_overlay_panels(overlays)
 
     if len(visible_axis_kinds) > 1:
@@ -3535,6 +3605,61 @@ def _render_overlay_tab(version_info: Dict[str, str]) -> None:
                 display_mode,
                 effective_viewports,
             )
+        run_classifier = st.button(
+            "Identify functional groups",
+            key="ir_group_identify_button",
+            help="Run the IR functional-group classifier on the reference trace.",
+        )
+        if run_classifier:
+            if reference is None:
+                st.warning("Select a wavelength-based reference spectrum to analyse.")
+            else:
+                try:
+                    wavenumbers, intensities = _trace_ir_vectors(reference)
+                except Exception as exc:
+                    st.error(f"IR classification unavailable: {exc}")
+                else:
+                    with st.spinner("Running IR classifier..."):
+                        try:
+                            predictions = list(
+                                identify_functional_groups(
+                                    wavenumbers=wavenumbers,
+                                    intensities=intensities,
+                                )
+                            )
+                        except Exception as exc:
+                            st.error(f"IR classification failed: {exc}")
+                        else:
+                            ranges = shaded_ranges_for_predictions(
+                                predictions,
+                                wavenumbers=wavenumbers,
+                                intensities=intensities,
+                            )
+                            st.session_state["ir_group_predictions_state"] = {
+                                "trace_id": reference.trace_id,
+                                "predictions": predictions,
+                                "ranges": ranges,
+                                "timestamp": time.time(),
+                            }
+                            detected = sum(1 for item in predictions if item.present)
+                            st.success(
+                                f"Classifier updated {detected} functional-group flags."
+                            )
+                            backend = ir_group_backend()
+                            if backend == "heuristic":
+                                st.info(
+                                    "Using heuristic fallbacks because no IR model "
+                                    "weights were available. Download the pretrained "
+                                    "TensorFlow bundle via `python scripts/fetch_ir_model.py --model-url <url> --threshold-url <url>` "
+                                    "for higher-fidelity predictions."
+                                )
+                            elif backend == "linear":
+                                st.caption(
+                                    "IR groups resolved with the bundled linear surrogate. "
+                                    "Fetch the published TensorFlow weights for best accuracy."
+                                )
+                            elif backend == "remote":
+                                st.caption("IR groups resolved via configured API service.")
         st.caption(f"Axis: {axis_title}")
 
     _render_metadata_summary(overlays)

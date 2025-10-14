@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.1ac",
-  "date_utc": "2025-10-29T00:00:00Z",
-  "summary": "Restore Quant IR manual fetches when WebBook pages return raw JCAMP data."
+  "version": "v1.2.4",
+  "date_utc": "2025-11-04T00:00:00Z",
+  "summary": "Focus FTIR overlays on high-intensity peaks with refined shading and refreshed regression coverage."
 }

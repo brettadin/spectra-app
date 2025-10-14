@@ -52,5 +52,14 @@ Spectra App — Patch Log (append-only)
 - v1.2.1aa: Preserve Quant IR raw wavelength/flux metadata without forcing cm⁻¹ conversions so overlays display the archived units verbatim.
 - v1.2.1ab: Attach WebBook IR-SPEC source URLs to the manual H2O/CH4/CO2 Quant IR presets and surface the provenance links in metadata.
 - v1.2.1ac: Restore manual Quant IR presets by accepting direct JCAMP payloads when the WebBook page omits display_jcamp hooks and update regression coverage.
+- v1.2.1ad: Add FTIR functional-group classification with IR model integration, shaded band overlays, unit coverage, and release collateral updates.
+
+- v1.2.1ae: Ship heuristic fallbacks for the IR classifier, share correlation-band metadata, surface backend state in the UI/API, and expand unit coverage/documentation around the missing-model workflow.
+
+- v1.2.1af: Bundle a linear IR surrogate so FTIR classification works offline, prefer TensorFlow weights when present, refresh UI messaging/docs, and cover the new path with unit tests.
 
 - v1.2.1aa (IR health hotfix): convert IR JCAMP Y-units to A10 with provenance, verify FIRSTY vs scaled samples, flip cm⁻¹ axes only when descending, and expose a ?health=1 Streamlit endpoint.
+
+- v1.2.2: Repackage the bundled IR surrogate as a gzipped/base64 JSON asset with matching JSON thresholds, teach the classifier/tests to load the textual bundle, and refresh docs so PR tooling can apply the patch without binary blobs.
+- v1.2.3: Tidy FTIR classifier overlays by shrinking correlation bands, tinting fills by confidence, capping annotations, and wrapping the results table in a collapsible expander.
+- v1.2.4: Focus FTIR shading on peak-backed predictions, colour bands with intensity-aware confidence, and add UI regression coverage for the overlay helper.
