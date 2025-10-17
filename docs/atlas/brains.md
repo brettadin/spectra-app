@@ -1,3 +1,7 @@
+# IR overlay prompt compatibility — 2025-11-06
+- Instantiated the FTIR overlay conversion forms outside the expander context to survive Streamlit 1.50's context-manager change so number inputs and submit buttons keep rendering with the new width API.【F:app/ui/main.py†L447-L485】
+- Recorded the release bump to v1.2.6 so downstream tooling captures the compatibility hotfix in manifests and UI headers.【F:app/version.json†L1-L5】【F:PATCHLOG.txt†L66-L67】
+
 # FTIR differential cm⁻¹ alignment — 2025-11-05
 - Reversed differential axis handling for wavenumber spectra so subtraction plots render on a cm⁻¹ scale with high-to-low order, updated captions, and export metadata reflecting both nm and cm⁻¹ ranges.【F:app/ui/main.py†L3688-L3784】【F:tests/ui/test_differential_form.py†L1-L155】
 - Normalised FTIR classifier vectors by turning transmittance dips into absorbance peaks, flipping negative absorbance baselines, and clustering overlay ranges so only the dominant peak-backed groups render.【F:app/ui/main.py†L1159-L1189】【F:app/ui/ir_group_overlays.py†L86-L142】【F:tests/ui/test_ir_trace_vectors.py†L1-L46】

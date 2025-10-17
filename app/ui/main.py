@@ -456,28 +456,28 @@ def _render_ir_parameter_prompts(overlays: Sequence[OverlayTrace]) -> None:
         )
         expander.caption(f"Input units: {units_label or 'unknown'}")
         form_key = f"ir_params_form_{trace.trace_id}"
-        with expander.form(form_key) as form:
-            path_value = form.number_input(
-                "Path length (m)",
-                min_value=0.0,
-                value=float(default_path),
-                step=max(float(default_path) / 10.0, 0.1),
-                format="%0.4f",
-                key=f"{form_key}_path",
-            )
-            mole_value = form.number_input(
-                "Mole fraction (χ)",
-                min_value=0.0,
-                max_value=1.0,
-                value=float(default_mole),
-                step=max(float(default_mole) / 10.0, 1e-6),
-                format="%0.6f",
-                key=f"{form_key}_mole",
-                help="Enter as a fraction (e.g. 50 ppm = 5e-5).",
-            )
-            submitted = form.form_submit_button(
-                "Convert to A10", width="stretch"
-            )
+        form = expander.form(form_key)
+        path_value = form.number_input(
+            "Path length (m)",
+            min_value=0.0,
+            value=float(default_path),
+            step=max(float(default_path) / 10.0, 0.1),
+            format="%0.4f",
+            key=f"{form_key}_path",
+        )
+        mole_value = form.number_input(
+            "Mole fraction (χ)",
+            min_value=0.0,
+            max_value=1.0,
+            value=float(default_mole),
+            step=max(float(default_mole) / 10.0, 1e-6),
+            format="%0.6f",
+            key=f"{form_key}_mole",
+            help="Enter as a fraction (e.g. 50 ppm = 5e-5).",
+        )
+        submitted = form.form_submit_button(
+            "Convert to A10", width="stretch"
+        )
         if submitted:
             success, message = _apply_ir_parameters_to_trace(
                 trace, float(path_value), float(mole_value)

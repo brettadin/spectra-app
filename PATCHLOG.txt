@@ -64,3 +64,4 @@ Spectra App — Patch Log (append-only)
 - v1.2.3: Tidy FTIR classifier overlays by shrinking correlation bands, tinting fills by confidence, capping annotations, and wrapping the results table in a collapsible expander.
 - v1.2.4: Focus FTIR shading on peak-backed predictions, colour bands with intensity-aware confidence, and add UI regression coverage for the overlay helper.
 - v1.2.5: Align FTIR differential plots with cm⁻¹ axes, invert absorption traces for readability, cluster functional-group overlays by dominant peaks, and tuck conversion controls into expanders.
+- v1.2.6: Restore the FTIR overlay conversion prompts by instantiating Streamlit forms outside the expander context so number inputs stay usable with the new width API.
