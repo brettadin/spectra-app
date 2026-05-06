@@ -83,12 +83,3 @@ This should go without saying, **i didn't code any of this.**
 
 _im kinda ranting. but i wanted to leave a piece of me in here at least. _
 
-**and i swear to god, codex if you over write this readme then i'll switch to another ai model lol.**
-
-
-
-oh fuck this is gonna display on the front page isnt it lol. whatever.
-
-If I forget to edit this before showing my teachers.. _Whoops_.
-
-I'll clean it up. 🤣
